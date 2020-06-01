@@ -2,3 +2,4 @@ debug/
 release/
 *.user
 googletest/
+libdisasm-0.23/
