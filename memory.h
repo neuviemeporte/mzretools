@@ -9,23 +9,31 @@
 #include "debug.h"
 #include "error.h"
 
+static constexpr Size KB = 1024;
+static constexpr Size MB = 1024 * KB;
+static constexpr Size PARAGRAPH_SIZE = 16;
+static constexpr Size TOTALMEM_SIZE = 1 * MB;
+
 struct MemoryRange {
     const Offset begin, end;
     MemoryRange(Offset begin, Offset end);
     bool operator==(const MemoryRange &arg) const { return arg.begin == begin && arg.end == end; }
 };
 
+struct SegmentedAddress {
+    Reg16 segment, offset;
+    SegmentedAddress(const Reg16 segment, const Reg16 offset) : segment(segment), offset(offset) {}
+    SegmentedAddress(const Offset linear);
+    inline Offset toLinear() const {
+        return (static_cast<Offset>(segment) << 4) + offset;
+    }
+    void normalize();
+};
+
 class Memory {
 private:
     // potentially need a descriptor for every byte in emulated memory, this should suffice
     using MapDescriptorIdx = uint32_t;
-
-    static constexpr Size KB = 1024;
-    static constexpr Size MB = 1024 * KB;
-    static constexpr Size TOTAL_MEM = 1 * MB;
-    static constexpr Size LOW_MEM = 64 * KB;
-    static constexpr Size CONV_MEM  = 640 * KB;
-    static constexpr Size UPPER_MEM = TOTAL_MEM - CONV_MEM;
     static constexpr MapDescriptorIdx INVALID_MAPDESC_ID = std::numeric_limits<MapDescriptorIdx>::max();
 
     struct MapDescriptor {
@@ -37,22 +45,23 @@ private:
             label(label), range(range), idx(idx), parent(parent) {}
     };
 
-    Byte data_[TOTAL_MEM];
-    MapDescriptorIdx map_[TOTAL_MEM];
+    Byte data_[TOTALMEM_SIZE];
+    MapDescriptorIdx map_[TOTALMEM_SIZE];
     std::vector<MapDescriptor> descriptors_;
 
 public:
     Memory();
 
-    Byte read(const Reg16 segment, const Reg16 offset);
-    void write(const Reg16 segment, const Reg16 offset, const Byte value);
+    Size size() const { return TOTALMEM_SIZE; }
+
+    Byte read(const Offset addr) const;
+    void write(const Offset addr, const Byte value);
+
     void addMapping(const std::string &label, const MemoryRange &range);
+    const std::string& mapLabel(const Offset addr) const;
     void dump(const std::string &path) const;
 
 private:
-    inline Offset toLinear(const Reg16 segment, const Reg16 offset) {
-        return (static_cast<Offset>(segment) << 4) + offset;
-    }
 
     MapDescriptorIdx addDescriptor(const std::string &label, const MemoryRange range, const MapDescriptorIdx parent);
 };
