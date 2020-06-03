@@ -5,7 +5,7 @@
 #include "memory.h"
 
 MemoryRange::MemoryRange(Offset begin, Offset end) : begin(begin), end(end) {
-    if (end > begin) throw MemoryError("Invalid range extents");
+    if (end < begin) throw MemoryError("Invalid range extents");
 }
 
 SegmentedAddress::SegmentedAddress(const Offset linear) {
@@ -25,7 +25,7 @@ Memory::Memory() {
     for (Offset i = 0, j = 0; i < TOTALMEM_SIZE; ++i) {
         // initialize memory data with initial pattern
         data_[i] = pattern[j];
-        if (j++ > sizeof pattern) j = 0;
+        if (++j >= sizeof pattern) j = 0;
         // initialize memory map with id of top-level mapping
         map_[i] = 0;
     }

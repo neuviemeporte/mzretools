@@ -1,7 +1,10 @@
 #include <iostream>
+#include <memory>
 #include "memory.h"
 
 #include "gtest/gtest.h"
+
+using namespace std;
 
 TEST(Memory, Segmentation) {
     SegmentedAddress a(0x6ef, 0x1234);
@@ -13,11 +16,11 @@ TEST(Memory, Segmentation) {
 }
 
 TEST(Memory, Init) {
-    Memory mem;
-    const Size memSize = mem.size();
+    auto mem = make_unique<Memory>();
+    const Size memSize = mem->size();
 
-//    const Byte pattern[] = { 0xde, 0xad, 0xbe, 0xef };
-//    for (Offset i = 0; i < memSize; ++i) {
-//        ASSERT_EQ(mem.read(i), pattern[i % sizeof pattern]);
-//    }
+    const Byte pattern[] = { 0xde, 0xad, 0xbe, 0xef };
+    for (Offset i = 0; i < memSize; ++i) {
+        ASSERT_EQ(mem->read(i), pattern[i % sizeof pattern]);
+    }
 }
