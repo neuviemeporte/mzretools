@@ -42,7 +42,7 @@ void Memory::write(const Offset addr, const Byte value) {
     data_[addr] = value;
 }
 
-void Memory::addMapping(const std::string &label, const MemoryRange &range) {
+void Memory::addMapping(const MemoryRange &range, const std::string &label) {
     if (range.begin >= TOTALMEM_SIZE || range.end >= TOTALMEM_SIZE)
         throw MemoryError("Mapping range outside memory bounds");
 

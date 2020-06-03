@@ -22,6 +22,8 @@ set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 add_subdirectory(googletest)
 
 set(TEST_SRC
+    test/debug.h
+    test/debug.cpp
     test/cpu_test.cpp
     test/memory_test.cpp)
 

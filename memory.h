@@ -17,7 +17,9 @@ static constexpr Size TOTALMEM_SIZE = 1 * MB;
 struct MemoryRange {
     const Offset begin, end;
     MemoryRange(Offset begin, Offset end);
+    Size size() const { return end - begin + 1; }
     bool operator==(const MemoryRange &arg) const { return arg.begin == begin && arg.end == end; }
+    bool contains(const Offset addr) const { return addr >= begin && addr <= end; }
 };
 
 struct SegmentedAddress {
@@ -57,7 +59,7 @@ public:
     Byte read(const Offset addr) const;
     void write(const Offset addr, const Byte value);
 
-    void addMapping(const std::string &label, const MemoryRange &range);
+    void addMapping(const MemoryRange &range, const std::string &label);
     const std::string& mapLabel(const Offset addr) const;
     void dump(const std::string &path) const;
 
