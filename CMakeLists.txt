@@ -15,6 +15,9 @@ add_library(libdos STATIC ${LIBDOS_SRC} ${LIBDOS_HDR})
 add_executable(dostrace dostrace.cpp)
 target_link_libraries(dostrace PUBLIC libdos)
 
+# include the libdisasm library
+add_subdirectory(libdisasm-0.23)
+
 # Include Google testing framework
 # Prevent overriding the parent project's compiler/linker settings on Windows
 # Otherwise you get LNK2038

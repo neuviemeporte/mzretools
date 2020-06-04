@@ -1,0 +1,115 @@
+.TH "x86_init" "3" "0.21" "mammon_" "libdisasm"
+.SH "NAME"
+x86_init, x86_cleanup \- initialize and cleanup libdisasm
+.SH "SYNOPSIS"
+\fB#include <libdis.h>\fR
+.br 
+.LP 
+\fBtypedef void (*\fRDISASM_REPORTER\fB)( enum x86_report_codes\fR code\fB, 
+.br 
+        void *\fR data\fB, void *\fR arg \fB);\fR
+.LP 
+\fBint x86_init( enum x86_options\fR options\fB, DISASM_REPORTER \fRreporter\fB, 
+.br 
+        void *\fR arg\fB);
+.LP 
+\fBint x86_cleanup(void);\fR
+.LP 
+.SH "DESCRIPTION"
+.LP 
+\fBenum x86_options {\fR
+.br 
+	opt_none= 0,
+.br 
+	opt_ignore_nulls=1,	/* ignore sequences of > 4 NULL bytes */
+.br 
+	opt_16_bit=2,		/* 16\-bit/DOS disassembly */
+.br 
+	opt_unknown
+.br 
+\fB};\fR
+.LP 
+\fBenum x86_report_codes {\fR
+.br 
+        report_disasm_bounds,
+.br 
+        report_insn_bounds, 
+.br 
+        report_invalid_insn,
+.br 
+        report_unknown
+.br 
+\fB};\fR
+.LP 
+.SH "EXAMPLES"
+.LP 
+The following provides a skeleton for initializing and terminating 
+.br 
+\fBlibdisasm\fR:
+.LP 
+void reporter( enum x86_report_codes code, void *data, void *arg ) {
+.br 
+        char * str = NULL;
+.br 
+        FILE *stream = (FILE *) arg;
+.br 
+        if (! stream ) stream = stderr;
+.br 
+
+.br 
+        /* here would could examine the error and do something useful;
+.br 
+         * instead we just print that an error occurred */
+.br 
+        switch ( code ) {
+.br 
+                case report_disasm_bounds:
+.br 
+                        str = "Attempt to disassemble RVA "
+.br 
+                              "beyond end of buffer";
+.br 
+                        break;
+.br 
+                case report_insn_bounds:
+.br 
+                        str = "Instruction at RVA extends "
+.br 
+                              "beyond buffer";
+.br 
+                        break;
+.br 
+                case report_invalid_insn:
+.br 
+                        str = "Invalid opcode at RVA";
+.br 
+                        break;
+.br 
+                case report_unknown:
+.br 
+                        str = "Unknown Error";
+.br 
+                        break;
+.br 
+        }
+.br 
+
+.br 
+        fprintf(stream, "ERROR \'%s:\' %p\n", str, data);
+.br 
+}
+.LP 
+int main( int argc, char **argv ) {
+.br 
+        x86_init(opt_none, reporter, stderr);
+.LP 
+        /* disassembler code goes here */
+.LP 
+        x86_cleanup();
+.br 
+}
+.LP 
+.SH "SEE ALSO"
+.LP 
+libdisasm(7), x86_disasm(3), x86_format_insn(3), x86dis(1)
+

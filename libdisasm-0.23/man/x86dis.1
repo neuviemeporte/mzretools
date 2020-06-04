@@ -1,0 +1,98 @@
+.TH "X86DIS" "1" "0.21" "mammon_" "libdisasm"
+.SH "NAME"
+x86dis \- disassemble a bytestream of Intel x86 instructions
+.SH "SYNTAX"
+x86dis [\fB\-a\fR offset|\fB\-\-addr=\fRoffset]
+.br 
+       [\fB\-r\fR offset len|\fB\-\-range=\fRoffset len]
+.br 
+       [\fB\-e\fR offset|\fB\-\-entry=\fRoffset]
+.br 
+       [\fB\-s\fR name|\fB\-\-syntax=\fRname]
+.br 
+       [\fB\-d\fR name|\fB\-\-desc=\fRname]
+.br 
+       [\fB\-f\fR file|\fB\-\-file=\fRfile]
+.br 
+       [\fB\-o\fR file|\fB\-\-out=\fRfile]
+.br 
+       [\fB\-l\fR file|\fB\-\-log=\fRfile]
+.br 
+       [\fB\-p\fR num|\fB\-\-pagesize=\fRnum]
+.br 
+       [\fB\-h\fR|\fB\-?\fR|\fB\-\-help\fR]
+.br 
+       [\fB\-v\fR|\fB\-\-version\fR]
+.SH "DESCRIPTION"
+A command\-line interface to the libdisasm disassembler library.
+.SH "OPTIONS"
+.LP 
+At least one option from the list \fB\-a, \-e, \-r\fR must be given.
+.TP 
+\fB\-f\fR, \fB\-\-file\fR=file
+.br 
+Read input bytes from \fBfile\fR instead of \fBstdin\fR
+.TP 
+\fB\-o\fR, \fB\-\-out\fR=file
+.br 
+Write output to \fBfile\fR instead of \fBstdout\fR
+.TP 
+\fB\-l\fR, \fB\-\-log\fR=file
+.br 
+Log errors to \fBfile\fR instead of \fBstderr\fR
+.TP 
+\fB\-p\fR, \fB\-\-pagesize\fR=num
+.br 
+Set page size for buffering STDIN to \fBnum\fR (default 512K)\fR
+.TP 
+\fB\-s\fR, \fB\-\-syntax\fR=name 
+.br 
+Set output syntax to \fBname\fR, where \fBname\fR is one of \fBintel\fR
+.br 
+(Intel syntax), \fBatt\fR (AT&T syntax), \fBraw\fR (libdisasm syntax)
+.TP 
+\fB\-d\fR, \fB\-\-desc\fR=name 
+.br 
+Print a description of syntax \fBname\fR 
+.TP 
+\fB\-a\fR, \fB\-\-addr\fR=offset 
+.br 
+Disassemble single instruction at \fBoffset\fR
+.TP 
+\fB\-e\fR, \fB\-\-entry\fR=offset
+.br 
+Disassemble forward from \fBoffset\fR
+.TP 
+\fB\-r\fR, \fB\-\-range\fR=offset len
+.br 
+Disassemble \fBlen\fR bytes starting at \fBoffset\fR
+.br 
+.LP 
+All \fBoffset\fR and \fBlen\fR parameters are expected to follow the conventions used in \fBstrtoul(3)\fR, where hexadecimal numbers have the prefix \fB0x\fR, octal numbers have the prefix \fB0\fR, and decimal numbers have no prefix. A value of \fB0\fR for \fBlen\fR indicates that that range extends to the end of the file.
+
+.br 
+
+.SH "EXAMPLES"
+.LP 
+cat `which ls` | x86dis \-s intel \-e 0x00 \-r 0x00 \-1
+\-a 0xEEEE 
+.br 
+x86dis \-e 0 \-s intel < bootsect.img
+.br 
+x86dis \-d \-s raw \-f a.out \-e `readelf \-h a.out |
+.br 
+      grep Entry |  awk '{ printf( "0x%%x", \
+      strtonum($4) \- 0x8048000 ) }`
+echo '55 89 e5 83 EC 08' | perl \-ane 'foreach(@F){print pack("C",hex);}'|
+x86dis \-e 0 \-s att
+.SH "NOTES"
+.LP 
+\fBx86dis\fR performs no file format parsing, nor any verification that its input is in fact executable binary code. All offsets are assumed to be from the start of the file, with no load addresses applied. The intent is to provide a bytestream disassembler rather than an object file disassembler.
+.LP 
+Descriptions of the various output formats can be obtained using the \fB\-d\fR option.
+.SH "AUTHORS"
+.LP 
+mammon_ <mammon_@users.sourceforge.net>
+.SH "SEE ALSO"
+.LP 
+bastard(1), libdisasm(7), x86_disasm(3), x86_format_insn(3), x86_init(3)

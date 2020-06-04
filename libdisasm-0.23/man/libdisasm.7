@@ -1,0 +1,729 @@
+.TH "libdisasm" "7" "0.21" "mammon_" "libdisasm"
+.SH "NAME"
+libdisasm \- library for disassembling Intel x86 instructions
+.SH "OVERVIEW"
+.LP 
+\fBlibdisasm\fR is a library for disassembled compiled Intel x86 object code.
+.LP 
+.SH "FUNCTIONS"
+.LP 
+int x86_init( enum x86_options options, DISASM_REPORTER reporter);
+.br 
+void x86_set_options( enum x86_options options );
+.br 
+int x86_get_options( void );
+.br 
+int x86_cleanup(void);
+.br 
+void x86_report_error( enum x86_report_codes code, void *arg );
+.LP 
+int x86_disasm( unsigned char *buf, unsigned int buf_len,
+.br 
+                unsigned long buf_rva, unsigned int offset,
+.br 
+                x86_insn_t * insn );
+.br 
+int x86_disasm_range( unsigned char *buf, unsigned long buf_rva,
+.br 
+                      unsigned int offset, unsigned int len,
+.br 
+                      DISASM_CALLBACK func, void *arg );
+.br 
+int x86_disasm_forward( unsigned char *buf, unsigned int buf_len,
+.br 
+                        unsigned long buf_rva, unsigned int offset,
+.br 
+                        DISASM_CALLBACK func, void *arg,
+.br 
+                        DISASM_RESOLVER resolver );
+.LP 
+x86_op_t * x86_get_operand( x86_insn_t *insn, enum x86_operand_id id );
+.br 
+x86_op_t * x86_get_dest_operand( x86_insn_t *insn );
+.br 
+x86_op_t * x86_get_src_operand( x86_insn_t *insn );
+.br 
+x86_op_t * x86_get_imm_operand( x86_insn_t *insn );
+.br 
+int x86_operand_size( x86_op_t *op );
+.LP 
+unsigned char * x86_get_raw_imm( x86_insn_t *insn );
+.LP 
+void x86_set_insn_addr( x86_insn_t *insn, unsigned long addr );
+.br 
+void x86_set_insn_offset( x86_insn_t *insn, unsigned int offset );
+.br 
+void x86_set_insn_function( x86_insn_t *insn, void * func );
+.br 
+void x86_set_insn_block( x86_insn_t *insn, void * block );
+.br 
+void x86_tag_insn( x86_insn_t *insn );
+.br 
+void x86_untag_insn( x86_insn_t *insn );
+.br 
+int x86_insn_is_tagged( x86_insn_t *insn );
+.LP 
+int x86_format_operand(x86_op_t *op, x86_insn_t *insn, char *buf, int len,
+.br 
+                  enum x86_asm_format);
+.br 
+int x86_format_mnemonic(x86_insn_t *insn, char *buf, int len,
+.br 
+                        enum x86_asm_format);
+.br 
+int x86_format_insn(x86_insn_t *insn, char *buf, int len, enum x86_asm_format);
+.br 
+int x86_format_header( char *buf, int len, enum x86_asm_format format);
+.LP 
+int x86_endian(void);
+.br 
+int x86_addr_size(void);
+.br 
+int x86_op_size(void);
+.br 
+int x86_word_size(void);
+.br 
+int x86_max_inst_size(void);
+.br 
+int x86_sp_reg(void);
+.br 
+int x86_fp_reg(void);
+.br 
+int x86_ip_reg();
+.LP 
+int x86_invariant_insn( unsigned char *buf, int buf_len, x86_invariant_t *inv );
+.SH "DATA TYPES"
+.LP 
+#define MAX_REGNAME 8
+.br 
+#define MAX_INSN_SIZE 20	/* same as in i386.h */
+.br 
+#define MAX_OP_STRING 32	/* max possible operand size in string form */
+.LP 
+enum x86_reg_type { 	/* NOTE: these may be ORed together */
+.br 
+	reg_gen 	= 0x00001,	/* general purpose */
+.br 
+	reg_in 		= 0x00002,	/* incoming args, ala RISC */ 
+.br 
+	reg_out 	= 0x00004,	/* args to calls, ala RISC */
+.br 
+	reg_local 	= 0x00008,	/* local vars, ala RISC */
+.br 
+	reg_fpu 	= 0x00010,	/* FPU data register */
+.br 
+	reg_seg 	= 0x00020,	/* segment register */
+.br 
+	reg_simd 	= 0x00040,	/* SIMD/MMX reg */
+.br 
+	reg_sys 	= 0x00080,	/* restricted/system register */
+.br 
+	reg_sp 		= 0x00100,	/* stack pointer */
+.br 
+	reg_fp		= 0x00200,	/* frame pointer */
+.br 
+	reg_pc		= 0x00400,	/* program counter */
+.br 
+	reg_retaddr 	= 0x00800,	/* return addr for func */
+.br 
+	reg_cond 	= 0x01000,	/* condition code / flags */
+.br 
+	reg_zero 	= 0x02000,	/* zero register, ala RISC */
+.br 
+	reg_ret 	= 0x04000,	/* return value */
+.br 
+	reg_src 	= 0x10000,	/* array/rep source */
+.br 
+	reg_dest	= 0x20000,	/* array/rep destination */
+.br 
+	reg_count 	= 0x40000	/* array/rep/loop counter */
+.br 
+};
+.LP 
+typedef struct {
+.br 
+	char name[MAX_REGNAME];
+.br 
+	int type;			/* what register is used for */
+.br 
+	int size;			/* size of register in bytes */
+.br 
+	int id;				/* register ID #, for quick compares */
+.br 
+} x86_reg_t;
+.LP 
+typedef struct {
+.br 
+	unsigned int     scale;		/* scale factor */
+.br 
+	x86_reg_t        index, base;	/* index, base registers */
+.br 
+	long             disp;		/* displacement */
+.br 
+	char             disp_sign;	/* is negative? 1/0 */
+.br 
+	char             disp_size;	/* 0, 1, 2, 4 */
+.br 
+} x86_ea_t;
+.LP 
+enum x86_op_type {	/* mutually exclusive */
+.br 
+	op_unused = 0,		/* empty/unused operand */
+.br 
+	op_register = 1,	/* CPU register */
+.br 
+	op_immediate = 2,	/* Immediate Value */
+.br 
+	op_relative = 3,	/* Relative offset from IP */
+.br 
+	op_absolute = 4,	/* Absolute address (ptr16:32) */
+.br 
+	op_expression = 5,	/* Address expression (scale/index/base/disp) */
+.br 
+	op_offset = 6,		/* Offset from start of segment (m32) */
+.br 
+	op_unknown
+.br 
+};
+.LP 
+enum x86_op_datatype {		/* these use Intel's lame terminology */
+.br 
+	op_byte = 1,		/* 1 byte integer */
+.br 
+	op_word = 2,		/* 2 byte integer */
+.br 
+	op_dword = 3,		/* 4 byte integer */
+.br 
+	op_qword = 4,		/* 8 byte integer */
+.br 
+	op_dqword = 5,		/* 16 byte integer */
+.br 
+	op_sreal = 6,		/* 4 byte real (single real) */
+.br 
+	op_dreal = 7,		/* 8 byte real (double real) */
+.br 
+	op_extreal = 8,		/* 10 byte real (extended real) */
+.br 
+	op_bcd = 9,		/* 10 byte binary\-coded decimal */
+.br 
+	op_simd = 10,		/* 16 byte packed (SIMD, MMX) */
+.br 
+	op_fpuenv = 11		/* 28 byte FPU control/environment data */
+.br 
+};
+.LP 
+enum x86_op_access {	/* ORed together */
+.br 
+	op_read = 1,
+.br 
+	op_write = 2,
+.br 
+	op_execute = 4
+.br 
+};
+.LP 
+enum x86_op_flags {	/* ORed together, but segs are mutually exclusive */
+.br 
+	op_signed = 1,		/* signed integer */
+.br 
+	op_string = 2,		/* possible string or array */
+.br 
+	op_constant = 4,	/* symbolic constant */
+.br 
+	op_pointer = 8,		/* operand points to a memory address */
+.br 
+	op_es_seg = 0x100,	/* ES segment override */
+.br 
+	op_cs_seg = 0x200,	/* CS segment override */
+.br 
+	op_ss_seg = 0x300,	/* SS segment override */
+.br 
+	op_ds_seg = 0x400,	/* DS segment override */
+.br 
+	op_fs_seg = 0x500,	/* FS segment override */
+.br 
+	op_gs_seg = 0x600	/* GS segment override */
+.br 
+};
+.LP 
+typedef struct {
+.br 
+	enum x86_op_type 	type;		/* operand type */
+.br 
+	enum x86_op_datatype 	datatype;	/* operand size */
+.br 
+	enum x86_op_access 	access;		/* operand access [RWX] */
+.br 
+	enum x86_op_flags	flags;		/* misc flags */
+.br 
+	union {
+.br 
+		/* immediate values */
+.br 
+		char 		sbyte;
+.br 
+		short 		sword;
+.br 
+		long 		sdword;
+.br 
+		unsigned char 	byte;
+.br 
+		unsigned short 	word;
+.br 
+		unsigned long 	dword;
+.br 
+		qword 		sqword;
+.br 
+		float	        sreal;	
+.br 
+		double	        dreal;	
+.br 
+		/* misc large/non\-native types */
+.br 
+		unsigned char 	extreal[10];
+.br 
+		unsigned char 	bcd[10];
+.br 
+		qword		dqword[2];
+.br 
+		unsigned char	simd[16];
+.br 
+		unsigned char	fpuenv[28];
+.br 
+		/* absolute address */
+.br 
+		void 		* address;
+.br 
+		/* offset from segment */
+.br 
+		unsigned long	offset;
+.br 
+		/* ID of CPU register */
+.br 
+		x86_reg_t	reg;
+.br 
+		/* offsets from current insn */
+.br 
+		char 		near_offset;
+.br 
+		long 		far_offset;
+.br 
+		/* effective address [expression] */
+.br 
+		x86_ea_t 	effective_addr;
+.br 
+	} data;
+.br 
+} x86_op_t;
+.LP 
+enum x86_insn_group {
+.br 
+	insn_controlflow = 1,
+.br 
+	insn_arithmetic = 2,
+.br 
+	insn_logic = 3,
+.br 
+	insn_stack = 4,
+.br 
+	insn_comparison = 5,
+.br 
+	insn_move = 6,
+.br 
+	insn_string = 7,
+.br 
+	insn_bit_manip = 8,
+.br 
+	insn_flag_manip = 9,
+.br 
+	insn_fpu = 10,
+.br 
+	insn_interrupt = 13,
+.br 
+	insn_system = 14,
+.br 
+	insn_other = 15
+.br 
+};
+.LP 
+enum x86_insn_type {
+.br 
+	/* insn_controlflow */
+.br 
+	insn_jmp = 0x1001,
+.br 
+	insn_jcc = 0x1002,
+.br 
+	insn_call = 0x1003,
+.br 
+	insn_callcc = 0x1004,
+.br 
+	insn_return = 0x1005,
+.br 
+	insn_loop = 0x1006,
+.br 
+	/* insn_arithmetic */
+.br 
+	insn_add = 0x2001,
+.br 
+	insn_sub = 0x2002,
+.br 
+	insn_mul = 0x2003,
+.br 
+	insn_div = 0x2004,
+.br 
+	insn_inc = 0x2005,
+.br 
+	insn_dec = 0x2006,
+.br 
+	insn_shl = 0x2007,
+.br 
+	insn_shr = 0x2008,
+.br 
+	insn_rol = 0x2009,
+.br 
+	insn_ror = 0x200A,
+.br 
+	/* insn_logic */
+.br 
+	insn_and = 0x3001,
+.br 
+	insn_or = 0x3002,
+.br 
+	insn_xor = 0x3003,
+.br 
+	insn_not = 0x3004,
+.br 
+	insn_neg = 0x3005,
+.br 
+	/* insn_stack */
+.br 
+	insn_push = 0x4001,
+.br 
+	insn_pop = 0x4002,
+.br 
+	insn_pushregs = 0x4003,
+.br 
+	insn_popregs = 0x4004,
+.br 
+	insn_pushflags = 0x4005,
+.br 
+	insn_popflags = 0x4006,
+.br 
+	insn_enter = 0x4007,
+.br 
+	insn_leave = 0x4008,
+.br 
+	/* insn_comparison */
+.br 
+	insn_test = 0x5001,
+.br 
+	insn_cmp = 0x5002,
+.br 
+	/* insn_move */
+.br 
+	insn_mov = 0x6001,	/* move */
+.br 
+	insn_movcc = 0x6002,	/* conditional move */
+.br 
+	insn_xchg = 0x6003,	/* exchange */
+.br 
+	insn_xchgcc = 0x6004,	/* conditional exchange */
+.br 
+	/* insn_string */
+.br 
+	insn_strcmp = 0x7001,
+.br 
+	insn_strload = 0x7002,
+.br 
+	insn_strmov = 0x7003,
+.br 
+	insn_strstore = 0x7004,
+.br 
+	insn_translate = 0x7005,	/* xlat */
+.br 
+	/* insn_bit_manip */
+.br 
+	insn_bittest = 0x8001,
+.br 
+	insn_bitset = 0x8002,
+.br 
+	insn_bitclear = 0x8003,
+.br 
+	/* insn_flag_manip */
+.br 
+	insn_clear_carry = 0x9001,
+.br 
+	insn_clear_zero = 0x9002,
+.br 
+	insn_clear_oflow = 0x9003,
+.br 
+	insn_clear_dir = 0x9004,
+.br 
+	insn_clear_sign = 0x9005,
+.br 
+	insn_clear_parity = 0x9006,
+.br 
+	insn_set_carry = 0x9007,
+.br 
+	insn_set_zero = 0x9008,
+.br 
+	insn_set_oflow = 0x9009,
+.br 
+	insn_set_dir = 0x900A,
+.br 
+	insn_set_sign = 0x900B,
+.br 
+	insn_set_parity = 0x900C,
+.br 
+	insn_tog_carry = 0x9010,
+.br 
+	insn_tog_zero = 0x9020,
+.br 
+	insn_tog_oflow = 0x9030,
+.br 
+	insn_tog_dir = 0x9040,
+.br 
+	insn_tog_sign = 0x9050,
+.br 
+	insn_tog_parity = 0x9060,
+.br 
+	/* insn_fpu */
+.br 
+	insn_fmov = 0xA001,
+.br 
+	insn_fmovcc = 0xA002,
+.br 
+	insn_fneg = 0xA003,
+.br 
+	insn_fabs = 0xA004,
+.br 
+	insn_fadd = 0xA005,
+.br 
+	insn_fsub = 0xA006,
+.br 
+	insn_fmul = 0xA007,
+.br 
+	insn_fdiv = 0xA008,
+.br 
+	insn_fsqrt = 0xA009,
+.br 
+	insn_fcmp = 0xA00A,
+.br 
+	insn_fcos = 0xA00C,
+.br 
+	insn_fldpi = 0xA00D,
+.br 
+	insn_fldz = 0xA00E,
+.br 
+	insn_ftan = 0xA00F,
+.br 
+	insn_fsine = 0xA010,
+.br 
+	insn_fsys = 0xA020,
+.br 
+	/* insn_interrupt */
+.br 
+	insn_int = 0xD001,
+.br 
+	insn_intcc = 0xD002, 	/* not present in x86 ISA */
+.br 
+	insn_iret = 0xD003,
+.br 
+	insn_bound = 0xD004,
+.br 
+	insn_debug = 0xD005,
+.br 
+	insn_trace = 0xD006,
+.br 
+	insn_invalid_op = 0xD007,
+.br 
+	insn_oflow = 0xD008,
+.br 
+	/* insn_system */
+.br 
+	insn_halt = 0xE001,
+.br 
+	insn_in = 0xE002,	/* input from port/bus */
+.br 
+	insn_out = 0xE003, 	/* output to port/bus */
+.br 
+	insn_cpuid = 0xE004,
+.br 
+	/* insn_other */
+.br 
+	insn_nop = 0xF001,
+.br 
+	insn_bcdconv = 0xF002, 	/* convert to or from BCD */
+.br 
+	insn_szconv = 0xF003	/* change size of operand */
+.br 
+};
+.LP 
+enum x86_flag_status {
+.br 
+	insn_carry_set = 0x1,
+.br 
+	insn_zero_set = 0x2,
+.br 
+	insn_oflow_set = 0x4,
+.br 
+	insn_dir_set = 0x8,
+.br 
+	insn_sign_set = 0x10,
+.br 
+	insn_parity_set = 0x20,
+.br 
+	insn_carry_or_zero_set = 0x40,
+.br 
+	insn_zero_set_or_sign_ne_oflow = 0x80,
+.br 
+	insn_carry_clear = 0x100,
+.br 
+	insn_zero_clear = 0x200,
+.br 
+	insn_oflow_clear = 0x400,
+.br 
+	insn_dir_clear = 0x800,
+.br 
+	insn_sign_clear = 0x1000,
+.br 
+	insn_parity_clear = 0x2000,
+.br 
+	insn_sign_eq_oflow = 0x4000,
+.br 
+	insn_sign_ne_oflow = 0x8000
+.br 
+};
+.LP 
+enum x86_insn_prefix {
+.br 
+	insn_no_prefix = 0,
+.br 
+	insn_rep_zero = 1,
+.br 
+	insn_rep_notzero = 2,
+.br 
+	insn_lock = 4,
+.br 
+	insn_delay = 8
+.br 
+};
+.br 
+
+.br 
+enum x86_operand_id { op_dest=0, op_src=1, op_imm=2 };
+.LP 
+typedef struct {
+.br 
+	/* information about the instruction */
+.br 
+	unsigned long addr;		/* load address */
+.br 
+	unsigned long offset;		/* offset into file/buffer */
+.br 
+	enum x86_insn_group group;	/* meta\-type, e.g. INSN_EXEC */
+.br 
+	enum x86_insn_type type;	/* type, e.g. INSN_BRANCH */
+.br 
+	unsigned char bytes[MAX_INSN_SIZE];
+.br 
+	unsigned char size;		/* size of insn in bytes */
+.br 
+	enum x86_insn_prefix prefix;
+.br 
+	enum x86_flag_status flags_set; /* flags set or tested by insn */
+.br 
+	enum x86_flag_status flags_tested; 
+.br 
+	/* the instruction proper */
+.br 
+	char prefix_string[32];		/* prefixes [might be truncated] */
+.br 
+	char mnemonic[8];
+.br 
+	x86_op_t operands[3];
+.br 
+	/* convenience fields for user */
+.br 
+	void *block;			/* code block containing this insn */
+.br 
+	void *function;			/* function containing this insn */ 
+.br 
+	void *tag;			/* tag the insn as seen/processed */
+.br 
+} x86_insn_t;
+.br 
+#define X86_WILDCARD_BYTE 0xF4
+.LP 
+typedef struct {
+.br 
+        enum x86_op_type        type;           /* operand type */
+.br 
+        enum x86_op_datatype    datatype;       /* operand size */
+.br 
+        enum x86_op_access      access;         /* operand access [RWX] */
+.br 
+        enum x86_op_flags       flags;          /* misc flags */
+.br 
+} x86_invariant_op_t;
+.LP 
+typedef struct {
+.br 
+	unsigned char bytes[64];	/* invariant representation */
+.br 
+	unsigned int  size;		/* number of bytes in insn */
+.br 
+        enum x86_insn_group group;      /* meta\-type, e.g. INSN_EXEC */
+.br 
+        enum x86_insn_type type;        /* type, e.g. INSN_BRANCH */
+.br 
+	x86_invariant_op_t operands[3];	/* use same ordering as x86_insn_t */
+.br 
+} x86_invariant_t;
+.LP 
+typedef long (*DISASM_RESOLVER)( x86_op_t *op, x86_insn_t * current_insn );
+.br 
+typedef void (*DISASM_CALLBACK)( x86_insn_t *insn, void * arg );
+.br 
+typedef void (*DISASM_REPORTER)( enum x86_report_codes code, void *arg );
+.LP 
+enum x86_options {
+.br 
+        opt_none= 0,
+.br 
+        opt_ignore_nulls=1,     /* ignore sequences of > 4 NULL bytes */
+.br 
+        opt_16_bit=2,           /* 16\-bit/DOS disassembly */
+.br 
+        opt_unknown
+.br 
+};
+.LP 
+enum x86_report_codes {
+.br 
+        report_disasm_bounds,
+.br 
+        report_insn_bounds, 
+.br 
+        report_invalid_insn,
+.br 
+        report_unknown
+.br 
+};
+.LP 
+.SH "EXAMPLES"
+.LP 
+See programs \fBquikdis.c\fR, \fBtestdis.c\fR, and \fBx86dis.c\fR in the source code distribution.
+.SH "NOTES"
+.LP 
+The x86\-64 architecture is not supported..LP  
+.SH "AUTHOR"
+.LP 
+mammon_ <mammon_@users.sourceforge.net>
+.SH "CONTRIBUTORS"
+xavier <xvr@users.sourceforge.net>
+mok <moren_k@users.sourceforge.net>
+.SH "SEE ALSO"
+.LP 
+x86_disasm(3), x86_format_insn(3), x86_init(3), x86dis(1)
