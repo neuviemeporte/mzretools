@@ -1,0 +1,10 @@
+Instructions to work on the test suite.
+
+Format of ia32_test_insn.S is:
+    GNU as assembler input... [# expected libdisasm output [# notes/XFAIL]]
+
+Run XFAIL tests, with diff output:
+    ./run-test.sh --try-xfail --diff
+
+Examine byte code generating a specific instruction:
+    ./asmdisasm.pl *.S blah.o | grep ^INSTRUCTION

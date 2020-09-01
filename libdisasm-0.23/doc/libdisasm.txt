@@ -1,0 +1,720 @@
+================================================================================
+B A S T A R D                                            disassembly environment
+
+
+                       LibDISASM: x86 disassembler library
+
+
+================================================================================
+
+ Contents
+
+ 1. Introduction
+ 2. File Listing
+ 3. Compilation
+ 4. Usage
+ 5. Implementation Notes
+ 6. Bugs
+ 7. TODO
+ 8. Changelog
+
+
+
+================================================================================
+ Introduction
+
+Libdisasm is a disassembler for Intel x86-compatible object code. It compiles
+as a shared and static library on Linux, FreeBSD, and Win32 platforms. The
+core disassembly engine is contained in files with the prefix "i386", and is
+shared with the x86 ARCH extension of the bastard disassembler. 
+
+
+================================================================================
+ File Listing
+
+
+bastard.h       : Dummy header file to replace libbastard.so
+bin_from_dump.pl: A perl script that creates a flat binary from an objdump .lst
+extension.h     : Dummy header file to replace libbastard.so
+i386.c          : The core library code 
+i386.h          : Internal header file for the above
+i386.opcode.map : as it says; included in i386.h
+i386_opcode.h   : Internal header for i386.c
+libdis.c        : Wrappers for the bastard extension routines in i386.c
+libdis.h        : The header file to use when linking to the .so
+op-conv.pl      : Perl script for messing with opcode.map structure
+quikdis.c       : a quick & dirty tester for the library
+quikdis_old.c   : implementation using the legacy API
+testdis.c       : a simple tester for files from bin_from_dump.pl
+vm.h            : Dummy header file to replace libbastard.so
+
+
+
+
+================================================================================
+ Compilation
+
+First, change to the source directory which, due to the bastard src structure,
+is unnecessarily deep:
+   cd libdisasm_src-0.17/src/arch/i386/libdisasm
+
+To compile the .so and the test disassembler:
+   make
+
+To compile the .so:
+   make libdis
+
+To compile the test disassembler:
+   make quikdis
+     ...or...
+   gcc -O3 -I. -L. -ldisasm quikdis.c -o quikdis
+
+To link to libdisasm:
+   #include "libdis.h"
+   gcc -ldisasm ....
+
+
+
+================================================================================
+ Usage
+
+The basic usage of the library is as follows:
+
+   1. sys_initialize disassembler
+   2. Disassemble stuff
+   3. Un-init the disassembler
+   
+This translates into C code like the following:
+
+   char buf[BUF_SIZE];      /* buffer of bytes to disassemble */
+   int pos = 0;             /* current position in buffer */
+   int size;                /* size of instruction */
+   x86_insn_t insn;         /* representation of the code instruction */
+
+   x86_init(opt_none, NULL);
+   
+   while ( pos < BUF_SIZE ) {
+      size = x86_disasm( buf, buf_len, buf_rva, pos, &insn );
+      if (size) { 
+         /* ... do something with i */
+         pos += size;
+      } else {
+         /* invalid/unrecognized instruction */
+         pos++;
+      }
+   }
+
+   x86_cleanup();
+
+      
+The first argument to x86_init() represents disassembler options; these are 
+defined as
+
+	enum x86_options {		/* These may be ORed together */
+		opt_none,
+		opt_ignore_nulls,	/* ignore sequences of > 4 NULL bytes */
+		opt_16_bit,		/* 16-bit/DOS disassembly */
+		opt_unknown
+	};
+
+though passing '0' will suffice. The second argument is the address of a
+function with the prototype
+	
+	void reporter_fn( enum x86_report_codes code, void *arg );
+
+...which serves as a callback that handles errors encountered during 
+disassembly. This argument can be NULL.
+
+
+The x86_disasm() routine fills a structure with a disassembly of the 
+instruction:
+
+	int x86_disasm( unsigned char *buf, unsigned int buf_len,
+	                unsigned long buf_rva, unsigned int offset,
+			x86_insn_t * insn );
+
+The first argument to x86_disasm() is a pointer to the buffer of bytes being
+disassembled; this is usually a memory-mapped code section of the target. The
+second parameter is the length of this buffer [e.g. the length of the section],
+and the third parameter is the Virtual Address that the buffer will have at
+runtime [this can be 0 ... it is meant to be the load address of the section].
+The fourth parameter specifies the offset into the buffer where disassembly
+is to begin; this can be 0 for the start of the buffer, or can be set to the
+offset of a program or section entry point located within the buffer. The final
+parameter is a pointer to a structure representing the instruction, which will
+be zeroed by x86_disasm() and filled with information about the disassembled
+instruction.
+
+The structure that is filled by x86_disasm() has the following definition:
+
+typedef struct {
+	unsigned long addr;			/* load address */
+	unsigned long offset;			/* offset into file/buffer */
+	enum x86_insn_group group;		/* meta-type */
+	enum x86_insn_type type;		/* type */
+	unsigned char bytes[MAX_INSN_SIZE];	/* binary encoding of insn */
+	unsigned char size;			/* size of insn in bytes */
+	enum x86_insn_prefix prefix;
+	enum x86_flag_status flags_set; 	/* eflags toggled by insn */
+	enum x86_flag_status flags_tested; 	/* eflags tested by insn */
+	char prefix_string[32];			/* prefixes */
+	char mnemonic[8];			/* opcode */
+	x86_op_t operands[3];
+	void *block;				/* code block containing insn */
+	void *function;				/* function containing insn */ 
+	void *tag;				/* tag the insn as processed */
+} x86_insn_t;
+
+
+The 'addr' and 'offset' fields are based on the rva and offset provided to
+x86_disasm(). The 'group' and 'type' fields are enumerations defined in 
+libdis.h; they serve to identify types of instructions: 
+
+	enum x86_insn_group {
+		insn_controlflow,
+		insn_arithmetic,
+		insn_logic,
+		insn_stack,
+		insn_comparison,
+		insn_move,
+		insn_string,
+		insn_bit_manip,
+		insn_flag_manip,
+		insn_fpu,
+		insn_interrupt,
+		insn_system,
+		insn_other
+	};
+
+	enum x86_insn_type {
+			/* insn_controlflow group */
+		insn_jmp,			/* jmp */
+		insn_jcc,			/* jz, jnz */
+		insn_call,			/* call */
+		insn_return,			/* ret */
+		insn_loop,			/* loop */
+			/* insn_arithmetic group */
+		insn_add,			/* add, adc */
+		insn_sub,			/* sub, sbb */
+		insn_mul,			/* mul, imul */
+		insn_div,			/* div, idiv */
+		insn_inc,			/* inc */
+		insn_dec,			/* dec */
+		insn_shl,			/* shl */
+		insn_shr,			/* shr */
+		insn_rol,			/* rol */
+		insn_ror,			/* ror */
+			/* insn_logic group */
+		insn_and,			/* and */
+		insn_or,			/* or */
+		insn_xor,			/* xor */
+		insn_not,			/* not */
+		insn_neg,			/* neg */
+			/* insn_stack group */
+		insn_push,			/* push */
+		insn_pop,			/* pop */
+		insn_pushregs,			/* pushad */
+		insn_popregs,			/* popad */
+		insn_pushflags,			/* pushf */
+		insn_popflags,			/* popf */
+		insn_enter,			/* enter */
+		insn_leave,			/* leave */
+			/* insn_comparison group */	
+		insn_test,			/* test */
+		insn_cmp,			/* cmp */
+			/* insn_move group */
+		insn_mov,			/* mov */
+		insn_movcc,			/* cmovz, cmovnz */
+		insn_xchg,			/* xchg */
+		insn_xchgcc,			/* cmpxchg */
+			/* insn_string group */
+		insn_strcmp,			/* cmpsb, scasb */
+		insn_strload,			/* lodsb */
+		insn_strmov,			/* movsb */
+		insn_strstore,			/* stosb */
+		insn_translate,			/* xlat */
+			/* insn_bit_manip group */
+		insn_bittest,			/* bt, btc */
+		insn_bitset,			/* bts */
+		insn_bitclear,			/* btr */
+			/* insn_flag_manip group */
+		insn_clear_carry,		/* clc */
+		insn_clear_dir,			/* cld */
+		insn_set_carry,			/* stc */
+		insn_set_dir,			/* std */
+		insn_tog_carry,			/* cmc */
+			/* insn_fpu group */
+		insn_fmov,			/* fmov */
+		insn_fmovcc,			/* fcmovz */
+		insn_fabs,			/* fabs */
+		insn_fadd,			/* fadd */
+		insn_fsub,			/* fsub */
+		insn_fmul,			/* fmul */
+		insn_fdiv,			/* fdiv */
+		insn_fsqrt,			/* fsqrt */
+		insn_fcmp,			/* ficom, ftst */
+		insn_fcos,			/* fcos */
+		insn_fldpi,			/* fldpi */
+		insn_fldz,			/* fldz */
+		insn_ftan,			/* ftan */
+		insn_fsine,			/* fsin */
+		insn_fsys,			/* fsave */
+			/* insn_interrupt group */
+		insn_int,			/* int */
+		insn_iret,			/* iret */
+		insn_bound,			/* bound */
+		insn_debug,			/* int3 */
+		insn_oflow,			/* into */
+			/* insn_system group */
+		insn_halt,			/* halt */
+		insn_in,			/* in, insb */
+		insn_out, 			/* out, outsb */
+		insn_cpuid,			/* cpuid */
+			/* insn_other group */
+		insn_nop,			/* nop */
+		insn_bcdconv, 			/* aaa, aad */
+		insn_szconv			/* cbw, cwde */
+	};
+
+The 'bytes' field of the x86_insn_t type contains the binary representation 
+of the instruction, suitable for a hexdump; 'size' contains the size of the 
+instruction in bytes. Instruction prefixes are stored as 'x86_insn_prefix' 
+enumeration types ORed together in the 'prefix' field, and as a string in the 
+'prefix_string' field. The prefix enumerations are
+
+	enum x86_insn_prefix {
+		insn_no_prefix = 0,
+		insn_rep_zero = 1,
+		insn_rep_notzero = 2,
+		insn_lock = 4,
+		insn_delay = 8
+	};
+
+The 'flags_set' and 'flags_tested' fields specify which bits in the eflags
+register are modified or examined by the instruction; this allows the
+application to determine which specific code address is responsible for the
+value of a flag when a test or a conditional jump is encountered. The flag
+status definitions are an enumeration which specifies if the flag is being
+set to or tested for 0 or 1:
+
+	enum x86_flag_status {
+		insn_carry_set,
+		insn_zero_set,
+		insn_oflow_set,
+		insn_dir_set,
+		insn_sign_set,
+		insn_parity_set,
+		insn_carry_or_zero_set,
+		insn_zero_set_or_sign_ne_oflow,
+		insn_carry_clear,
+		insn_zero_clear,
+		insn_oflow_clear,
+		insn_dir_clear,
+		insn_sign_clear,
+		insn_parity_clear,
+		insn_sign_eq_oflow,
+		insn_sign_ne_oflow
+	};
+
+The 'block', 'function', and 'tag' fields of x86_insn_t are provided for 
+application use -- the first two can be used to associate an instruction with 
+a program block or function, and the third can be used to mark whether an 
+instruction has been processed, for example in a tree traversal.
+
+
+The instruction proper is contained in the 'mnemonic' and 'operands' fields;
+the first is the string representation of the opcode, and the second is an
+array of three x86_op_t structures. The order of the operands within this
+array is determined by the 'x86_operand_id' enum: 
+
+	enum x86_operand_id { op_dest=0, op_src=1, op_imm=2 };
+
+The operands have the following structure:
+
+typedef struct {
+	enum x86_op_type 	type;		/* operand type */
+	enum x86_op_datatype 	datatype;	/* operand size */
+	enum x86_op_access 	access;		/* operand access [RWX] */
+	enum x86_op_flags	flags;		/* misc flags */
+	union {
+		/* immediate values */
+		char 		sbyte;		/* signed byte */
+		short 		sword;		/*    ... word */
+		long 		sdword;		/*    ... dword */
+		unsigned char 	byte;		/* unsigned byte */
+		unsigned short 	word;		/*      ... word */
+		unsigned long 	dword;		/*      ... dword */
+		qword		sqword;		/*      ... qword */
+		/* misc large/non-native types */
+		unsigned char   extreal[10];
+		unsigned char   bcd[10];
+		qword           dqword[2];
+		unsigned char   simd[16];
+		unsigned char   fpuenv[28];
+		/* addresses */
+		void 		* address;	/* absolute address */
+		unsigned long	offset;		/* offset from segment start */
+		char 		near_offset;	/* offset from current insn */
+		long 		far_offset;	/* "" */
+		x86_ea_t 	effective_addr; /* displacement/expression */
+		/* registers */
+		x86_reg_t	reg;		/* register description */
+	} data;
+} x86_op_t;
+
+
+The 'type' field is used to determine which field of the 'data' union is to
+be used; it consists of one of the following enumerations:
+
+	enum x86_op_type {
+		op_unused = 0,		/* empty/unused operand */
+		op_register = 1,	/* CPU register */
+		op_immediate = 2,	/* immediate value */
+		op_relative = 3,	/* offset from CS:IP */
+		op_absolute = 4,	/* absolute address (ptr16:32) */
+		op_expression = 5,	/* effective address */
+		op_offset = 6,		/* offset from segment (m32) */
+		op_unknown
+	};
+
+Note that the size and signedness of the operand must be determined using the
+'datatype' and 'flags' fields. These field have the following enumerations:
+
+	enum x86_op_datatype {
+		op_byte = 1,		/* 1 byte integer */
+		op_word = 2,		/* 2 byte integer */
+		op_dword = 3,		/* 4 byte integer */
+		op_qword = 4,		/* 8 byte integer */
+		op_dqword = 5,		/* 16 byte integer */
+		op_sreal = 6,		/* 4 byte real (single real) */
+		op_double = 7,		/* 8 byte real (double real) */
+		op_extreal = 8,		/* 10 byte real (extended real) */
+		op_bcd = 9,		/* 10 byte binary-coded decimal */
+		op_simd = 10,		/* 16 byte packed (SIMD, MMX) */
+		op_fpuenv = 11		/* 28 byte FPU environment data */
+	};
+
+	enum x86_op_flags {	/* These may be ORed together */
+		op_signed = 1,		/* signed integer */
+		op_string = 2,		/* possible string or array */
+		op_constant = 4,	/* symbolic constant */
+		op_pointer = 8,		/* operand points to a memory address */
+		op_es_seg = 0x100,	/* ES segment override */
+		op_cs_seg = 0x200,	/* CS segment override */
+		op_ss_seg = 0x300,	/* SS segment override */
+		op_ds_seg = 0x400,	/* DS segment override */
+		op_fs_seg = 0x500,	/* FS segment override */
+		op_gs_seg = 0x600	/* GS segment override */
+	};
+
+
+The 'access' field is provided to facilitate cross-reference tracking; each
+operand is marked with whether the instruction reads, writes, or executes the
+contents of the operand. These access methods are encoded with the following
+enumeration:
+
+	enum x86_op_access {	/* These may be ORed together */
+		op_read = 1,
+		op_write = 2,
+		op_execute = 4
+	};
+
+The 'reg' field of the x86_op_t 'data' union contains a description of a CPU
+register with the following structure:
+
+typedef struct {
+	char name[MAX_REGNAME];
+	int type;			/* what register is used for */
+	int size;			/* size of register in bytes */
+	int id;				/* ID # of register */
+} x86_reg_t;
+
+The 'name' field contains the human-readable name of the register, such as
+"eax"; the 'type' field provides information regarding the typical use of
+the register. The register types are, once again, provided in an enumeration:
+
+	enum x86_reg_type { 	/* These may be ORed together */
+		reg_gen,	/* general purpose */
+		reg_in,		/* incoming args, ala RISC */ 
+		reg_out,	/* args to calls, ala RISC */
+		reg_local,	/* local vars, ala RISC */
+		reg_fpu,	/* FPU data register */
+		reg_seg,	/* segment register */
+		reg_simd,	/* SIMD/MMX reg */
+		reg_sys,	/* restricted/system register */
+		reg_sp,		/* stack pointer */
+		reg_fp,		/* frame pointer */
+		reg_pc,		/* program counter */
+		reg_retaddr,	/* return addr for func */
+		reg_cond,	/* condition code / flags */
+		reg_zero,	/* zero register, ala RISC */
+		reg_ret,	/* return value */
+		reg_src,	/* array/rep source */
+		reg_dest,	/* array/rep destination */
+		reg_count 	/* array/rep/loop counter */
+	};
+
+The 'effective address' field of the x86_op_t 'data' union represents an
+address expression, such as that encoded in the ModR/M and SIB bytes of an
+instruction. Each effective address is of the form
+
+	displacement + (base + (scale * index))
+
+and this is represented with the following structure:
+
+typedef struct {
+	unsigned int scale;		/* scale factor */
+	x86_reg_t index, base;		/* index, base registers */
+	unsigned long disp;		/* displacement */
+	char disp_sign;			/* is negative? 1/0 */
+	char disp_size;			/* 0, 1, 2, 4 */
+} x86_ea_t;
+
+Note that any of 'scale', 'base', and 'disp' can be 0; 'index' is 1, 2, 4, or 8.
+The 'disp_sign" and 'disp_size' fields are used to display the 'disp' value
+correctly.
+
+
+The application can use the operand and instruction type information to 
+implement higher-level disassembly features such as cross references 
+(`if (i.operands[op_dest].access & op_execute)`), string or array references 
+(`if (i.group == insn_string)`), subroutine recognition, and other automatic 
+analyses. The use of enumerations for prefixes and register types will also
+facilitate automatic analysis.
+
+
+In addition to the x86_disasm() routine, libdisasm provides two more disassembly
+routines. The x86_disasm_range() routine is used to disassemble an entire
+buffer from start to finish; disassembly starts at a given offset into the
+buffer, and instructions are disassembled in sequence [i.e., the next 
+instruction starts at the end of the current instruction] until the end of
+the buffer is reached.
+
+	int x86_disasm_range( unsigned char *buf, unsigned long buf_rva, 
+		              unsigned int offset, unsigned int len, 
+		              DISASM_CALLBACK func, void *arg );
+
+The first three arguments are familiar: the buffer containing the bytes to
+disassemble, the load address of the buffer, and the offset into the buffer
+at which to start disassembly. The 'len' argument refers to the number of
+bytes to disassemble; this allows a small section of the buffer to be 
+disassembled, or disassembly can continue to the end of the buffer by 
+setting 'len' to 'buf_len' - 'offset'. Note that the buffer length is therefore
+implied, and is actually set to 'offset + len' in the code. 
+
+The 'func' argument points to a callback which is invoked when an instruction
+is disassembled, and 'arg' is arbitrary data to pass to that callback. The 
+callback must have the prototype
+
+	void callback( x86_insn_t *insn, void * arg );
+
+...where 'insn' is the instruction that was just disassembled. The application
+can use the callback high-level purposes such as printing the instruction or
+adding the instruction to a list or database. 
+
+A sample callback that prints the instruction would look like this:
+
+	void callback( x86_insn_t *insn, void *arg ) {
+		char line[256];
+		x86_format_insn(insn, line, 256, att_syntax);
+		printf( "%s\n", line);
+	}
+
+
+
+The x86_disasm_forward() routine is more complex than x86_disasm_range(), and
+requires more work on the part of the application programmer. For the most part
+the arguments are the same as x86_disasm_range, except that 'buf_len' is used
+instead of 'len' since the entire buffer, not just a range of bytes within it,
+is being disassembled:
+
+	int x86_disasm_forward( unsigned char *buf, unsigned int buf_len, 
+			        unsigned long buf_rva, unsigned int offset, 
+			        DISASM_CALLBACK func, void *arg,
+			        DISASM_RESOLVER resolver );
+
+The disassembly in this case starts at 'offset', and proceeds forward following
+the flow of execution for the disassembled code. This means that when a jump,
+call, or conditional jump is encountered, x86_disasm_forward() recurses, using
+the offset of the target of the jump or call as the 'offset' argument. When
+a jump or return is encountered, x86_disasm_forward() returns, allowing its
+caller [either the application, or an outer invocation of x86_disasm_forward()]
+to continue.
+
+There is no provision for preventing infinite loops in this scheme, nor is there
+any means of resolving addresses stored on the stack or in registers. For this
+reason, the application programmer must supply a 'resolver' callback, whose
+duties are to return the RVA of the target of the jump or call, and to
+return -1 when that target has already been disassembled. The resolver has
+the following prototype:
+
+	typedef long (*DISASM_RESOLVER)( x86_op_t *op, 
+	                                 x86_insn_t * current_insn );
+
+The 'op' field is, obviously enough, the operand containing the jump or call
+target, while 'current_insn' can be used to calculate offsets from the RVA
+of the current instruction. If the 'resolver' argument is not passed to 
+x86_disasm_forward(), the default internal resolver in libdis.c will be used;
+however, this performs NO infinite loop checking. The internal resolver
+exists largely as a demonstration of how to resolve relative and absolute
+address operands to RVAs, and has the following code:
+
+	static long internal_resolver( x86_op_t *op, x86_insn_t *insn ){
+		long next_addr = -1;
+
+		if ( op->type == op_absolute || op->type == op_offset ) {
+			next_addr = op->data.sdword;
+		} else if ( op->type == op_relative ){
+			/* add offset to current rva+size based on op size */
+			if ( op->datatype == op_byte ) {
+				next_addr = insn->addr + insn->size + 
+				            op->data.sbyte;
+			} else if ( op->datatype == op_word ) {
+				next_addr = insn->addr + insn->size + 
+				            op->data.sword;
+			} else if ( op->datatype == op_dword ) {
+				next_addr = insn->addr + insn->size + 
+				            op->data.sdword;
+			}
+		}
+		return( next_addr );
+	}
+
+
+
+When an instruction has been disassembled, most applications will at some point
+want to print it out. Libdisasm provides facilities for formatting an 
+instruction or an operand to a character string. The syntax used in the
+formatting can be one of three types:
+
+	enum x86_asm_format { 
+		native_syntax,	/* addr\tbytes\tmnemonic\tdest\tsrc\timm */
+		intel_syntax, 	/* mnemonic\tdest, src, imm */
+		att_syntax	/* mnemonic\tsrc, dest, imm */
+	};
+
+The x86_format_* routines can be used to generate a string representation of
+either an instruction, or a single operand of an instruction.
+
+	int x86_format_insn(x86_insn_t *insn, char *buf, int len, 
+	                    enum x86_asm_format);
+
+	int x86_format_mnemonic(x86_insn_t *insn, char *buf, int len,
+	                    enum x86_asm_format);
+
+	int x86_format_operand(x86_op_t *op, x86_insn_t *insn, char *buf, 
+			    int len, enum x86_asm_format);
+
+
+
+The rest of the API consists of convenience functions, which are largely self-
+explanatory.
+
+	/* Operand accessor functions */
+	x86_op_t * x86_get_operand( x86_insn_t *insn, enum x86_operand_id id );
+	x86_op_t * x86_get_dest_operand( x86_insn_t *insn );
+	x86_op_t * x86_get_src_operand( x86_insn_t *insn );
+	x86_op_t * x86_get_imm_operand( x86_insn_t *insn );
+
+	/* get size of operand data in bytes */
+	int x86_operand_size( x86_op_t *op );
+
+	/* Manage instruction RVA, Offset, and function/block/tag fields */
+	void x86_set_insn_addr( x86_insn_t *insn, unsigned long addr );
+	void x86_set_insn_offset( x86_insn_t *insn, unsigned int offset );
+	void x86_set_insn_function( x86_insn_t *insn, void * func );
+	void x86_set_insn_block( x86_insn_t *insn, void * block );
+	void x86_tag_insn( x86_insn_t *insn );
+	void x86_untag_insn( x86_insn_t *insn );
+	int x86_insn_is_tagged( x86_insn_t *insn );
+
+	/* Endianness of CPU */
+	int x86_endian(void);
+
+	/* Default address and operand size in bytes */
+	int x86_addr_size(void);
+	int x86_op_size(void);
+
+	/* Size of a machine word in bytes */
+	int x86_word_size(void);
+
+	/* maximum size of a code instruction */
+	int x86_max_inst_size(void);
+
+
+
+================================================================================
+ Implementation Notes
+
+Intel has a habit of implying operands in certain of its instructions, notably
+
+	0x6C    	INSB	(e)di, dx
+	0x6D    	INSW	(e)di, dx
+	0x6E    	OUTSB	dx, (e)di
+	0x6F    	OUTSW	dx, (e)di
+	0xA6    	CMPSB	(e)di, (e)si
+	0xA7    	CMPSW	(e)di, (e)si
+	0xA4    	MOVSB	(e)si, (e)di
+	0xA5    	MOVSW	(e)si, (e)di
+	0xAA    	STOSB	(e)di, al
+	0xAB    	STOSW	(e)di, (e)ax
+	0xAC    	LODSB	al, (e)si
+	0xAD    	LODSW	(e)ax, (e)si
+	0xAE    	SCASB	al, (e)di
+	0xAF    	SCASW	(e)ax, (e)di
+	0xF6 100	MUL 	al, Eb
+	0xF6 101	IMUL	al, Eb
+	0xF6 110	DIV	al, Eb
+	0xF6 111	IDIV	al, Eb
+	0xF7 100	MUL	(e)ax, Ev
+	0xF7 101	IMUL	(e)ax, Ev
+	0xF7 110	DIV	(e)ax, Ev
+	0xF7 111	IDIV	(e)ax, Ev
+
+Libdisasm -- and programs that use it, such as the bastard -- include such
+"hidden operands" as the first operand (or second, i.e. as 'src' or 'dest', 
+when appropriate) in an instruction. This means that the disassembly produced
+by libdisasm may not be compatible with standard Intel-syntax assemblers; the
+intent is to generate instructions that are suitable for automatic analysis,
+not for subsequent re-assembly. Blame Intel for blatantly encouraging the use
+of programming-through-side-effects...hell, blame them for 20-bit addressing,
+ModR/M opcode extensions, the SIB byte, and a lot of other bad design decisions.
+
+
+
+That should do it. As usual, flames, fixes, and contributions welcome.
+
+
+
+================================================================================
+ Bugs
+	In 16-bit mode, instructions with implied register operands 
+	[e.g. 0x5A pop edx] print 32-bit register names. There are
+	no plans to fix this.
+
+
+================================================================================
+ TODO
+
+	(Maybe) Add a proper resolver that is recursion-proof
+
+	(Maybe) Add register/stack tracking
+
+
+================================================================================
+ Changelog
+
+	ver 0.20 : API was rewritten to provide more low-level access to
+	           instruction information. The original API has been
+		   retained, but programmers are encouraged to use the
+		   new API as it is much more powerful. Operands are now
+		   stored internally as 64-bit data types.
+
+	ver 0.17 : semantics of disassemble_address() and sprint_address()
+	           changed to allow user to specify bounds of the buffer to
+		     disassemble. Added a static library to the Makefile and
+		     forced the test tools to use it by default [thanks Rakan].
+		     Provided macros in libdis.h for working with operand and
+		     instruction types. Finally wrote 16-bit mode.
+	
+

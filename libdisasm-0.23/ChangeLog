@@ -1,0 +1,20 @@
+0.23    2008-01-16
+	* clarified artistic license
+	* updated opcode comments to include indexes (Jesse Michael)
+	* doc/Makefile.am: corrected to include programming guide
+	* Makefile.am: corrected to include LICENSE file
+
+0.22	2007-12-03
+	* cleaned up build system & added autoconf
+	* added more missing opcodes, fix types
+	* clean up oplist free
+	* made types 64bit-safe
+	* correct bound/enter swapping on AT&T
+	* fixed INS_NOTE offsets
+	* fixed SIMD instruction register sizes
+	* fixed disasm to not produce a size on invalid lookups
+	* document need for x86_oplist_free() (SF: #1521909)
+	* check for bad mmap in {quik,test}dis.c (SF: #1712507)
+	* define special notes for handling certain instruction display
+	* don't display hardcoded implicit EAX in certain situations
+	* clean up Perl and Python SWIG build

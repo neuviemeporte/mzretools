@@ -1,0 +1,236 @@
+.TH "x86_format_insn" "3" "0.21" "mammon_" "libdisasm"
+.SH "NAME"
+x86_format_insn, x86_format_mnemonic, x86_format_operand, x86_format_header \- generate
+a string representation of a disassembled instruction.
+.SH "SYNOPSIS"
+\fB#include <libdis.h>\fR
+.br 
+.LP 
+\fBint x86_format_operand(x86_op_t *\fRop\fB, char *\fRbuf\fB, int \fRlen\fB, 
+.br 
+	enum x86_asm_format \fRformat\fB);\fR
+
+\fBint x86_format_mnemonic(x86_insn_t *\fRinsn\fB, char *\fRbuf\fB, int \fRlen\fB,
+.br  
+	enum x86_asm_format \fRformat\fB );\fR
+
+\fBint x86_format_insn(x86_insn_t *\fRinsn\fB, char *\fRbuf\fB, int \fRlen\fB, 
+.br 
+	enum x86_asm_format \fRformat\fB );\fR
+
+\fBint x86_format_header( char *\fRbuf\fB, int \fRlen\fB, 
+.br 
+	enum x86_asm_format \fRformat\fB);\fR
+.br 
+
+.SH "DESCRIPTION"
+.LP 
+\fBx86_format_insn\fR generates an assembly\-langauge representation of the disassembled instruction in the specified format. \fBx86_format_mnemonic\fR and \fB\fR are called by \fBx86_format_operand\fR to format the instruction mnemonic and operands, respectively, but they may be invoked directly by the user. Each of these routines fills buffer \fBbuf\fR of \fBlen\fR bytes with an ASCII string representing the instruction, mnemonic, or operand.
+.br 
+\fBx86_format_header\fR fills buffer \fBbuf\fR of \fBlen\fR bytes with a description of the specified format.
+.LP 
+The following formats are available:
+.LP 
+	\fBnative_syntax\fR : Intel syntax with address and hex 
+.br 
+	\fBintel_syntax\fR : Intel x86 syntax
+.br 
+	\fBatt_syntax\fR : AT&T Syntax
+.br 
+	\fBraw_syntax\fR : Pipe\-delimited internal format
+.br 
+	\fBxml_syntax\fR : XML representation
+.LP 
+\fBNative\fR syntax uses dest, src ordering and displays
+.br 
+the address, opcode bytes, and instruction in tab\-delimited
+.br 
+format:
+.br 
+       \fB"ADDRESS\\tBYTES\\tMNEMONIC\\tDEST\\tSRC\\tIMM"\fR
+.LP 
+\fBIntel\fR syntax uses dest, src ordering and displays
+the instruction in tab\-and\-comma delimited format:
+.br 
+       \fB"MNEMONIC\\tDEST, SRC, IMM"\fR
+.LP 
+\fBAT&T\fR syntax uses src, destordering and displays
+the instruction in tab\-and\-comma delimited format:
+.br 
+       \fB"MNEMONIC\\tSRC, DEST, IMM"\fR
+.LP 
+\fBRaw\fR syntax displays all details of the instruction
+in pipe\-delimited format:
+.br 
+       \fB"ADDRESS|OFFSET|SIZE|BYTES|PREFIX|PREFIX_STRING|
+.LP 
+\fBXML\fR syntax displays all details of the instruction
+in XML format:
+.br 
+        GROUP|TYPE|NOTES|MNEMONIC|CPU|ISA|FLAGS_SET|
+.br 
+        FLAGS_TESTED|STACK_MOD|STACK_MOD_VAL"
+.br 
+        [|OP_TYPE|OP_DATATYPE|OP_ACCESS|OP_FLAGS|OP]*"\fR
+.br 
+        \fB"<x86_insn>
+.br 
+               <address rva= offset= size= bytes=/>
+.br 
+               <prefix type= string=/>
+.br 
+               <mnemonic group= type= string= cpu= isa= note= />
+.br 
+               <flags type=set>
+.br 
+                  <flag name=>
+.br 
+               </flags>
+.br 
+               <stack_mod val= >
+.br 
+               <flags type=tested>
+.br 
+                  <flag name=>
+.br 
+               </flags>
+.br 
+               <operand name=>
+.br 
+                  <register name= type= size=/>
+.br 
+                  <immediate type= value=/>
+.br 
+                  <relative_offset value=/>
+.br 
+                  <absolute_address value=>
+.br 
+                     <segment value=/>
+.br 
+                  </absolute_address>
+.br 
+                  <address_expression>
+.br 
+                     <segment value=/>
+.br 
+                     <base>
+.br 
+                        <register name= type= size=/>
+.br 
+                     </base>
+.br 
+                     <index>
+.br 
+                        <register name= type= size=/>
+.br 
+                     </index>
+.br 
+                     <scale>
+.br 
+                        <immediate value=/>
+.br 
+                     </scale>
+.br 
+                     <displacement>
+.br 
+                        <immediate value=/>
+.br 
+                        <address value=/>
+.br 
+                     </displacement>
+.br 
+                  </address_expression>
+.br 
+                  <segment_offset>
+.br 
+                     <address value=/>
+.br 
+                  </segment_offset>
+.br 
+               </operand>
+.br 
+            </x86_insn>"\fR 
+.br 
+.SH "EXAMPLES"
+.LP 
+The following will print \fBinsn\fR in Intel syntax:
+.LP 
+void att_print( x86_insn_t *insn ) {
+.br 
+        char line[256];
+.br 
+        x86_format_insn(insn, line, 256, intel_syntax);
+.br 
+        printf( "%s\\n", line);
+.br 
+}
+.LP 
+The following routine formats an instruction manually using AT&T syntax:
+.LP 
+void manual_print( x86_insn_t *insn, void *arg ) {
+.br 
+        char buf[128];
+.br 
+        int i;
+.br 
+        printf("%08lX", insn\->addr );
+.br 
+        for ( i = 0; i < 10; i++ ) {
+.br 
+                if ( i < insn\->size ) {
+.br 
+                        printf(" %02X", insn\->bytes[i]);
+.br 
+                } else {
+.br 
+                        printf("   ");
+.br 
+                }
+.br 
+        }
+.br 
+        x86_format_mnemonic( insn, buf, 128, att_syntax );
+.br 
+        printf( "\\t%s\\t", buf );
+.br 
+        if ( insn\->operands[op_src].type != op_unused ) {
+.br 
+                x86_format_operand( &insn\->operands[op_src],
+.br 
+                               insn, buf, 128, att_syntax );
+.br 
+                /* if src is present, so is dest */
+.br 
+                printf("%s, ", buf);
+.br 
+        }
+.br 
+        if ( insn\->operands[op_dest].type != op_unused ) {
+.br 
+                x86_format_operand( &insn\->operands[op_dest],
+.br 
+                               insn, buf, 128, att_syntax );
+.br 
+                printf("%s", buf);
+.br 
+        }
+.br 
+        if ( insn\->operands[op_imm].type != op_unused ) {
+.br 
+                x86_format_operand( &insn\->operands[op_imm],
+.br 
+                               insn, buf, 128, att_syntax );
+.br 
+                /* if src is present, so is dest */
+.br 
+                printf(", %s", buf);
+.br 
+        }
+.br 
+        printf("\\n");
+.br 
+}
+.br 
+.SH "SEE ALSO"
+.LP 
+libdisasm(7), x86_disasm(3), x86_init(3), x86dis(1)

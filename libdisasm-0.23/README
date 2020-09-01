@@ -1,0 +1,2 @@
+The API for libdisasm is in libdisasm/libdis.h, which is installed in
+$prefix/include after "make install".
