@@ -15,6 +15,11 @@ private:
 private:
     static constexpr Size EXE_HEADER_SIZE = 14 * sizeof Word;
     static constexpr Size EXE_RELOC_SIZE = 2 * sizeof Word;
+    static constexpr Size PSP_SIZE = 0x100;
+
+#ifdef _MSC_VER
+#pragma pack(push, 1)
+#endif
 
     struct ExeHeader {
         Word signature;            // 0x00, == 0x5A4D
@@ -32,11 +37,13 @@ private:
         Word reloc_table_offset;   // 0x18, from start of file
         Word overlay_number;       // 0x1a, rarely used
     };
+    static_assert(sizeof(ExeHeader) == EXE_HEADER_SIZE, "Invalid EXE header size");
 
     struct ExeRelocation {
         Word offset;
         Word segment;
     };
+    static_assert(sizeof(ExeRelocation) == EXE_RELOC_SIZE, "Invalid EXE relocation entry size!");
 
     struct ProgramSegmentPrefix {
         Word exit_instr;        // 00h-01h: 2 bytes (code), CP/M-80-like exit (always contains INT 20h)[1]
@@ -64,6 +71,11 @@ private:
         Byte cmdline_size;      // 80h    : 1 byte        , Number of bytes on command-line
         Byte cmdline[127];      // 81h-FFh: 127 bytes     , Command-line tail (terminated by a 0Dh)[3][4]
     };
+    static_assert(sizeof(ProgramSegmentPrefix) == PSP_SIZE, "Invalid PSP structure size!");
+
+#ifdef _MSC_VER
+#pragma pack(pop)
+#endif
 
 public:
     Dos(Cpu* cpu, Memory* memory);

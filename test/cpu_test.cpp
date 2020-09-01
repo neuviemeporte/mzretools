@@ -7,7 +7,7 @@ using namespace std;
 TEST(Cpu, OrderHL) {
     Cpu cpu;
     cpu.regs.AX = 0x4c00;
-    TRACELN(std::hex << "ax = 0x" << (int)cpu.regs.AX << ", ah = 0x" << (int)cpu.regs.AH << ", al = 0x" << (int)cpu.regs.AL);
+    TRACELN(std::hex << "ax = 0x" << (int)cpu.regs.AX << ", ah = 0x" << (int)cpu.regs.AH << ", al = 0x" << (int)cpu.regs.AL << std::dec);
     ASSERT_EQ(cpu.regs.AH, 0x4c);
     ASSERT_EQ(cpu.regs.AL, 0x00);
 }
@@ -33,7 +33,7 @@ TEST(Cpu, Flags) {
          << "B12 = " << (int)cpu.regs.B12 << ", "
          << "B13 = " << (int)cpu.regs.B13 << ", "
          << "B14 = " << (int)cpu.regs.B14 << ", "
-         << "B15 = " << (int)cpu.regs.B15);
+         << "B15 = " << (int)cpu.regs.B15) << std::dec;
 
     ASSERT_EQ(cpu.regs.CF, 0);
     ASSERT_EQ(cpu.regs.B1, 1);

@@ -25,7 +25,8 @@ set(TEST_SRC
     test/debug.h
     test/debug.cpp
     test/cpu_test.cpp
-    test/memory_test.cpp)
+    test/memory_test.cpp
+    test/dos_test.cpp)
 
 # the test application executable
 add_executable(test test.cpp ${TEST_SRC})

@@ -14,6 +14,7 @@ SegmentedAddress::SegmentedAddress(const Offset linear) {
     offset = static_cast<Reg16>(linear & 0xf);
 }
 
+// TODO: confirm this is the same as given in AoA
 void SegmentedAddress::normalize() {
     segment += offset >> 4;
     offset &= 0xf;

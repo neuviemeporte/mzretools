@@ -3,15 +3,13 @@
 
 #include "cpu.h"
 #include "memory.h"
+#include "dos.h"
 
 using namespace std;
 
-/* TODO:
- * - unit tests
- */
-
 int main(int argc, char* argv[])
 {
+    Dos dos{nullptr, nullptr};
 
 
     return 0;
