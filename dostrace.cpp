@@ -9,8 +9,6 @@ using namespace std;
 
 int main(int argc, char* argv[])
 {
-    Dos dos{nullptr, nullptr};
-
 
     return 0;
 }

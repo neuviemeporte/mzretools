@@ -10,7 +10,7 @@ private:
 
 public:
     Error(const std::string &why) : std::exception(), why_{why} {}
-    virtual const char* what() const override { return why_.c_str(); }
+    virtual const char* what() const noexcept override { return why_.c_str(); }
 };
 
 class CpuError : public Error {

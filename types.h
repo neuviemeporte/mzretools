@@ -2,6 +2,7 @@
 #define TYPES_H
 
 #include <cstdint>
+#include <cstdlib>
 
 using Reg16 = uint16_t;
 using Reg8 = uint8_t;

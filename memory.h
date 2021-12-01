@@ -1,18 +1,22 @@
-#ifndef MEMORY_H
-#define MEMORY_H
+#ifndef ADDRESS_H
+#define ADDRESS_H
 
-#include <cstdint>
-#include <string>
-#include <vector>
+#include <ostream>
+#include <array>
 
 #include "types.h"
-#include "debug.h"
-#include "error.h"
 
+class MzImage;
+
+static constexpr Size PARAGRAPH = 16;
+constexpr Size operator "" _par(unsigned long long para) { return static_cast<Size>(para) * PARAGRAPH; }
+static constexpr Size PAGE = 512;
+constexpr Size operator "" _pg(unsigned long long pages) { return static_cast<Size>(pages) * PAGE; }
 static constexpr Size KB = 1024;
-static constexpr Size MB = 1024 * KB;
-static constexpr Size PARAGRAPH_SIZE = 16;
-static constexpr Size TOTALMEM_SIZE = 1 * MB;
+constexpr Size operator "" _kb(unsigned long long bytes) { return static_cast<Size>(bytes) * KB; }
+static constexpr Size MB = 1024_kb;
+constexpr Size operator "" _mb(unsigned long long bytes) { return static_cast<Size>(bytes) * MB; }
+static constexpr Size MEM_TOTAL = 1_mb;
 
 struct MemoryRange {
     const Offset begin, end;
@@ -23,49 +27,36 @@ struct MemoryRange {
 };
 
 struct SegmentedAddress {
-    Reg16 segment, offset;
-    SegmentedAddress(const Reg16 segment, const Reg16 offset) : segment(segment), offset(offset) {}
+    Word segment, offset;
+    SegmentedAddress(const Word segment, const Word offset) : segment(segment), offset(offset) {}
     SegmentedAddress(const Offset linear);
+    SegmentedAddress() : SegmentedAddress(0, 0) {}
     inline Offset toLinear() const {
         return (static_cast<Offset>(segment) << 4) + offset;
     }
     void normalize();
 };
 
-class Memory {
+std::ostream& operator<<(std::ostream &os, const SegmentedAddress &arg);
+
+
+class Arena {
 private:
-    // potentially need a descriptor for every byte in emulated memory, this should suffice
-    using MapDescriptorIdx = uint32_t;
-    static constexpr MapDescriptorIdx INVALID_MAPDESC_ID = std::numeric_limits<MapDescriptorIdx>::max();
+    static constexpr Offset INIT_BREAK = 0x7e00; // beginning of free conventional memory block past the DOS bootsector
 
-    struct MapDescriptor {
-        const std::string label;
-        const MemoryRange range;
-        const MapDescriptorIdx idx, parent;
-
-        MapDescriptor(const std::string &label, const MemoryRange &range, const MapDescriptorIdx idx, const MapDescriptorIdx parent) :
-            label(label), range(range), idx(idx), parent(parent) {}
-    };
-
-    Byte data_[TOTALMEM_SIZE];
-    MapDescriptorIdx map_[TOTALMEM_SIZE];
-    std::vector<MapDescriptor> descriptors_;
+private:
+    std::array<Byte, MEM_TOTAL> data_;
+    Offset break_;
 
 public:
-    Memory();
-
-    Size size() const { return TOTALMEM_SIZE; }
+    Arena();
 
     Byte read(const Offset addr) const;
     void write(const Offset addr, const Byte value);
-
-    void addMapping(const MemoryRange &range, const std::string &label);
-    const std::string& mapLabel(const Offset addr) const;
+    void write(const Offset addr, const Word value);
+    auto pointer(const Offset addr) { return data_.begin() + addr; }
+    auto pointer(const Offset addr) const { return data_.cbegin() + addr; }
     void dump(const std::string &path) const;
-
-private:
-
-    MapDescriptorIdx addDescriptor(const std::string &label, const MemoryRange range, const MapDescriptorIdx parent);
 };
 
-#endif // MEMORY_H
+#endif // ADDRESS_H
