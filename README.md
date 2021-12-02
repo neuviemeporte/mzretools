@@ -7,7 +7,7 @@ dostrace
 What is it?
 -----------
 
-dostrace is a utility to help me with reverse engineering MS-DOS games. 
+dostrace is a utility to help with reverse engineering MS-DOS games. 
 
 I started out disassembling the game I was interested in, with plans to rewrite it in C, as I went along, but the outcome was not guaranteed to be correct, with a lot of potential
 for introducing mistakes along the way.
@@ -26,8 +26,6 @@ to identify blind spots in the analysis.
 4. The game's C reimplementation is coded based on disassembly analysis, doesn't need to be too deep, as long as it does the same thing.
 5. The compiled reimplementation is run in dostrace at unlimited speed using the prerecorded inputs, all outputs are recorded and compared to the original. 
 We halt on detecting a discrepancy and point to its location, so the reimplementation can be iteratively improved until (theoretical) 100% accuracy is achieved.
-
-
 
 What is it not?
 ---------------

@@ -15,10 +15,7 @@ private:
 private:
     static constexpr Size PSP_SIZE = 0x100;
 
-#ifdef _MSC_VER
 #pragma pack(push, 1)
-#endif
-
     struct ProgramSegmentPrefix {
         Word exit_instr;        // 00h-01h: 2 bytes (code), CP/M-80-like exit (always contains INT 20h)[1]
         Word byte_past_segment; // 02h-03h: word (2 bytes), Segment of the first byte beyond the memory allocated to the program
@@ -46,10 +43,7 @@ private:
         Byte cmdline[127];      // 81h-FFh: 127 bytes     , Command-line tail (terminated by a 0Dh)[3][4]
     };
     static_assert(sizeof(ProgramSegmentPrefix) == PSP_SIZE, "Invalid PSP structure size!");
-
-#ifdef _MSC_VER
 #pragma pack(pop)
-#endif
 
 public:
     Dos(Cpu* cpu, Memory* memory);

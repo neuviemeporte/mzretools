@@ -13,6 +13,18 @@ public:
     virtual const char* what() const noexcept override { return why_.c_str(); }
 };
 
+class ArgError : public Error {
+    using Error::Error;
+};
+
+class ParseError : public Error {
+    using Error::Error;
+};
+
+class LogicError : public Error {
+    using Error::Error;
+};
+
 class CpuError : public Error {
     using Error::Error;
 };

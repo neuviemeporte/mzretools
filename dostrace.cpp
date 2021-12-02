@@ -3,12 +3,14 @@
 
 #include "cpu.h"
 #include "memory.h"
-#include "dos.h"
+#include "syscall.h"
+#include "util.h"
 
 using namespace std;
 
 int main(int argc, char* argv[])
 {
+
 
     return 0;
 }
