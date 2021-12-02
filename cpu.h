@@ -3,8 +3,10 @@
 
 #include "types.h"
 
-class Cpu {
-public:
+class Cpu {};
+
+class Cpu_8086 : public Cpu {
+private:
     struct Regs {
         // main registers
         union { Reg16 AX; struct { Reg8 AL, AH; }; };

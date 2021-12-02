@@ -3,14 +3,14 @@
 
 #include "types.h"
 
-class Memory;
+class Arena;
 class Cpu;
 
 class Dos {
 private:
-    Cpu* cpu_;
-    Memory* memory_;
-    Offset freeMem_;
+    Cpu *_cpu;
+    Arena *_memory;
+    Offset _freeMem;
 
 private:
     static constexpr Size PSP_SIZE = 0x100;
@@ -46,7 +46,7 @@ private:
 #pragma pack(pop)
 
 public:
-    Dos(Cpu* cpu, Memory* memory);
+    Dos(Cpu *cpu, Arena *memory);
 };
 
 #endif // SYSCALL_H

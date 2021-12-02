@@ -1,4 +1,6 @@
 #include "syscall.h"
+#include "memory.h"
+#include "cpu.h"
 
-Dos::Dos(Cpu *cpu, Memory *memory) : cpu_(cpu), memory_(memory), freeMem_(0) {
+Dos::Dos(Cpu *cpu, Arena *memory) : _cpu(cpu), _memory(memory), _freeMem(0) {
 }
