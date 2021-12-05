@@ -4,6 +4,7 @@ project(dostrace LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ggdb")
 
 set(LIBDOS_SRC memory.cpp syscall.cpp mz.cpp util.cpp)
 set(LIBDOS_HDR types.h error.h debug.h util.h cpu.h memory.h syscall.h mz.h)

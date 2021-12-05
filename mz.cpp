@@ -35,6 +35,7 @@ MzImage::MzImage(const std::string &path) :
         throw IoError(string("MzImage file too small (") + to_string(filesize_) + ")!");
 
     // parse MZ header
+    // TODO: use fstream and ios::binary
     FILE *mzFile = fopen(path_.c_str(), "r");
     if (!mzFile)
         throw IoError("Unable to open file "s + path_);
@@ -197,11 +198,10 @@ void MzImage::loadMap(const std::string &path) {
     }
 }
 
-void MzImage::loadToArena(Arena &arena, const Word segment) {
-    SegmentedAddress loadAddr(segment, 0);
-    const Offset loadOffset = loadAddr.toLinear();
-    if (loadOffset + loadModuleSize_ >= MEM_TOTAL)
-        throw ArgError("Loading image of size "s + to_string(loadModuleSize_) + " into arena would overflow total memory!");
+bool MzImage::loadToArena(Arena &arena) {
+    const Offset loadOffset = arena.freeStart();
+    if (loadOffset + loadModuleSize_ >= arena.freeEnd())
+        throw ArgError("Loading image of size "s + to_string(loadModuleSize_) + " into arena would overflow free memory!");
     cout << "Loading to offset 0x" << hex << loadOffset << ", size = " << dec << loadModuleSize_ << endl;
     auto arenaPtr = arena.pointer(loadOffset);
     FILE *mzFile = fopen(path_.c_str(), "r");
@@ -222,10 +222,11 @@ void MzImage::loadToArena(Arena &arena, const Word segment) {
     }
     fclose(mzFile);
 
-    // patch relocations
+    // TODO: patch relocations
     // for (const auto &rel : relocs_) {
 
     // }
+    return true;
 }
 
 MzImage::Segment::Segment(const std::string &name, const std::string &type, Dword start, Dword stop) :

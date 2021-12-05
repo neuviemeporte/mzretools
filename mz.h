@@ -8,7 +8,7 @@
 #include "types.h"
 #include "memory.h"
 
-class Arena;
+constexpr Size MAX_COMFILE_SIZE = 0xff00;
 
 class MzImage {
 private:
@@ -16,8 +16,9 @@ private:
     static constexpr Size RELOC_SIZE = 2 * sizeof(Word);
     static constexpr Word SIGNATURE = 0x5A4D;
 
+#pragma pack(push, 1)
     struct Header {
-        Word signature;            // 0x00, == 0x5A4D
+        Word signature;            // 0x00, == 0x5A4D ("MZ")
         Word last_page_size;       // 0x02, any remainder < 512 in the last page
         Word pages_in_file;        // 0x04, each page is 512 bytes
         Word num_relocs;           // 0x06, size of relocation table
@@ -39,6 +40,7 @@ private:
         Word segment;
     };
     static_assert(sizeof(Relocation) == RELOC_SIZE, "Invalid EXE relocation entry size!");
+#pragma pack(pop)
 
     struct Segment {
         std::string name, type;
@@ -67,8 +69,9 @@ private:
 public:
     MzImage(const std::string &path);
     std::string dump() const;
+    Size loadModuleSize() const { return loadModuleSize_; }
     void loadMap(const std::string &path);
-    void loadToArena(Arena &arena, const Word segment);
+    bool loadToArena(Arena &arena);
 };
 
 std::ostream& operator<<(std::ostream &os, const MzImage::Segment &arg);

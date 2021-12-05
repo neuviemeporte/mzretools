@@ -41,4 +41,9 @@ class DosError : public Error {
     using Error::Error;
 };
 
+class ImplementError : public Error {
+public:
+    ImplementError() : Error("Not implemented") {}
+};
+
 #endif // ERROR_H
