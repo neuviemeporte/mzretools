@@ -8,6 +8,7 @@
 #include <memory>
 #include <sys/stat.h>
 
+#include "dostrace.h"
 #include "cpu.h"
 #include "memory.h"
 #include "mz.h"
@@ -17,17 +18,10 @@
 
 using namespace std;
 
-static const string VERSION = "0.1";
-
-struct VM {
-    unique_ptr<Cpu> cpu;
-    unique_ptr<Arena> memory;
-    unique_ptr<Dos> os;
-};
-
-enum CmdStatus {
-    CMD_OK, CMD_FAIL, CMD_UNKNOWN, CMD_EXIT
-};
+VM::VM() : 
+    cpu(make_unique<Cpu_8086>()), 
+    memory(make_unique<Arena>()), 
+    os(make_unique<Dos>(cpu.get(), memory.get())) {}
 
 void printHelp() {
     cout << "Supported commands:" << endl
@@ -161,39 +155,4 @@ CmdStatus execCommand(VM &vm, const string &cmd) {
     else return CMD_UNKNOWN;
 }
 
-int main(int argc, char* argv[])
-{
-    // initialize virtual machine components for emulation
-    VM vm;
-    vm.cpu = make_unique<Cpu_8086>();
-    vm.memory = make_unique<Arena>();
-    vm.os = make_unique<Dos>(vm.cpu.get(), vm.memory.get());
 
-    string command;
-    int status = 0;
-    cout << "This is dostrace v" << VERSION << endl << "Type 'help' for a list of commands" << endl;
-    while (true) {
-        cout << "> ";
-        // TODO: implement command history
-        getline(cin, command);
-        try {
-            const CmdStatus status = execCommand(vm, command);
-            switch (status) {
-            case CMD_UNKNOWN:
-                cout << "Unrecognized command: " << command << endl;
-                break;
-            case CMD_EXIT:
-                return 0;
-            default:
-                break;
-            }
-        }
-        catch (Error &e) {
-            cout << "Error: " << e.what() << endl;
-            status = 1;
-            break;
-        }
-    }
-
-    return status;
-}

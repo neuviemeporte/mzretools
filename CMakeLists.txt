@@ -13,23 +13,23 @@ set(LIBDOS_HDR types.h error.h debug.h util.h cpu.h memory.h syscall.h mz.h)
 add_library(libdos STATIC ${LIBDOS_SRC} ${LIBDOS_HDR})
 
 # the main application executable
-add_executable(dostrace dostrace.cpp)
+add_executable(dostrace dostrace.cpp main.cpp)
 target_link_libraries(dostrace PUBLIC libdos)
 
 # Include Google testing framework
 # Prevent overriding the parent project's compiler/linker settings on Windows
 # Otherwise you get LNK2038
-# set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
-# add_subdirectory(googletest)
+set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+add_subdirectory(googletest)
 
-# set(TEST_SRC
-#     test/debug.h
-#     test/debug.cpp
-#     test/cpu_test.cpp
-#     test/memory_test.cpp
-#     test/dos_test.cpp)
+set(TEST_SRC
+    test/debug.h
+    test/debug.cpp
+    test/cpu_test.cpp
+    test/memory_test.cpp
+    test/functional_test.cpp)
 
 # the test application executable
-# add_executable(test test.cpp ${TEST_SRC})
-# target_include_directories(test PUBLIC ${gtest_SOURCE_DIR} ${PROJECT_SOURCE_DIR})
-# target_link_libraries(test PUBLIC gtest libdos)
+add_executable(runtest test_main.cpp dostrace.cpp ${TEST_SRC})
+target_include_directories(runtest PUBLIC ${gtest_SOURCE_DIR} ${PROJECT_SOURCE_DIR})
+target_link_libraries(runtest PUBLIC gtest libdos)

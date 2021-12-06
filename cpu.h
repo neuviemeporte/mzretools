@@ -6,7 +6,7 @@
 class Cpu {};
 
 class Cpu_8086 : public Cpu {
-private:
+public:
     struct Regs {
         // main registers
         union { Reg16 AX; struct { Reg8 AL, AH; }; };

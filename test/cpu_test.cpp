@@ -4,16 +4,16 @@
 
 using namespace std;
 
-TEST(Cpu, OrderHL) {
-    Cpu cpu;
+TEST(Cpu_8086, OrderHL) {
+    Cpu_8086 cpu;
     cpu.regs.AX = 0x4c00;
     TRACELN(std::hex << "ax = 0x" << (int)cpu.regs.AX << ", ah = 0x" << (int)cpu.regs.AH << ", al = 0x" << (int)cpu.regs.AL << std::dec);
     ASSERT_EQ(cpu.regs.AH, 0x4c);
     ASSERT_EQ(cpu.regs.AL, 0x00);
 }
 
-TEST(Cpu, Flags) {
-    Cpu cpu;
+TEST(Cpu_8086, Flags) {
+    Cpu_8086 cpu;
 
     cpu.regs.FLAGS = 0x3102;
     TRACELN(std::hex

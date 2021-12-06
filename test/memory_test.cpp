@@ -16,57 +16,11 @@ TEST(Memory, Segmentation) {
 }
 
 TEST(Memory, Init) {
-    auto mem = make_unique<Memory>();
+    auto mem = make_unique<Arena>();
     const Size memSize = mem->size();
 
     const Byte pattern[] = { 0xde, 0xad, 0xbe, 0xef };
     for (Offset i = 0; i < memSize; ++i) {
         ASSERT_EQ(mem->read(i), pattern[i % sizeof pattern]);
-        // all memory offsets should belong to the top-level mapping
-        ASSERT_EQ(mem->mapLabel(i), "Memory");
     }
-}
-
-TEST(Memory, Mapping) {
-    auto mem = make_unique<Memory>();
-    MemoryRange range1(4, 7), range2(8, 9), range3(2, 8);
-    std::string top("Memory"), label1("range1"), label2("range2"), label3("range3");
-    const Size size = 12;
-    // no mapping applied except the default top level
-    for (Offset i = 0; i <= size; ++i) {
-        const auto label = mem->mapLabel(i);
-        TRACE(label << " ");
-        ASSERT_EQ(label, top);
-    }
-    TRACELN("");
-    // add single mapping
-    mem->addMapping(range1, label1);
-    for (Offset i = 0; i <= size; ++i) {
-        const auto label = mem->mapLabel(i);
-        TRACE(label << " ");
-        if (range1.contains(i)) ASSERT_EQ(label, label1);
-        else ASSERT_EQ(label, top);
-    }
-    TRACELN("");
-    // add second, adjacent mapping
-    mem->addMapping(range2, label2);
-    for (Offset i = 0; i <= size; ++i) {
-        const auto label = mem->mapLabel(i);
-        TRACE(label << " ");
-        if (range1.contains(i)) ASSERT_EQ(label, label1);
-        else if (range2.contains(i)) ASSERT_EQ(label, label2);
-        else ASSERT_EQ(label, top);
-    }
-    TRACELN("");
-    // add overlapping mapping covering part of the top, entirety of first and part of second mapping
-    mem->addMapping(range3, label3);
-    for (Offset i = 0; i <= size; ++i) {
-        const auto label = mem->mapLabel(i);
-        TRACE(label << " ");
-        if (i < range3.begin) ASSERT_EQ(label, top);
-        else if (range3.contains(i)) ASSERT_EQ(label, label3);
-        else if (range2.contains(i)) ASSERT_EQ(label, label2);
-        else ASSERT_EQ(label, top);
-    }
-    TRACELN("");
 }

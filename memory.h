@@ -69,6 +69,7 @@ private:
 
 public:
     Arena();
+    Size size() const { return MEM_TOTAL; }
     Size free() const { return MEM_END - break_; }
     Offset freeStart() const { return break_; }
     Offset freeEnd() const { return MEM_END; }
