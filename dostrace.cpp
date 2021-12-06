@@ -6,7 +6,6 @@
 #include <fstream>
 #include <vector>
 #include <memory>
-#include <sys/stat.h>
 
 #include "dostrace.h"
 #include "cpu.h"
@@ -37,30 +36,28 @@ CmdStatus loadCommand(VM &vm, const vector<string> &params) {
     }
     const string &path = params[0];
     // check if file exists
-    struct stat statbuf;
-    int error = stat(path.c_str(), &statbuf);
-    if (error) {
+    const auto file = checkFile(path);
+    if (!file.exists) {
         cout << "Executable file does not exist!" << endl;
         return CMD_FAIL;
     }
     // make sure it's not empty
-    const Size fileSize = statbuf.st_size;
-    if (fileSize == 0) {
+    if (file.size == 0) {
         cout << "Executable file has size zero!" << endl;
         return CMD_FAIL;
     }
     // look for MZ signature
-    ifstream file{path, ios::binary};
-    if (!file.is_open()) {
+    ifstream data{path, ios::binary};
+    if (!data.is_open()) {
         cout << "Unable to open executable file '" << path << "' for reading!" << endl;
         return CMD_FAIL;
     }
     char magic[2], mz[2] = { 'M', 'Z' };
-    if (!file.read(&magic[0], sizeof(magic))) {
+    if (!data.read(&magic[0], sizeof(magic))) {
         cout << "Unable to read magic from file!" << endl;
         return CMD_FAIL;
     }
-    file.close();
+    data.close();
     const Size memFree = vm.memory->free();
     // load as exe
     if (memcmp(magic, mz, 2) == 0) {
@@ -70,17 +67,17 @@ CmdStatus loadCommand(VM &vm, const vector<string> &params) {
             cout << "Load module size (" << image.loadModuleSize() << " of executable exceeds available memory: " << memFree << endl;
             return CMD_FAIL;
         }
-        image.loadToArena(*vm.memory);
+        vm.memory->loadMz(image);
     }
     // load as com
     else {
         cout << "No MZ header detected, loading as .com image" << endl;
-        if (fileSize > MAX_COMFILE_SIZE) {
-            cout << "File size (" << fileSize << ") exceeds .com file size limit: " << MAX_COMFILE_SIZE << endl; 
+        if (file.size > MAX_COMFILE_SIZE) {
+            cout << "File size (" << file.size << ") exceeds .com file size limit: " << MAX_COMFILE_SIZE << endl; 
             return CMD_FAIL;
         }
-        if (fileSize > memFree) {
-            cout << "File size (" << fileSize << ") exceeds available memory: " << memFree << endl;
+        if (file.size > memFree) {
+            cout << "File size (" << file.size << ") exceeds available memory: " << memFree << endl;
             return CMD_FAIL;
         }
         throw ImplementError();
@@ -97,25 +94,13 @@ CmdStatus dumpCommand(VM &vm, const vector<string> &params) {
     const string &path = params[0];
     const Offset start = 0;
     // check if file exists
-    struct stat statbuf;
-    int error = stat(path.c_str(), &statbuf);
-    if (error == 0) {
+    const auto file = checkFile(path);
+    if (file.exists) {
         // TODO: ask for overwrite
-        cout << "Dump file already exists!" << endl;
+        cout << "Dump file '" << path << "' already exists!" << endl;
         return CMD_FAIL;
     }    
-    // open file for writing
-    ofstream file(path, ios::binary);
-    if (!file.is_open()) {
-        cout << "Unable to open file '" << path << "' for writing!" << endl;
-        return CMD_FAIL;
-    }
-    // dump arena contents to file in page-sized chunks
-    assert(MEM_TOTAL % PAGE == 0);
-    const char *memPtr = reinterpret_cast<const char*>(vm.memory->pointer(start));
-    for (Size s = 0; s < MEM_TOTAL; s += PAGE) {
-        file.write(memPtr, PAGE);
-    }
+    vm.memory->dump(path);
     return CMD_OK;
 }
 

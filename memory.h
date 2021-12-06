@@ -5,7 +5,6 @@
 #include <array>
 
 #include "types.h"
-
 class MzImage;
 
 static constexpr Size PARAGRAPH = 16;
@@ -79,6 +78,9 @@ public:
     void write(const Offset addr, const Word value);
     auto pointer(const Offset addr) { return data_.begin() + addr; }
     auto pointer(const Offset addr) const { return data_.cbegin() + addr; }
+
+    void loadMz(const MzImage &mz);
+
     void dump(const std::string &path) const;
 };
 

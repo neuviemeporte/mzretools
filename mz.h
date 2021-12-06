@@ -68,10 +68,12 @@ private:
 
 public:
     MzImage(const std::string &path);
+    const std::string& path() const { return path_; }
     std::string dump() const;
     Size loadModuleSize() const { return loadModuleSize_; }
+    Offset loadModuleOffset() const { return loadModuleOffset_; }
     void loadMap(const std::string &path);
-    bool loadToArena(Arena &arena);
+
 };
 
 std::ostream& operator<<(std::ostream &os, const MzImage::Segment &arg);

@@ -8,7 +8,6 @@
 #include <regex>
 #include <cassert>
 #include <cstddef>
-#include <sys/stat.h>
 
 #include "mz.h"
 #include "error.h"
@@ -22,15 +21,14 @@ MzImage::MzImage(const std::string &path) :
         throw ArgError("Empty path for MzImage!");
     const char* cpath = path.c_str();
     assert(cpath != nullptr);
-    struct stat statbuf;
-    int ret = 0;
-    if ((ret = stat(cpath, &statbuf)) != 0) {
-        ostringstream msg("Unable to stat MzImage file ", std::ios_base::ate);
-        msg << path << " (" << ret << " / " << strerror(errno) << ")";
+    const auto file = checkFile(path);
+    if (!file.exists) {
+        ostringstream msg("MzImage file ", std::ios_base::ate);
+        msg << path << " does not exist";
         throw IoError(msg.str());
     }
 
-    filesize_ = statbuf.st_size;
+    filesize_ = file.size;
     if (filesize_ < HEADER_SIZE)
         throw IoError(string("MzImage file too small (") + to_string(filesize_) + ")!");
 
@@ -196,37 +194,6 @@ void MzImage::loadMap(const std::string &path) {
         }
         else throw ParseError("Unrecognized syntax at line "s + to_string(lineno) + ": " + line);
     }
-}
-
-bool MzImage::loadToArena(Arena &arena) {
-    const Offset loadOffset = arena.freeStart();
-    if (loadOffset + loadModuleSize_ >= arena.freeEnd())
-        throw ArgError("Loading image of size "s + to_string(loadModuleSize_) + " into arena would overflow free memory!");
-    cout << "Loading to offset 0x" << hex << loadOffset << ", size = " << dec << loadModuleSize_ << endl;
-    auto arenaPtr = arena.pointer(loadOffset);
-    FILE *mzFile = fopen(path_.c_str(), "r");
-    if (fseek(mzFile, loadModuleOffset_, SEEK_SET) != 0) 
-        throw IoError("Unable to seek to load module!");
-    Size totalSize = 0;
-    while (totalSize < loadModuleSize_) {
-        // TODO: read into side buffer of appropriate size, memcpy to arena, otherwise unable to ensure no overflow. Rethink arena api for mz loading.
-        auto size = fread(arenaPtr, 1, PAGE, mzFile);
-        arenaPtr += size;
-        totalSize += size;
-        cout << "Read " << size << ", read size = " << totalSize << endl;
-    }
-    if (totalSize != loadModuleSize_) {
-        ostringstream msg("Unexpected load module size read (", ios_base::ate);
-        msg << hex << totalSize << " vs expected " << loadModuleSize_ << ")";
-        throw IoError(msg.str());
-    }
-    fclose(mzFile);
-
-    // TODO: patch relocations
-    // for (const auto &rel : relocs_) {
-
-    // }
-    return true;
 }
 
 MzImage::Segment::Segment(const std::string &name, const std::string &type, Dword start, Dword stop) :

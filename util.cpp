@@ -2,6 +2,8 @@
 
 #include <iostream>
 #include <iomanip>
+#include <unistd.h>
+#include <sys/stat.h>
 
 using namespace std;
 
@@ -68,4 +70,19 @@ std::istream& safeGetline(std::istream& is, std::string& t) {
             t += (char)c;
         }
     }
+}
+
+FileStatus checkFile(const std::string &path) {
+    struct stat statbuf;
+    int error = stat(path.c_str(), &statbuf);
+    FileStatus ret;
+    ret.exists = error == 0;
+    ret.size = static_cast<Size>(statbuf.st_size);
+    return ret;
+}
+
+bool deleteFile(const std::string &path) {
+    if (path.empty()) 
+        return false;
+    return unlink(path.c_str()) == 0;
 }
