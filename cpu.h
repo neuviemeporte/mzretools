@@ -1,9 +1,13 @@
 #ifndef CPU_H
 #define CPU_H
 
+#include <string>
 #include "types.h"
 
-class Cpu {};
+class Cpu {
+public:
+    virtual std::string type() const = 0;
+};
 
 class Cpu_8086 : public Cpu {
 public:
@@ -41,6 +45,9 @@ public:
             };
         };
     } regs;
+
+public:
+    virtual std::string type() const override { return "8086"; };
 };
 
 // stc: 0x3103 0011000100000011

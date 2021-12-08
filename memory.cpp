@@ -38,6 +38,20 @@ Arena::Arena() :
     }
 }
 
+void Arena::alloc(const Size size) {
+    if (break_ + size < MEM_END)
+        break_ += size;
+    else
+        throw MemoryError("No room to allocate "s + to_string(size) + ", avail = "s + to_string(available()));
+}
+
+void Arena::free(const Size size) {
+    if (break_ - size > INIT_BREAK)
+        break_ -= size;
+    else
+        throw MemoryError("No room to free "s + to_string(size) + ", avail = "s + to_string(available()));
+}
+
 Byte Arena::read(const Offset addr) const {
     if (addr >= MEM_TOTAL) throw MemoryError(std::string("Read outside memory bounds"));
     return data_[addr];
@@ -54,41 +68,11 @@ void Arena::write(const Offset addr, const Word value) {
     *dest = value;
 }
 
-void Arena::loadMz(const MzImage &mz) {
-    // TODO: put PSP in first
-    const Offset 
-        arenaLoadOffset = freeStart(),
-        moduleLoadOffset = mz.loadModuleOffset();
-    const Size loadModuleSize = mz.loadModuleSize();
-    if (arenaLoadOffset + loadModuleSize >= freeEnd())
-        throw ArgError("Loading image of size " + to_string(loadModuleSize) + " into arena would overflow free memory!");
-    cout << "Loading to offset 0x" << hex << arenaLoadOffset << ", size = " << dec << loadModuleSize << endl;
-    auto ptr = pointer(arenaLoadOffset);
-    const auto path = mz.path();
-    FILE *mzFile = fopen(path.c_str(), "r");
-    if (fseek(mzFile, moduleLoadOffset, SEEK_SET) != 0) 
-        throw IoError("Unable to seek to load module!");
-    Size totalSize = 0;
-    while (totalSize < loadModuleSize) {
-        // TODO: read into side buffer of appropriate size, memcpy to arena, otherwise unable to ensure no overflow. Rethink arena api for mz loading.
-        auto size = fread(ptr, 1, PAGE, mzFile);
-        ptr += size;
-        totalSize += size;
-        cout << "Read " << size << ", read size = " << totalSize << endl;
-    }
-    if (totalSize != loadModuleSize) {
-        ostringstream msg("Unexpected load module size read (", ios_base::ate);
-        msg << hex << totalSize << " vs expected " << loadModuleSize << ")";
-        throw IoError(msg.str());
-    }
-    fclose(mzFile);
-    // adjust break position after loading to memory
-    break_ += loadModuleSize;
-
-    // TODO: patch relocations
-    // for (const auto &rel : relocs_) {
-
-    // }
+string Arena::info() const {
+    ostringstream infoStr;
+    infoStr << "total size = " << MEM_TOTAL << " / " << MEM_TOTAL / KB << " kB, "
+            << "available = " << available() << " / " << available() / KB << " kB";
+    return infoStr.str();
 }
 
 void Arena::dump(const std::string &path) const {

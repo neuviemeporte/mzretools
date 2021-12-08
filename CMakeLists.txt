@@ -6,8 +6,8 @@ set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ggdb")
 
-set(LIBDOS_SRC memory.cpp syscall.cpp mz.cpp util.cpp)
-set(LIBDOS_HDR types.h error.h debug.h util.h cpu.h memory.h syscall.h mz.h)
+set(LIBDOS_SRC memory.cpp dos.cpp mz.cpp util.cpp)
+set(LIBDOS_HDR types.h error.h debug.h util.h cpu.h memory.h dos.h mz.h)
 
 # the DOS emulation library
 add_library(libdos STATIC ${LIBDOS_SRC} ${LIBDOS_HDR})
@@ -33,3 +33,11 @@ set(TEST_SRC
 add_executable(runtest test_main.cpp dostrace.cpp ${TEST_SRC})
 target_include_directories(runtest PUBLIC ${gtest_SOURCE_DIR} ${PROJECT_SOURCE_DIR})
 target_link_libraries(runtest PUBLIC gtest libdos)
+
+# utility executables
+add_executable(mzhdr mzhdr.cpp)
+target_link_libraries(mzhdr PUBLIC libdos)
+add_executable(addrtool addrtool.cpp)
+target_link_libraries(addrtool PUBLIC libdos)
+add_executable(psptool psptool.cpp)
+target_link_libraries(psptool PUBLIC libdos)

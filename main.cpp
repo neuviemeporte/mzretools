@@ -8,12 +8,13 @@ static const string VERSION = "0.1";
 
 int main(int argc, char* argv[])
 {
+    cout << "This is dostrace v" << VERSION << endl;
     // initialize virtual machine for emulation
     VM vm;
     // enter interactive mode, display prompt and keep parsing commands
+    cout << "Type 'help' for a list of commands" << endl;
     string command;
     int status = 0;
-    cout << "This is dostrace v" << VERSION << endl << "Type 'help' for a list of commands" << endl;
     while (true) {
         cout << "> ";
         // TODO: implement command history

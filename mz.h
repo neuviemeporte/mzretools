@@ -61,6 +61,7 @@ private:
     const std::string path_;
     Size filesize_, loadModuleSize_;
     std::vector<Relocation> relocs_;
+    std::vector<Word> relocVals_;
     std::vector<Segment> segs_;
     std::vector<Public> publics_;
     Offset loadModuleOffset_;

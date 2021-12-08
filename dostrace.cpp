@@ -20,12 +20,20 @@ using namespace std;
 VM::VM() : 
     cpu(make_unique<Cpu_8086>()), 
     memory(make_unique<Arena>()), 
-    os(make_unique<Dos>(cpu.get(), memory.get())) {}
+    os(make_unique<Dos>(cpu.get(), memory.get())) {
+    cout << "Initialized VM, " << info() << endl;
+}
+
+string VM::info() const {
+    ostringstream infoStr;
+    infoStr << "CPU: " << cpu->type() << ", Memory: " << memory->info() << ", OS: " << os->name();
+    return infoStr.str();
+}
 
 void printHelp() {
     cout << "Supported commands:" << endl
         << "load <executable_path> - load DOS executable at start of available memory" << endl
-        << "dump <file_path> - dump contents of emulated memory to file"
+        << "dump <file_path> - dump contents of emulated memory to file" << endl
         << "exit - finish session" << endl;
 }
 
@@ -58,7 +66,7 @@ CmdStatus loadCommand(VM &vm, const vector<string> &params) {
         return CMD_FAIL;
     }
     data.close();
-    const Size memFree = vm.memory->free();
+    const Size memFree = vm.memory->available();
     // load as exe
     if (memcmp(magic, mz, 2) == 0) {
         cout << "Detected MZ header, loading as .exe image" << endl;
@@ -67,7 +75,7 @@ CmdStatus loadCommand(VM &vm, const vector<string> &params) {
             cout << "Load module size (" << image.loadModuleSize() << " of executable exceeds available memory: " << memFree << endl;
             return CMD_FAIL;
         }
-        vm.memory->loadMz(image);
+        vm.os->loadExe(image);
     }
     // load as com
     else {

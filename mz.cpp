@@ -65,12 +65,29 @@ MzImage::MzImage(const std::string &path) :
             relocs_.push_back(reloc);
         }
     }
-    
-    fclose(mzFile);
 
     // calculate load module offset
     loadModuleOffset_ = header_.header_paragraphs * PARAGRAPH;
     loadModuleSize_ = filesize_ - loadModuleOffset_;
+    // store original values at relocation offsets
+    for (const auto &reloc : relocs_) {
+        SegmentedAddress relocAddr(reloc.segment, reloc.offset);
+        Offset fileOffset = relocAddr.toLinear() + loadModuleOffset_;
+        if (fseek(mzFile, fileOffset, SEEK_SET) != 0) {
+            fclose(mzFile);
+            throw IoError("Unable to seek to relocation offset!");
+        }
+        Word relocVal;
+        auto relocValSize = fread(&relocVal, 1, sizeof(Word), mzFile);
+        if (relocValSize != sizeof(Word)) {
+            fclose(mzFile);
+            throw IoError("Invalid relocation value read size from MzImage file: "s + to_string(relocValSize));                
+        }
+        relocVals_.push_back(relocVal);
+    }
+    assert(relocs_.size() == relocVals_.size());
+
+    fclose(mzFile);
 }
 
 std::string MzImage::dump() const {
@@ -102,7 +119,9 @@ std::string MzImage::dump() const {
             a.normalize();
             msg << "\t[" << std::dec << i << "]: " << std::hex << r.segment << ":" << r.offset 
                 << ", linear: 0x" << a.toLinear() 
-                << ", file offset: 0x" << a.toLinear() + loadModuleOffset_ << endl;
+                << ", file offset: 0x" << a.toLinear() + loadModuleOffset_ 
+                << ", file value = 0x" << relocVals_[i]
+                << endl;
             i++;
         }
     }

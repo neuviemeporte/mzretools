@@ -59,8 +59,8 @@ std::ostream& operator<<(std::ostream &os, const SegmentedAddress &arg);
 */
 class Arena {
 private:
-    static constexpr Offset INIT_BREAK = 0x7e00; // beginning of free conventional memory block past the DOS bootsector
-    static constexpr Offset MEM_END = 0x80000; // end of usable memory, start of EBDA
+    static constexpr Offset INIT_BREAK = 0x500; // beginning of free conventional memory block
+    static constexpr Offset MEM_END = 0xa0000; // end of usable memory, start of UMA
 
 private:
     std::array<Byte, MEM_TOTAL> data_;
@@ -69,18 +69,19 @@ private:
 public:
     Arena();
     Size size() const { return MEM_TOTAL; }
-    Size free() const { return MEM_END - break_; }
+    Size available() const { return MEM_END - break_; }
     Offset freeStart() const { return break_; }
     Offset freeEnd() const { return MEM_END; }
 
+    void alloc(const Size size);
+    void free(const Size size);
     Byte read(const Offset addr) const;
     void write(const Offset addr, const Byte value);
     void write(const Offset addr, const Word value);
     auto pointer(const Offset addr) { return data_.begin() + addr; }
     auto pointer(const Offset addr) const { return data_.cbegin() + addr; }
 
-    void loadMz(const MzImage &mz);
-
+    std::string info() const;
     void dump(const std::string &path) const;
 };
 

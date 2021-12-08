@@ -1,19 +1,15 @@
-#ifndef SYSCALL_H
-#define SYSCALL_H
+#ifndef DOS_H
+#define DOS_H
 
+#include <string>
+#include <ostream>
 #include "types.h"
 
 class Arena;
 class Cpu;
+class MzImage;
 
-class Dos {
-private:
-    Cpu *_cpu;
-    Arena *_memory;
-    Offset _freeMem;
-
-private:
-    static constexpr Size PSP_SIZE = 0x100;
+static constexpr Size PSP_SIZE = 0x100;
 
 #pragma pack(push, 1)
     struct ProgramSegmentPrefix {
@@ -42,11 +38,21 @@ private:
         Byte cmdline_size;      // 80h    : 1 byte        , Number of bytes on command-line
         Byte cmdline[127];      // 81h-FFh: 127 bytes     , Command-line tail (terminated by a 0Dh)[3][4]
     };
-    static_assert(sizeof(ProgramSegmentPrefix) == PSP_SIZE, "Invalid PSP structure size!");
 #pragma pack(pop)
+static_assert(sizeof(ProgramSegmentPrefix) == PSP_SIZE, "Invalid PSP structure size!");
+
+std::ostream& operator<<(std::ostream &os, const ProgramSegmentPrefix &arg);
+
+class Dos {
+private:
+    Cpu *_cpu;
+    Arena *_memory;
 
 public:
     Dos(Cpu *cpu, Arena *memory);
+    std::string name() const { return "NinjaDOS 1.0"; };
+
+    void loadExe(const MzImage &mz);
 };
 
 #endif // SYSCALL_H

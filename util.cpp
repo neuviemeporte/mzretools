@@ -1,6 +1,7 @@
 #include "util.h"
 
 #include <iostream>
+#include <fstream>
 #include <iomanip>
 #include <unistd.h>
 #include <sys/stat.h>
@@ -85,4 +86,33 @@ bool deleteFile(const std::string &path) {
     if (path.empty()) 
         return false;
     return unlink(path.c_str()) == 0;
+}
+
+bool readBinaryFile(const std::string &path, char *buf, const Size size) {
+    auto status = checkFile(path);
+    if (!status.exists || status.size == 0) {
+        cout << "File " << path << " does not exist or has size zero!";
+        return false;
+    }
+    if (size && status.size < size) {
+        cout << "File " << path << " has too small size (" << status.size << ") to read " << size << " bytes!";
+        return false;
+    }
+
+    const Size 
+        block_size = 512,
+        total_size = size ? size : status.size,
+        remainder = total_size % block_size,
+        block_count = remainder == 0 ? total_size / block_size : (total_size / block_size) + 1;
+
+    ifstream file{path, ios::binary};
+    for (Size i = 1; i <= block_count; ++i) {
+        const Size read_size = remainder == 0 || i != block_count ? block_size : remainder;
+        if (!file.read(buf, read_size)) {
+            cout << "Unable to read " << read_size << " bytes, block " << i << ", block count = " << block_count << ", remainder = " << remainder << endl;
+            return false;
+        }
+    }
+
+    return true;
 }
