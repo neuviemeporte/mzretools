@@ -1,0 +1,6 @@
+1. implement mz file load to arena and unit test (Dos::loadExe())
+2. implement text output with sdl and vga font
+3. make hello.exe run
+4. implement record functionality, record hello.exe
+5. implement trace verify functionality, verify hello.exe rerun with recorded trace, implement functional unit test for implement
+6. move onto f15.com etc.

@@ -8,19 +8,64 @@
 
 using namespace std;
 
+static bool print_message = true;
+
+void dosMessage(const string &msg) {
+    if (print_message) cout << msg << endl;
+}
+
+ProgramSegmentPrefix::ProgramSegmentPrefix() :
+    exit_instr(0x20cd),
+    byte_past_segment(0),
+    reserved_1(0),
+    prev_term_addr(0),
+    prev_break_addr(0),
+    prev_err_addr(0),
+    parent_psp_seg(0),
+    env_seg(0),
+    last_stack_addr(0),
+    jft_size(0),
+    jft_ptr(0),
+    prev_psp(0),
+    reserved_2(0),
+    dos_ver(3),
+    reserved_4(0),
+    cmdline_size(0)
+{
+    memset(dos_far_call1, 0, 5]);
+    memset(jft, 0, 20);
+    memset(reserved_3, 0, 14);
+    memset(dos_far_call2, 0, 3);
+    memset(reserved_5, 0, 7);
+    memset(fcb_1, 0, 16);
+    memset(fcb_2, 0, 20);
+    memset(cmdline, 0, 127);
+}
+
 Dos::Dos(Cpu *cpu, Arena *memory) : _cpu(cpu), _memory(memory) {
 }
 
 void Dos::loadExe(const MzImage &mz) {
-    // TODO: put PSP in first
     const Offset 
-        arenaLoadOffset = _memory->freeStart(),
+        freeMemStart = _memory->freeStart(),
         moduleLoadOffset = mz.loadModuleOffset();
+    SegmentedAddress freeMemAddr(freeMemStart);
+    dosMessage("Free DOS memory starts at offset "s + static_cast<std::string>(freeMemAddr));
+    // align PSP to paragraph boundary
+    Word pspSegment = freeMemAddr.segment;
+    if (freeMemAddr.offset != 0) {
+        pspSegment += 1;
+    }
+    Word loadSegment = pspSegment + 1;
+    dosMessage("Determined PSP segment: "s + hexVal(pspSegment) + ", load segment: " + hexVal(loadSegment));
+    // allocate minimum memory
     const Size 
         loadModuleSize = mz.loadModuleSize(),
-        allocSize = PSP_SIZE + loadModuleSize;
+        allocSize = PSP_SIZE + loadModuleSize + mz.minAlloc();
     _memory->alloc(allocSize);
     ProgramSegmentPrefix psp;
+    // TODO: implement cmdline
+
 
     // cout << "Loading to offset 0x" << hex << arenaLoadOffset << ", size = " << dec << loadModuleSize << endl;
     // auto ptr = pointer(arenaLoadOffset);

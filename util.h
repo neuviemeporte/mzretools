@@ -17,6 +17,11 @@ template<typename T, Size size = sizeof(T)> std::string hexString(const T &obj) 
         str << static_cast<int>(buf[i]);
     return str.str();    
 }
+template<typename T> std::string hexVal(const T &val) {
+    std::ostringstream str;
+    str << "0x" << std::hex << val;
+    return str.str();
+}
 std::istream& safeGetline(std::istream& is, std::string& t);
 
 struct FileStatus {

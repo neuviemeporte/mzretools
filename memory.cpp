@@ -12,6 +12,12 @@ MemoryRange::MemoryRange(Offset begin, Offset end) : begin(begin), end(end) {
     if (end < begin) throw MemoryError("Invalid range extents");
 }
 
+SegmentedAddress::operator std::string() const {
+    ostringstream str;
+    str << *this;
+    return str.str();
+}
+
 SegmentedAddress::SegmentedAddress(const Offset linear) {
     if (linear >= MEM_TOTAL) throw MemoryError("Linear address too big while converting to segmented representation");
     segment = static_cast<Reg16>(linear >> 4);
@@ -82,7 +88,7 @@ void Arena::dump(const std::string &path) const {
     auto arenaPtr = pointer(0);
     Size totalSize = 0;
     while (totalSize < MEM_TOTAL) {
-        auto amount = fwrite(arenaPtr, 1, PAGE, dumpFile);
+        auto amount = fwrite(arenaPtr, 1, PAGE_SIZE, dumpFile);
         arenaPtr += amount;
         totalSize += amount;
     }

@@ -3,14 +3,12 @@
 
 #include <ostream>
 #include <array>
-
 #include "types.h"
-class MzImage;
 
-static constexpr Size PARAGRAPH = 16;
-constexpr Size operator "" _par(unsigned long long para) { return static_cast<Size>(para) * PARAGRAPH; }
-static constexpr Size PAGE = 512;
-constexpr Size operator "" _pg(unsigned long long pages) { return static_cast<Size>(pages) * PAGE; }
+static constexpr Size PARAGRAPH_SIZE = 16;
+constexpr Size operator "" _par(unsigned long long para) { return static_cast<Size>(para) * PARAGRAPH_SIZE; }
+static constexpr Size PAGE_SIZE = 512;
+constexpr Size operator "" _pg(unsigned long long pages) { return static_cast<Size>(pages) * PAGE_SIZE; }
 static constexpr Size KB = 1024;
 constexpr Size operator "" _kB(unsigned long long bytes) { return static_cast<Size>(bytes) * KB; }
 static constexpr Size MB = 1024_kB;
@@ -30,6 +28,8 @@ struct SegmentedAddress {
     SegmentedAddress(const Word segment, const Word offset) : segment(segment), offset(offset) {}
     SegmentedAddress(const Offset linear);
     SegmentedAddress() : SegmentedAddress(0, 0) {}
+    operator std::string() const;
+
     inline Offset toLinear() const {
         return (static_cast<Offset>(segment) << 4) + offset;
     }

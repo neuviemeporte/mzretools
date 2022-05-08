@@ -73,6 +73,8 @@ public:
     std::string dump() const;
     Size loadModuleSize() const { return loadModuleSize_; }
     Offset loadModuleOffset() const { return loadModuleOffset_; }
+    Size minAlloc() const { return header_.min_extra_paragraphs * PARAGRAPH_SIZE; }
+    Size maxAlloc() const { return header_.max_extra_paragraphs * PARAGRAPH_SIZE; }
     void loadMap(const std::string &path);
 
 };

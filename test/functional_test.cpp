@@ -12,12 +12,12 @@ TEST(Functional, LoadExe) {
     VM vm;
     auto loadOffset = vm.memory->freeStart();
     const auto loadPtr = vm.memory->pointer(loadOffset);
-    ASSERT_EQ(execCommand(vm, "load ../bin/hello.exe"), CMD_OK);
-    hexDump(loadPtr - 100, PAGE);
+    ASSERT_EQ(commandDispatch(vm, "load ../bin/hello.exe"), CMD_OK);
+    hexDump(loadPtr - 100, PAGE_SIZE);
     auto dumpFile = checkFile("memory.bin");
     if (dumpFile.exists)
         ASSERT_TRUE(deleteFile("memory.bin"));
-    ASSERT_EQ(execCommand(vm, "dump memory.bin"), CMD_OK);
+    ASSERT_EQ(commandDispatch(vm, "dump memory.bin"), CMD_OK);
     dumpFile = checkFile("memory.bin");
     ASSERT_TRUE(dumpFile.exists);
     ASSERT_EQ(dumpFile.size, vm.memory->size());

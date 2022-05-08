@@ -21,8 +21,6 @@ enum CmdStatus {
     CMD_OK, CMD_FAIL, CMD_UNKNOWN, CMD_EXIT
 };
 
-CmdStatus loadCommand(VM &vm, const std::vector<std::string> &params);
-CmdStatus dumpCommand(VM &vm, const std::vector<std::string> &params);
-CmdStatus execCommand(VM &vm, const std::string &cmd);
+CmdStatus commandDispatch(VM &vm, const std::string &cmd);
 
 #endif // DOSTRACE_H

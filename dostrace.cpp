@@ -112,7 +112,11 @@ CmdStatus dumpCommand(VM &vm, const vector<string> &params) {
     return CMD_OK;
 }
 
-CmdStatus execCommand(VM &vm, const string &cmd) {
+void commandError(const string &verb, const string &message) {
+    cout << "Error running command '" << verb << "': " << message << endl;
+}
+
+CmdStatus commandDispatch(VM &vm, const string &cmd) {
     if (cmd.empty()) 
         return CMD_OK;
 
@@ -131,12 +135,26 @@ CmdStatus execCommand(VM &vm, const string &cmd) {
     }
     assert(!verb.empty() && tokenCount > 0);
     const size_t paramCount = tokenCount - 1;
-    if (verb == "exit" && paramCount == 0) 
+    // todo: table of commands with arg counts and handlers
+    if (verb == "exit") {
+        if (paramCount != 0) {
+            commandError(verb, "trailing arugments");
+            return CMD_FAIL;
+        }
         return CMD_EXIT;
-    else if (verb == "load" && paramCount == 1) {
+    }
+    else if (verb == "load") {
+        if (paramCount != 1) {
+            commandError(verb, "unexpected syntax");
+            return CMD_FAIL;
+        }
         return loadCommand(vm, params);
     }
-    else if (verb == "dump" && paramCount == 1) {
+    else if (verb == "dump") {
+        if (paramCount != 1) {
+            commandError(verb, "unexpected syntax");
+            return CMD_FAIL;
+        }
         return dumpCommand(vm, params);
     }
     // TODO: implement verb exec

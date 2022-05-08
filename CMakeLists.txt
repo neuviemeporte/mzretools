@@ -26,6 +26,7 @@ set(TEST_SRC
     test/debug.h
     test/debug.cpp
     test/cpu_test.cpp
+    test/dos_test.cpp
     test/memory_test.cpp
     test/functional_test.cpp)
 

@@ -37,6 +37,7 @@ static constexpr Size PSP_SIZE = 0x100;
         Byte fcb_2[20];         // 6Ch-7Fh: 20 bytes      , Unopened Standard FCB 2 (overwritten if FCB 1 is opened)
         Byte cmdline_size;      // 80h    : 1 byte        , Number of bytes on command-line
         Byte cmdline[127];      // 81h-FFh: 127 bytes     , Command-line tail (terminated by a 0Dh)[3][4]
+        ProgramSegmentPrefix();
     };
 #pragma pack(pop)
 static_assert(sizeof(ProgramSegmentPrefix) == PSP_SIZE, "Invalid PSP structure size!");
