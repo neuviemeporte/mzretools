@@ -3,8 +3,11 @@
 #include "cpu.h"
 #include "mz.h"
 #include "util.h"
+#include "error.h"
 
 #include <iostream>
+#include <algorithm>
+#include <fstream>
 
 using namespace std;
 
@@ -32,63 +35,54 @@ ProgramSegmentPrefix::ProgramSegmentPrefix() :
     reserved_4(0),
     cmdline_size(0)
 {
-    memset(dos_far_call1, 0, 5]);
-    memset(jft, 0, 20);
-    memset(reserved_3, 0, 14);
-    memset(dos_far_call2, 0, 3);
-    memset(reserved_5, 0, 7);
-    memset(fcb_1, 0, 16);
-    memset(fcb_2, 0, 20);
-    memset(cmdline, 0, 127);
+    fill(begin(dos_far_call1), end(dos_far_call1), 0);
+    fill(begin(jft), end(jft), 0);
+    fill(begin(reserved_3), end(reserved_3), 0);
+    fill(begin(dos_far_call2), end(dos_far_call2), 0);
+    fill(begin(reserved_5), end(reserved_5), 0);
+    fill(begin(fcb_1), end(fcb_1), 0);
+    fill(begin(fcb_2), end(fcb_2), 0);
+    fill(begin(cmdline), end(cmdline), 0);
 }
 
 Dos::Dos(Cpu *cpu, Arena *memory) : _cpu(cpu), _memory(memory) {
 }
 
 void Dos::loadExe(const MzImage &mz) {
-    const Offset 
-        freeMemStart = _memory->freeStart(),
-        moduleLoadOffset = mz.loadModuleOffset();
-    SegmentedAddress freeMemAddr(freeMemStart);
-    dosMessage("Free DOS memory starts at offset "s + static_cast<std::string>(freeMemAddr));
+    const Offset freeMemStart = _memory->freeStart();
+    SegmentedAddress pspAddr(freeMemStart), loadAddr;
+    dosMessage("Free DOS memory starts at address "s + pspAddr.toString());
     // align PSP to paragraph boundary
-    Word pspSegment = freeMemAddr.segment;
-    if (freeMemAddr.offset != 0) {
-        pspSegment += 1;
+    if (pspAddr.offset != 0) {
+        pspAddr.segment += 1;
+        pspAddr.offset = 0;
     }
-    Word loadSegment = pspSegment + 1;
-    dosMessage("Determined PSP segment: "s + hexVal(pspSegment) + ", load segment: " + hexVal(loadSegment));
-    // allocate minimum memory
+    loadAddr = pspAddr;
+    loadAddr.segment += 1;
+    dosMessage("Determined address of PSP: "s + pspAddr.toString() + ", load module: " + loadAddr.toString());
     const Size 
         loadModuleSize = mz.loadModuleSize(),
         allocSize = PSP_SIZE + loadModuleSize + mz.minAlloc();
+    // allocate minimum memory
     _memory->alloc(allocSize);
-    ProgramSegmentPrefix psp;
+    // blit psp data over to memory
     // TODO: implement cmdline
-
-
-    // cout << "Loading to offset 0x" << hex << arenaLoadOffset << ", size = " << dec << loadModuleSize << endl;
-    // auto ptr = pointer(arenaLoadOffset);
-    // const auto path = mz.path();
-    // FILE *mzFile = fopen(path.c_str(), "r");
-    // if (fseek(mzFile, moduleLoadOffset, SEEK_SET) != 0) 
-    //     throw IoError("Unable to seek to load module!");
-    // Size totalSize = 0;
-    // while (totalSize < loadModuleSize) {
-    //     // TODO: read into side buffer of appropriate size, memcpy to arena, otherwise unable to ensure no overflow. Rethink arena api for mz loading.
-    //     auto size = fread(ptr, 1, PAGE, mzFile);
-    //     ptr += size;
-    //     totalSize += size;
-    //     cout << "Read " << size << ", read size = " << totalSize << endl;
-    // }
-    // if (totalSize != loadModuleSize) {
-    //     ostringstream msg("Unexpected load module size read (", ios_base::ate);
-    //     msg << hex << totalSize << " vs expected " << loadModuleSize << ")";
-    //     throw IoError(msg.str());
-    // }
-    // fclose(mzFile);
-    // // adjust break position after loading to memory
-    // break_ += loadModuleSize;
+    ProgramSegmentPrefix psp;
+    Byte
+        *pspData = reinterpret_cast<Byte*>(&psp),
+        *pspPtr = _memory->pointer(pspAddr),
+        *exePtr = _memory->pointer(loadAddr);
+    copy(pspData, pspData + PSP_SIZE, pspPtr);
+    // read load module data from exe file
+    const Offset loadModuleOffset = mz.loadModuleOffset();
+    dosMessage("Loading from offset "s + hexVal(loadModuleOffset) + ", size = " + to_string(loadModuleSize));
+    const auto path = mz.path();
+    ifstream mzFile(path, ios::binary);
+    if (!mzFile.is_open()) throw IoError("Unable to open exe file: " + path);
+    mzFile.seekg(loadModuleOffset);
+    Size totalSize = 0;
+    mzFile.read(reinterpret_cast<char*>(exePtr), loadModuleSize);
+    mzFile.close();
 
     // TODO: patch relocations
     // for (const auto &rel : relocs_) {

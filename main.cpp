@@ -8,6 +8,7 @@ static const string VERSION = "0.1";
 
 int main(int argc, char* argv[])
 {
+    // TODO: implement batch mode, execute commands from script and exit
     cout << "This is dostrace v" << VERSION << endl;
     // initialize virtual machine for emulation
     VM vm;

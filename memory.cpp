@@ -12,16 +12,20 @@ MemoryRange::MemoryRange(Offset begin, Offset end) : begin(begin), end(end) {
     if (end < begin) throw MemoryError("Invalid range extents");
 }
 
+SegmentedAddress::SegmentedAddress(const Offset linear) {
+    if (linear >= MEM_TOTAL) throw MemoryError("Linear address too big while converting to segmented representation");
+    segment = static_cast<Reg16>(linear >> 4);
+    offset = static_cast<Reg16>(linear & 0xf);
+}
+
 SegmentedAddress::operator std::string() const {
     ostringstream str;
     str << *this;
     return str.str();
 }
 
-SegmentedAddress::SegmentedAddress(const Offset linear) {
-    if (linear >= MEM_TOTAL) throw MemoryError("Linear address too big while converting to segmented representation");
-    segment = static_cast<Reg16>(linear >> 4);
-    offset = static_cast<Reg16>(linear & 0xf);
+std::string SegmentedAddress::toString() const {
+    return static_cast<string>(*this);
 }
 
 void SegmentedAddress::normalize() {

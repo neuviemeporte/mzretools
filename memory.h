@@ -29,6 +29,7 @@ struct SegmentedAddress {
     SegmentedAddress(const Offset linear);
     SegmentedAddress() : SegmentedAddress(0, 0) {}
     operator std::string() const;
+    std::string toString() const;
 
     inline Offset toLinear() const {
         return (static_cast<Offset>(segment) << 4) + offset;
@@ -78,8 +79,10 @@ public:
     Byte read(const Offset addr) const;
     void write(const Offset addr, const Byte value);
     void write(const Offset addr, const Word value);
-    auto pointer(const Offset addr) { return data_.begin() + addr; }
-    auto pointer(const Offset addr) const { return data_.cbegin() + addr; }
+    Byte* pointer(const Offset addr) { return data_.begin() + addr; }
+    Byte* pointer(const SegmentedAddress &addr) { return data_.begin() + addr.toLinear(); }
+    const Byte* pointer(const Offset addr) const { return data_.cbegin() + addr; }
+    const Byte* pointer(const SegmentedAddress &addr) const { return data_.cbegin() + addr.toLinear(); }
 
     std::string info() const;
     void dump(const std::string &path) const;
