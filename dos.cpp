@@ -8,11 +8,11 @@
 #include <iostream>
 #include <algorithm>
 #include <fstream>
+#include <cassert>
 
 using namespace std;
 
 static bool print_message = true;
-
 void dosMessage(const string &msg) {
     if (print_message) cout << msg << endl;
 }
@@ -50,15 +50,15 @@ Dos::Dos(Cpu *cpu, Arena *memory) : _cpu(cpu), _memory(memory) {
 
 void Dos::loadExe(const MzImage &mz) {
     const Offset freeMemStart = _memory->freeStart();
-    SegmentedAddress pspAddr(freeMemStart), loadAddr;
+    SegmentedAddress pspAddr(freeMemStart);
     dosMessage("Free DOS memory starts at address "s + pspAddr.toString());
     // align PSP to paragraph boundary
     if (pspAddr.offset != 0) {
         pspAddr.segment += 1;
         pspAddr.offset = 0;
     }
-    loadAddr = pspAddr;
-    loadAddr.segment += 1;
+    SegmentedAddress loadAddr(pspAddr.toLinear() + PSP_SIZE);
+    assert(loadAddr.offset == 0);
     dosMessage("Determined address of PSP: "s + pspAddr.toString() + ", load module: " + loadAddr.toString());
     const Size 
         loadModuleSize = mz.loadModuleSize(),
@@ -73,21 +73,10 @@ void Dos::loadExe(const MzImage &mz) {
         *pspPtr = _memory->pointer(pspAddr),
         *exePtr = _memory->pointer(loadAddr);
     copy(pspData, pspData + PSP_SIZE, pspPtr);
-    // read load module data from exe file
+    // read load module data from exe file into memory
     const Offset loadModuleOffset = mz.loadModuleOffset();
     dosMessage("Loading from offset "s + hexVal(loadModuleOffset) + ", size = " + to_string(loadModuleSize));
-    const auto path = mz.path();
-    ifstream mzFile(path, ios::binary);
-    if (!mzFile.is_open()) throw IoError("Unable to open exe file: " + path);
-    mzFile.seekg(loadModuleOffset);
-    Size totalSize = 0;
-    mzFile.read(reinterpret_cast<char*>(exePtr), loadModuleSize);
-    mzFile.close();
-
-    // TODO: patch relocations
-    // for (const auto &rel : relocs_) {
-
-    // }
+    mz.load(exePtr, loadAddr.segment);
 }
 
 std::ostream& operator<<(std::ostream &os, const ProgramSegmentPrefix &arg) {

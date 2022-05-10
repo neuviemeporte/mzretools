@@ -34,36 +34,18 @@ private:
         Word overlay_number;       // 0x1a, rarely used
     } header_;
     static_assert(sizeof(Header) == HEADER_SIZE, "Invalid EXE header size");
+#pragma pack(pop)
 
     struct Relocation {
         Word offset;
         Word segment;
+        Word value;
+        Relocation() : offset(0), segment(0), value(0) {}
     };
-    static_assert(sizeof(Relocation) == RELOC_SIZE, "Invalid EXE relocation entry size!");
-#pragma pack(pop)
-
-    struct Segment {
-        std::string name, type;
-        Dword start, stop;
-        Segment(const std::string &name, const std::string &type, Dword start, Dword stop);
-        Dword length() const { return stop - start + 1; }
-    };
-    friend std::ostream& operator<<(std::ostream &os, const MzImage::Segment &arg);
-
-    struct Public {
-        SegmentedAddress addr;
-        std::string name;
-        Public(Word seg, Word off, const std::string &name) :
-            addr({seg, off}), name(name) {}
-    };
-    friend std::ostream& operator<<(std::ostream &os, const MzImage::Public &arg);
 
     const std::string path_;
     Size filesize_, loadModuleSize_;
     std::vector<Relocation> relocs_;
-    std::vector<Word> relocVals_;
-    std::vector<Segment> segs_;
-    std::vector<Public> publics_;
     Offset loadModuleOffset_;
     SegmentedAddress entrypoint_;
 
@@ -75,11 +57,7 @@ public:
     Offset loadModuleOffset() const { return loadModuleOffset_; }
     Size minAlloc() const { return header_.min_extra_paragraphs * PARAGRAPH_SIZE; }
     Size maxAlloc() const { return header_.max_extra_paragraphs * PARAGRAPH_SIZE; }
-    void loadMap(const std::string &path);
-
+    void load(Byte* arenaPtr, const Word loadSegment) const;
 };
-
-std::ostream& operator<<(std::ostream &os, const MzImage::Segment &arg);
-std::ostream& operator<<(std::ostream &os, const MzImage::Public &arg);
 
 #endif // MZ_H

@@ -11,7 +11,6 @@
 #include "cpu.h"
 #include "memory.h"
 #include "mz.h"
-#include "syscall.h"
 #include "error.h"
 #include "util.h"
 
@@ -105,8 +104,8 @@ CmdStatus dumpCommand(VM &vm, const vector<string> &params) {
     const auto file = checkFile(path);
     if (file.exists) {
         // TODO: ask for overwrite
-        cout << "Dump file '" << path << "' already exists!" << endl;
-        return CMD_FAIL;
+        cout << "Dump file '" << path << "' already exists, overwriting!" << endl;
+        //return CMD_FAIL;
     }    
     vm.memory->dump(path);
     return CMD_OK;
