@@ -3,6 +3,7 @@
 #include <iostream>
 #include <fstream>
 #include <iomanip>
+#include <bitset>
 #include <unistd.h>
 #include <sys/stat.h>
 
@@ -115,4 +116,9 @@ bool readBinaryFile(const std::string &path, char *buf, const Size size) {
     }
 
     return true;
+}
+
+std::string binString(const Word &value) {
+    bitset<16> bits{value};
+    return bits.to_string();
 }

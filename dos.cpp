@@ -45,11 +45,11 @@ ProgramSegmentPrefix::ProgramSegmentPrefix() :
     fill(begin(cmdline), end(cmdline), 0);
 }
 
-Dos::Dos(Cpu *cpu, Arena *memory) : _cpu(cpu), _memory(memory) {
+Dos::Dos(Cpu *cpu, Arena *memory) : cpu_(cpu), memory_(memory) {
 }
 
 void Dos::loadExe(const MzImage &mz) {
-    const Offset freeMemStart = _memory->freeStart();
+    const Offset freeMemStart = memory_->freeStart();
     SegmentedAddress pspAddr(freeMemStart);
     dosMessage("Free DOS memory starts at address "s + pspAddr.toString());
     // align PSP to paragraph boundary
@@ -64,19 +64,25 @@ void Dos::loadExe(const MzImage &mz) {
         loadModuleSize = mz.loadModuleSize(),
         allocSize = PSP_SIZE + loadModuleSize + mz.minAlloc();
     // allocate minimum memory
-    _memory->alloc(allocSize);
+    memory_->alloc(allocSize);
     // blit psp data over to memory
     // TODO: implement cmdline
     ProgramSegmentPrefix psp;
     Byte
         *pspData = reinterpret_cast<Byte*>(&psp),
-        *pspPtr = _memory->pointer(pspAddr),
-        *exePtr = _memory->pointer(loadAddr);
+        *pspPtr = memory_->pointer(pspAddr),
+        *exePtr = memory_->pointer(loadAddr);
     copy(pspData, pspData + PSP_SIZE, pspPtr);
     // read load module data from exe file into memory
     const Offset loadModuleOffset = mz.loadModuleOffset();
     dosMessage("Loading from offset "s + hexVal(loadModuleOffset) + ", size = " + to_string(loadModuleSize));
     mz.load(exePtr, loadAddr.segment);
+    // calculate relocated addresses for code and stack
+    SegmentedAddress codeReloc = mz.codeAddress(), stackReloc = mz.stackAddress();
+    codeReloc.segment += loadAddr.segment;
+    stackReloc.segment += loadAddr.segment;
+    // init cpu registers for execution
+    cpu_->reset(codeReloc, stackReloc, pspAddr.segment);
 }
 
 std::ostream& operator<<(std::ostream &os, const ProgramSegmentPrefix &arg) {

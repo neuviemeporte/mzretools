@@ -46,8 +46,8 @@ std::ostream& operator<<(std::ostream &os, const ProgramSegmentPrefix &arg);
 
 class Dos {
 private:
-    Cpu *_cpu;
-    Arena *_memory;
+    Cpu* cpu_;
+    Arena* memory_;
 
 public:
     Dos(Cpu *cpu, Arena *memory);

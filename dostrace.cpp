@@ -17,8 +17,8 @@
 using namespace std;
 
 VM::VM() : 
-    cpu(make_unique<Cpu_8086>()), 
     memory(make_unique<Arena>()), 
+    cpu(make_unique<Cpu_8086>(memory->base())), 
     os(make_unique<Dos>(cpu.get(), memory.get())) {
     cout << "Initialized VM, " << info() << endl;
 }
@@ -33,58 +33,68 @@ void printHelp() {
     cout << "Supported commands:" << endl
         << "load <executable_path> - load DOS executable at start of available memory" << endl
         << "dump <file_path> - dump contents of emulated memory to file" << endl
+        << "cpu - print CPU info" << endl
+        << "exec - start executing code at current cpu instruction pointer" << endl
         << "exit - finish session" << endl;
+}
+
+void cmdOutput(const string &msg) {
+    cout << msg << endl;
+}
+
+void cmdError(const string &verb, const string &message) {
+    cout << "Error running command '" << verb << "': " << message << endl;
 }
 
 CmdStatus loadCommand(VM &vm, const vector<string> &params) {
     if (params.empty()) {
-        cout << "load command needs at least 1 parameter" << endl;
+        cmdOutput("load command needs at least 1 parameter");
         return CMD_FAIL;
     }
     const string &path = params[0];
     // check if file exists
     const auto file = checkFile(path);
     if (!file.exists) {
-        cout << "Executable file does not exist!" << endl;
+        cmdOutput("Executable file does not exist!");
         return CMD_FAIL;
     }
     // make sure it's not empty
     if (file.size == 0) {
-        cout << "Executable file has size zero!" << endl;
+        cmdOutput("Executable file has size zero!");
         return CMD_FAIL;
     }
     // look for MZ signature
     ifstream data{path, ios::binary};
     if (!data.is_open()) {
-        cout << "Unable to open executable file '" << path << "' for reading!" << endl;
+        cmdOutput("Unable to open executable file '"s + path + "' for reading!");
         return CMD_FAIL;
     }
     char magic[2], mz[2] = { 'M', 'Z' };
     if (!data.read(&magic[0], sizeof(magic))) {
-        cout << "Unable to read magic from file!" << endl;
+        cmdOutput("Unable to read magic from file!");
         return CMD_FAIL;
     }
     data.close();
     const Size memFree = vm.memory->available();
     // load as exe
     if (memcmp(magic, mz, 2) == 0) {
-        cout << "Detected MZ header, loading as .exe image" << endl;
+        cmdOutput("Detected MZ header, loading as .exe image");
         MzImage image{path};
         if (image.loadModuleSize() > memFree) {
-            cout << "Load module size (" << image.loadModuleSize() << " of executable exceeds available memory: " << memFree << endl;
+            cmdOutput("Load module size ("s + to_string(image.loadModuleSize()) + " of executable exceeds available memory: " + to_string(memFree));
             return CMD_FAIL;
         }
         vm.os->loadExe(image);
     }
     // load as com
     else {
-        cout << "No MZ header detected, loading as .com image" << endl;
+        cmdOutput("No MZ header detected, loading as .com image");
         if (file.size > MAX_COMFILE_SIZE) {
-            cout << "File size (" << file.size << ") exceeds .com file size limit: " << MAX_COMFILE_SIZE << endl; 
+            cmdOutput("File size ("s + to_string(file.size) + ") exceeds .com file size limit: " + to_string(MAX_COMFILE_SIZE)); 
             return CMD_FAIL;
         }
         if (file.size > memFree) {
-            cout << "File size (" << file.size << ") exceeds available memory: " << memFree << endl;
+            cmdOutput("File size (" + to_string(file.size) + ") exceeds available memory: " + to_string(memFree));
             return CMD_FAIL;
         }
         throw ImplementError();
@@ -92,10 +102,15 @@ CmdStatus loadCommand(VM &vm, const vector<string> &params) {
     return CMD_OK;
 }
 
+CmdStatus execCommand(VM &vm) {
+    vm.cpu->exec();
+    return CMD_OK;
+}
+
 // TODO: support address ranges for start and end
 CmdStatus dumpCommand(VM &vm, const vector<string> &params) {
     if (params.empty()) {
-        cout << "dump command needs at least 1 parameter!" << endl;
+        cmdOutput("dump command needs at least 1 parameter!");
         return CMD_FAIL;
     }
     const string &path = params[0];
@@ -104,15 +119,11 @@ CmdStatus dumpCommand(VM &vm, const vector<string> &params) {
     const auto file = checkFile(path);
     if (file.exists) {
         // TODO: ask for overwrite
-        cout << "Dump file '" << path << "' already exists, overwriting!" << endl;
+        cmdOutput("Dump file '"s + path + "' already exists, overwriting!");
         //return CMD_FAIL;
     }    
     vm.memory->dump(path);
     return CMD_OK;
-}
-
-void commandError(const string &verb, const string &message) {
-    cout << "Error running command '" << verb << "': " << message << endl;
 }
 
 CmdStatus commandDispatch(VM &vm, const string &cmd) {
@@ -137,26 +148,39 @@ CmdStatus commandDispatch(VM &vm, const string &cmd) {
     // todo: table of commands with arg counts and handlers
     if (verb == "exit") {
         if (paramCount != 0) {
-            commandError(verb, "trailing arugments");
+            cmdError(verb, "trailing arugments");
             return CMD_FAIL;
         }
         return CMD_EXIT;
     }
     else if (verb == "load") {
         if (paramCount != 1) {
-            commandError(verb, "unexpected syntax");
+            cmdError(verb, "unexpected syntax");
             return CMD_FAIL;
         }
         return loadCommand(vm, params);
     }
     else if (verb == "dump") {
         if (paramCount != 1) {
-            commandError(verb, "unexpected syntax");
+            cmdError(verb, "unexpected syntax");
             return CMD_FAIL;
         }
         return dumpCommand(vm, params);
     }
-    // TODO: implement verb exec
+    else if (verb == "cpu") {
+        if (paramCount != 0) {
+            cmdError(verb, "unexpected syntax");
+            return CMD_FAIL;
+        }
+        cmdOutput(vm.cpu->info());
+    }
+    else if (verb == "exec") {
+        if (paramCount != 0) {
+            cmdError(verb, "unexpected syntax");
+            return CMD_FAIL;
+        }
+        return execCommand(vm);
+    }
     // TODO: implement verb script
     else if (verb == "help") {
         printHelp();

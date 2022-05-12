@@ -3,10 +3,14 @@
 
 #include <string>
 #include "types.h"
+#include "memory.h"
 
 class Cpu {
 public:
     virtual std::string type() const = 0;
+    virtual std::string info() const = 0;
+    virtual void reset(const SegmentedAddress &code, const SegmentedAddress &stack, const Word &pspSeg) = 0;
+    virtual void exec() = 0;
 };
 
 class Cpu_8086 : public Cpu {
@@ -44,10 +48,22 @@ public:
                 Reg8 B15 : 1; // ----
             };
         };
-    } regs;
+        Regs() : 
+            AX(0), BX(0), CX(0), DX(0), 
+            SI(0), DI(0), BP(0), SP(0), IP(0),
+            CS(0), DS(0), SS(0), ES(0), FLAGS(0) {}
+    } regs_;
+
+private:
+    Byte* const memBase_;
+    bool done_;
 
 public:
+    Cpu_8086(Byte* memoryBase) : memBase_(memoryBase), done_(false) {}
     virtual std::string type() const override { return "8086"; };
+    virtual std::string info() const;
+    virtual void reset(const SegmentedAddress &code, const SegmentedAddress &stack, const Word &pspSeg);
+    virtual void exec();
 };
 
 // stc: 0x3103 0011000100000011

@@ -57,6 +57,8 @@ public:
     Offset loadModuleOffset() const { return loadModuleOffset_; }
     Size minAlloc() const { return header_.min_extra_paragraphs * PARAGRAPH_SIZE; }
     Size maxAlloc() const { return header_.max_extra_paragraphs * PARAGRAPH_SIZE; }
+    SegmentedAddress codeAddress() const { return SegmentedAddress(header_.cs, header_.ip); }
+    SegmentedAddress stackAddress() const { return SegmentedAddress(header_.ss, header_.sp); }
     void load(Byte* arenaPtr, const Word loadSegment) const;
 };
 
