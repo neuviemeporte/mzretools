@@ -52,8 +52,8 @@ private:
 public:
     Dos(Cpu *cpu, Arena *memory);
     std::string name() const { return "NinjaDOS 1.0"; };
-
     void loadExe(const MzImage &mz);
+    void interruptHandler();
 };
 
 #endif // SYSCALL_H

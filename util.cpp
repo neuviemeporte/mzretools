@@ -42,6 +42,12 @@ void hexDump(const Byte *buf, const Size size, const Size off, const bool header
     }
 }
 
+std::string hexVal(const Byte val) {
+    std::ostringstream str;
+    str << "0x" << std::hex << std::setw(2) << std::setfill('0') <<  (int)val;
+    return str.str();
+}
+
 std::istream& safeGetline(std::istream& is, std::string& t) {
     t.clear();
 

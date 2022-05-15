@@ -24,3 +24,9 @@ TEST(Memory, Init) {
         ASSERT_EQ(mem->read(i), pattern[i % sizeof pattern]);
     }
 }
+
+TEST(Memory, Access) {
+    auto mem = make_unique<Arena>();
+    Byte* data = mem->base();
+    Byte val = data[0];
+}

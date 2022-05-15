@@ -85,6 +85,10 @@ void Dos::loadExe(const MzImage &mz) {
     cpu_->reset(codeReloc, stackReloc, pspAddr.segment);
 }
 
+void Dos::interruptHandler() {
+    
+}
+
 std::ostream& operator<<(std::ostream &os, const ProgramSegmentPrefix &arg) {
     return os << std::hex
         << "exit_instr = 0x" << hexString(arg.exit_instr) << endl

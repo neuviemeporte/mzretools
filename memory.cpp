@@ -5,6 +5,7 @@
 #include "memory.h"
 #include "error.h"
 #include "mz.h"
+#include "util.h"
 
 using namespace std;
 
@@ -14,8 +15,8 @@ MemoryRange::MemoryRange(Offset begin, Offset end) : begin(begin), end(end) {
 
 SegmentedAddress::SegmentedAddress(const Offset linear) {
     if (linear >= MEM_TOTAL) throw MemoryError("Linear address too big while converting to segmented representation");
-    segment = static_cast<Reg16>(linear >> 4);
-    offset = static_cast<Reg16>(linear & 0xf);
+    segment = static_cast<Word>(linear >> 4);
+    offset = static_cast<Word>(linear & 0xf);
 }
 
 SegmentedAddress::operator std::string() const {
@@ -80,7 +81,7 @@ void Arena::write(const Offset addr, const Word value) {
 
 string Arena::info() const {
     ostringstream infoStr;
-    infoStr << "total size = " << MEM_TOTAL << " / " << MEM_TOTAL / KB << " kB, "
+    infoStr << "total size = " << MEM_TOTAL << " / " << MEM_TOTAL / KB << " kB @" << hexVal(reinterpret_cast<long>(base())) << ", "
             << "available = " << available() << " / " << available() / KB << " kB";
     return infoStr.str();
 }

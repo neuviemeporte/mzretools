@@ -16,10 +16,13 @@
 
 using namespace std;
 
-VM::VM() : 
-    memory(make_unique<Arena>()), 
-    cpu(make_unique<Cpu_8086>(memory->base())), 
-    os(make_unique<Dos>(cpu.get(), memory.get())) {
+VM::VM() {
+    memory = make_unique<Arena>(); 
+    cpu = make_unique<Cpu_8086>();
+    os = make_unique<Dos>(cpu.get(), memory.get());
+    // cpu needs r/w access to memory data and to the OS to call the interrupt handler
+    cpu->setMemBase(memory->base());
+    cpu->setOs(os.get());
     cout << "Initialized VM, " << info() << endl;
 }
 

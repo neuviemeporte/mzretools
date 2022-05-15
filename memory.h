@@ -82,6 +82,7 @@ public:
     Byte* pointer(const Offset addr) { return data_.begin() + addr; }
     Byte* pointer(const SegmentedAddress &addr) { return data_.begin() + addr.toLinear(); }
     Byte* base() { return pointer(0); }
+    const Byte* base() const { return pointer(0); }
     const Byte* pointer(const Offset addr) const { return data_.cbegin() + addr; }
     const Byte* pointer(const SegmentedAddress &addr) const { return data_.cbegin() + addr.toLinear(); }
 
