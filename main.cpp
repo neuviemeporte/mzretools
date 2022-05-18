@@ -1,5 +1,5 @@
 #include <iostream>
-#include "dostrace.h"
+#include "system.h"
 #include "error.h"
 
 using namespace std;
@@ -11,7 +11,7 @@ int main(int argc, char* argv[])
     // TODO: implement batch mode, execute commands from script and exit
     cout << "This is dostrace v" << VERSION << endl;
     // initialize virtual machine for emulation
-    VM vm;
+    System vm;
     // enter interactive mode, display prompt and keep parsing commands
     cout << "Type 'help' for a list of commands" << endl;
     string command;
@@ -21,7 +21,7 @@ int main(int argc, char* argv[])
         // TODO: implement command history
         getline(cin, command);
         try {
-            const CmdStatus status = commandDispatch(vm, command);
+            const CmdStatus status = vm.commandDispatch(command);
             switch (status) {
             case CMD_UNKNOWN:
                 cout << "Unrecognized command: " << command << endl;

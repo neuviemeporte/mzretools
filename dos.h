@@ -6,10 +6,8 @@
 #include "types.h"
 
 class Arena;
-class Cpu;
 class MzImage;
-
-static constexpr Size PSP_SIZE = 0x100;
+class SegmentedAddress;
 
 #pragma pack(push, 1)
     struct ProgramSegmentPrefix {
@@ -46,14 +44,13 @@ std::ostream& operator<<(std::ostream &os, const ProgramSegmentPrefix &arg);
 
 class Dos {
 private:
-    Cpu* cpu_;
     Arena* memory_;
 
 public:
-    Dos(Cpu *cpu, Arena *memory);
+    Dos(Arena *memory);
     std::string name() const { return "NinjaDOS 1.0"; };
-    void loadExe(const MzImage &mz);
-    void interruptHandler();
+    void loadExe(const MzImage &mz, SegmentedAddress &codeReloc, SegmentedAddress &stackReloc);
+    int version() const { return 2; }
 };
 
 #endif // SYSCALL_H

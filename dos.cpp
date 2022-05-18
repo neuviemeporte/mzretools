@@ -1,6 +1,5 @@
 #include "dos.h"
 #include "memory.h"
-#include "cpu.h"
 #include "mz.h"
 #include "util.h"
 #include "error.h"
@@ -45,10 +44,10 @@ ProgramSegmentPrefix::ProgramSegmentPrefix() :
     fill(begin(cmdline), end(cmdline), 0);
 }
 
-Dos::Dos(Cpu *cpu, Arena *memory) : cpu_(cpu), memory_(memory) {
+Dos::Dos(Arena *memory) : memory_(memory) {
 }
 
-void Dos::loadExe(const MzImage &mz) {
+void Dos::loadExe(const MzImage &mz, SegmentedAddress &codeReloc, SegmentedAddress &stackReloc) {
     const Offset freeMemStart = memory_->freeStart();
     SegmentedAddress pspAddr(freeMemStart);
     dosMessage("Free DOS memory starts at address "s + pspAddr.toString());
@@ -78,15 +77,10 @@ void Dos::loadExe(const MzImage &mz) {
     dosMessage("Loading from offset "s + hexVal(loadModuleOffset) + ", size = " + to_string(loadModuleSize));
     mz.load(exePtr, loadAddr.segment);
     // calculate relocated addresses for code and stack
-    SegmentedAddress codeReloc = mz.codeAddress(), stackReloc = mz.stackAddress();
+    codeReloc = mz.codeAddress();
+    stackReloc = mz.stackAddress();
     codeReloc.segment += loadAddr.segment;
     stackReloc.segment += loadAddr.segment;
-    // init cpu registers for execution
-    cpu_->reset(codeReloc, stackReloc, pspAddr.segment);
-}
-
-void Dos::interruptHandler() {
-    
 }
 
 std::ostream& operator<<(std::ostream &os, const ProgramSegmentPrefix &arg) {

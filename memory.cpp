@@ -81,7 +81,7 @@ void Arena::write(const Offset addr, const Word value) {
 
 string Arena::info() const {
     ostringstream infoStr;
-    infoStr << "total size = " << MEM_TOTAL << " / " << MEM_TOTAL / KB << " kB @" << hexVal(reinterpret_cast<long>(base())) << ", "
+    infoStr << "total size = " << MEM_TOTAL << " / " << MEM_TOTAL / KB << " kB @" << hexVal(reinterpret_cast<Offset>(base())) << ", "
             << "available = " << available() << " / " << available() / KB << " kB";
     return infoStr.str();
 }

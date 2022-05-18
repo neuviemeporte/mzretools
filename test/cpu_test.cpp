@@ -5,7 +5,7 @@
 using namespace std;
 
 TEST(Cpu_8086, OrderHL) {
-    Cpu_8086 cpu;
+    Cpu_8086 cpu{nullptr, nullptr};
     cpu.reg16(REG_AX) = 0x4c7b;
     cpu.reg16(REG_BX) = 0x1234;
     cpu.reg16(REG_CX) = 0x0b0c;
@@ -22,7 +22,7 @@ TEST(Cpu_8086, OrderHL) {
 }
 
 TEST(Cpu_8086, Flags) {
-    Cpu_8086 cpu;
+    Cpu_8086 cpu{nullptr, nullptr};
 
     cpu.reg16(REG_FLAGS) = 0x3102;
     TRACELN(std::hex

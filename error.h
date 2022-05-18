@@ -37,13 +37,16 @@ class IoError : public Error {
     using Error::Error;
 };
 
+class InterruptError : public Error {
+    using Error::Error;
+};
+
 class DosError : public Error {
     using Error::Error;
 };
 
-class ImplementError : public Error {
-public:
-    ImplementError() : Error("Not implemented") {}
+class SystemError : public Error {
+    using Error::Error;
 };
 
 #endif // ERROR_H

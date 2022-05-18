@@ -19,6 +19,8 @@ template<typename T, Size size = sizeof(T)> std::string hexString(const T &obj) 
 }
 
 std::string hexVal(const Byte val);
+std::string hexVal(const Word val);
+std::string hexVal(const Offset val);
 std::istream& safeGetline(std::istream& is, std::string& t);
 
 struct FileStatus {

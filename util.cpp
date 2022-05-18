@@ -48,6 +48,18 @@ std::string hexVal(const Byte val) {
     return str.str();
 }
 
+std::string hexVal(const Word val) {
+    std::ostringstream str;
+    str << "0x" << std::hex << std::setw(4) << std::setfill('0') <<  val;
+    return str.str();    
+}
+
+std::string hexVal(const Offset val) {
+    std::ostringstream str;
+    str << "0x" << std::hex << val;
+    return str.str();        
+}
+
 std::istream& safeGetline(std::istream& is, std::string& t) {
     t.clear();
 
