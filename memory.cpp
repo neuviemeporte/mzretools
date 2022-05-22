@@ -38,8 +38,7 @@ std::ostream& operator<<(std::ostream &os, const SegmentedAddress &arg) {
     return os << std::hex << arg.segment << ":" << arg.offset;
 }
 
-Arena::Arena() :
-    break_(INIT_BREAK) {
+Arena::Arena() : break_(INIT_BREAK) {
     const Byte pattern[] = { 0xde, 0xad, 0xbe, 0xef };
     
     for (Offset i = 0, j = 0; i < MEM_TOTAL; ++i) {

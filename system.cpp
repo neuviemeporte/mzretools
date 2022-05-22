@@ -30,7 +30,7 @@ string System::info() const {
     return infoStr.str();
 }
 
-CmdStatus System::commandDispatch(const string &cmd) {
+CmdStatus System::command(const string &cmd) {
     if (cmd.empty()) 
         return CMD_OK;
 
@@ -52,38 +52,38 @@ CmdStatus System::commandDispatch(const string &cmd) {
     // todo: table of commands with arg counts and handlers
     if (verb == "exit") {
         if (paramCount != 0) {
-            cmdError(verb, "trailing arugments");
+            error(verb, "trailing arugments");
             return CMD_FAIL;
         }
         return CMD_EXIT;
     }
     else if (verb == "load") {
         if (paramCount != 1) {
-            cmdError(verb, "unexpected syntax");
+            error(verb, "unexpected syntax");
             return CMD_FAIL;
         }
-        return loadCommand(params);
+        return commandLoad(params);
     }
     else if (verb == "dump") {
         if (paramCount != 1) {
-            cmdError(verb, "unexpected syntax");
+            error(verb, "unexpected syntax");
             return CMD_FAIL;
         }
-        return dumpCommand(params);
+        return commandDump(params);
     }
     else if (verb == "cpu") {
         if (paramCount != 0) {
-            cmdError(verb, "unexpected syntax");
+            error(verb, "unexpected syntax");
             return CMD_FAIL;
         }
-        cmdOutput(cpu_->info());
+        output(cpu_->info());
     }
-    else if (verb == "exec") {
+    else if (verb == "run") {
         if (paramCount != 0) {
-            cmdError(verb, "unexpected syntax");
+            error(verb, "unexpected syntax");
             return CMD_FAIL;
         }
-        return execCommand();
+        return commandRun();
     }
     // TODO: implement verb script
     else if (verb == "help") {
@@ -103,63 +103,63 @@ void System::printHelp() {
         << "exit - finish session" << endl;
 }
 
-void System::cmdOutput(const string &msg) {
+void System::output(const string &msg) {
     cout << msg << endl;
 }
 
-void System::cmdError(const string &verb, const string &message) {
+void System::error(const string &verb, const string &message) {
     cout << "Error running command '" << verb << "': " << message << endl;
 }
 
-CmdStatus System::loadCommand(const vector<string> &params) {
+CmdStatus System::commandLoad(const vector<string> &params) {
     if (params.empty()) {
-        cmdOutput("load command needs at least 1 parameter");
+        output("load command needs at least 1 parameter");
         return CMD_FAIL;
     }
     const string &path = params[0];
     // check if file exists
     const auto file = checkFile(path);
     if (!file.exists) {
-        cmdOutput("Executable file does not exist!");
+        output("Executable file does not exist!");
         return CMD_FAIL;
     }
     // make sure it's not empty
     if (file.size == 0) {
-        cmdOutput("Executable file has size zero!");
+        output("Executable file has size zero!");
         return CMD_FAIL;
     }
     // look for MZ signature
     ifstream data{path, ios::binary};
     if (!data.is_open()) {
-        cmdOutput("Unable to open executable file '"s + path + "' for reading!");
+        output("Unable to open executable file '"s + path + "' for reading!");
         return CMD_FAIL;
     }
     char magic[2], mz[2] = { 'M', 'Z' };
     if (!data.read(&magic[0], sizeof(magic))) {
-        cmdOutput("Unable to read magic from file!");
+        output("Unable to read magic from file!");
         return CMD_FAIL;
     }
     data.close();
     const Size memFree = memory_->available();
     // load as exe
     if (memcmp(magic, mz, 2) == 0) {
-        cmdOutput("Detected MZ header, loading as .exe image");
+        output("Detected MZ header, loading as .exe image");
         MzImage image{path};
         if (image.loadModuleSize() > memFree) {
-            cmdOutput("Load module size ("s + to_string(image.loadModuleSize()) + " of executable exceeds available memory: " + to_string(memFree));
+            output("Load module size ("s + to_string(image.loadModuleSize()) + " of executable exceeds available memory: " + to_string(memFree));
             return CMD_FAIL;
         }
         os_->loadExe(image, loadedCode_, loadedStack_);
     }
     // load as com
     else {
-        cmdOutput("No MZ header detected, loading as .com image");
+        output("No MZ header detected, loading as .com image");
         if (file.size > MAX_COMFILE_SIZE) {
-            cmdOutput("File size ("s + to_string(file.size) + ") exceeds .com file size limit: " + to_string(MAX_COMFILE_SIZE)); 
+            output("File size ("s + to_string(file.size) + ") exceeds .com file size limit: " + to_string(MAX_COMFILE_SIZE)); 
             return CMD_FAIL;
         }
         if (file.size > memFree) {
-            cmdOutput("File size (" + to_string(file.size) + ") exceeds available memory: " + to_string(memFree));
+            output("File size (" + to_string(file.size) + ") exceeds available memory: " + to_string(memFree));
             return CMD_FAIL;
         }
         throw SystemError("COM file support not yet implemented"s);
@@ -167,16 +167,17 @@ CmdStatus System::loadCommand(const vector<string> &params) {
     return CMD_OK;
 }
 
-CmdStatus System::execCommand() {
-    cmdOutput("Starting execution at entrypoint "s + loadedCode_.toString() + " / " + hexVal(loadedCode_.toLinear()));
-    cpu_->execute(loadedCode_, loadedStack_);
+CmdStatus System::commandRun() {
+    output("Starting execution at entrypoint "s + loadedCode_.toString() + " / " + hexVal(loadedCode_.toLinear()));
+    cpu_->init(loadedCode_, loadedStack_);
+    cpu_->run();
     return CMD_OK;
 }
 
 // TODO: support address ranges for start and end
-CmdStatus System::dumpCommand(const vector<string> &params) {
+CmdStatus System::commandDump(const vector<string> &params) {
     if (params.empty()) {
-        cmdOutput("dump command needs at least 1 parameter!");
+        output("dump command needs at least 1 parameter!");
         return CMD_FAIL;
     }
     const string &path = params[0];
@@ -185,7 +186,7 @@ CmdStatus System::dumpCommand(const vector<string> &params) {
     const auto file = checkFile(path);
     if (file.exists) {
         // TODO: ask for overwrite
-        cmdOutput("Dump file '"s + path + "' already exists, overwriting!");
+        output("Dump file '"s + path + "' already exists, overwriting!");
         //return CMD_FAIL;
     }    
     memory_->dump(path);

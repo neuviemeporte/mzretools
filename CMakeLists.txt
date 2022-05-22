@@ -6,14 +6,14 @@ set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ggdb")
 
-set(LIBDOS_SRC cpu.cpp interrupt.cpp memory.cpp dos.cpp mz.cpp util.cpp)
-set(LIBDOS_HDR types.h error.h debug.h util.h cpu.h interrupt.h memory.h dos.h mz.h)
+set(LIBDOS_SRC system.cpp cpu.cpp interrupt.cpp memory.cpp dos.cpp mz.cpp util.cpp)
+set(LIBDOS_HDR system.h types.h error.h debug.h util.h cpu.h interrupt.h memory.h dos.h mz.h)
 
 # the DOS emulation library
 add_library(libdos STATIC ${LIBDOS_SRC} ${LIBDOS_HDR})
 
 # the main application executable
-add_executable(dostrace system.h system.cpp main.cpp)
+add_executable(dostrace main.cpp)
 target_link_libraries(dostrace PUBLIC libdos)
 
 # Include Google testing framework
@@ -34,11 +34,12 @@ set(TEST_SRC
 add_executable(runtest test_main.cpp ${TEST_SRC})
 target_include_directories(runtest PUBLIC ${gtest_SOURCE_DIR} ${PROJECT_SOURCE_DIR})
 target_link_libraries(runtest PUBLIC gtest libdos)
+add_custom_target(run_unit_test ALL COMMAND ./runtest DEPENDS runtest)
 
 # utility executables
 add_executable(mzhdr mzhdr.cpp)
 target_link_libraries(mzhdr PUBLIC libdos)
 add_executable(addrtool addrtool.cpp)
 target_link_libraries(addrtool PUBLIC libdos)
-add_executable(psptool psptool.cpp)
+add_executable(psptool psptool.cpp) 
 target_link_libraries(psptool PUBLIC libdos)

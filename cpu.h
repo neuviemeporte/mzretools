@@ -22,23 +22,25 @@ enum Register {
     REG_FLAGS = 13,
 };
 
-enum Flag {
-    FLAG_CF  = 0, // carry
-    FLAG_B1  = 1, // ----
-    FLAG_PF  = 2, // parity
-    FLAG_B3  = 3, // ----
-    FLAG_AF  = 4, // auxiliary carry
-    FLAG_B5  = 5, // ----
-    FLAG_ZF  = 6, // zero
-    FLAG_SF  = 7, // sign
-    FLAG_TF  = 8, // trap
-    FLAG_IF  = 9, // interrupt
-    FLAG_DF  = 10, // direction
-    FLAG_OF  = 11, // overflow
-    FLAG_B12 = 12, // ----
-    FLAG_B13 = 13, // ----
-    FLAG_B14 = 14, // ----
-    FLAG_B15 = 15, // ----
+// XXXXODITSZXAXPXC
+   //1111001000000000
+enum Flag : Word {
+    FLAG_CARRY  = 0b0000000000000001, // carry
+    FLAG_B1     = 0b0000000000000010, // ----
+    FLAG_PARITY = 0b0000000000000100, // parity
+    FLAG_B3     = 0b0000000000001000, // ----
+    FLAG_AUXC   = 0b0000000000010000, // auxiliary carry
+    FLAG_B5     = 0b0000000000100000, // ----
+    FLAG_ZERO   = 0b0000000001000000, // zero
+    FLAG_SIGN   = 0b0000000010000000, // sign
+    FLAG_TRAP   = 0b0000000100000000, // trap
+    FLAG_INT    = 0b0000001000000000, // interrupt
+    FLAG_DIR    = 0b0000010000000000, // direction
+    FLAG_OVER   = 0b0000100000000000, // overflow
+    FLAG_B12    = 0b0001000000000000, // ----
+    FLAG_B13    = 0b0010000000000000, // ----
+    FLAG_B14    = 0b0100000000000000, // ----
+    FLAG_B15    = 0b1000000000000000, // ----
 };   
 
 class Cpu {
@@ -47,7 +49,9 @@ class Cpu {
 public:
     virtual std::string type() const = 0;
     virtual std::string info() const = 0;
-    virtual void execute(const SegmentedAddress &code, const SegmentedAddress &stack) = 0;
+    virtual void init(const SegmentedAddress &code, const SegmentedAddress &stack) = 0;
+    virtual void step() = 0;
+    virtual void run() = 0;
 
 protected:
     virtual Byte& reg8(const Register reg) = 0;
@@ -62,38 +66,55 @@ class InterruptInterface;
 
 class Cpu_8086 : public Cpu {
     friend class InterruptHandler;
-    friend class Cpu_8086_OrderHL_Test;
-    friend class Cpu_8086_Flags_Test;
+    friend class Cpu_8086_Test;
 
 private:
-    Byte *memBase_;
+    Byte *memBase_, *code_;
     InterruptInterface *int_;
-
     union {
         Word reg16[REG_FLAGS + 1]; // 14x 16bit registers
         Byte reg8[REG_DL + 1];     // 8x 8bit registers
     } regs_;
-    bool done_;
+    Byte opcode_, byte1_, byte2_, resultb_;
+    Word word1_, word2_, resultw_;
+    bool done_, step_;
 
 public:
     Cpu_8086(Byte *memBase, InterruptInterface *intif);
     std::string type() const override { return "8086"; };
     std::string info() const override;
-    void execute(const SegmentedAddress &codeAddr, const SegmentedAddress &stackAddr) override;
+    void init(const SegmentedAddress &codeAddr, const SegmentedAddress &stackAddr) override;
+    void step() override;
+    void run() override;
 
 private:
     inline Byte& reg8(const Register reg) override { return regs_.reg8[reg]; }
     inline Word& reg16(const Register reg) override { return regs_.reg16[reg]; }
     inline const Byte& reg8(const Register reg) const { return regs_.reg8[reg]; }
     inline const Word& reg16(const Register reg) const { return regs_.reg16[reg]; }
-    inline bool getFlag(const Flag flag) const override { return (regs_.reg16[REG_FLAGS] >> flag) & 1; }
+    inline bool getFlag(const Flag flag) const override { return regs_.reg16[REG_FLAGS] & flag; }
     inline void setFlag(const Flag flag, const bool val) override { 
-        if (val) regs_.reg16[REG_FLAGS] |= 1 << flag; 
-        else regs_.reg16[REG_FLAGS] &= ~(1 << flag); 
+        if (val) regs_.reg16[REG_FLAGS] |= flag; 
+        else regs_.reg16[REG_FLAGS] &= ~flag; 
     }
-
+    inline Byte ipByte(const Word offset = 0) { return code_[regs_.reg16[REG_IP] + offset]; }
+    inline void ipAdvance(const Word amount) { regs_.reg16[REG_IP] += amount; }
+    std::string flagString(const Word flags) const;
     void resetRegs();
-    void mov_byte(const Byte dst, const Byte val);
+
+    void pipeline();
+    void fetch();
+    void evaluate();
+    void commit();
+    void advance();
+    void unknown(const std::string &stage);
+    
+    void instr_add(const Byte opcode);
+    void instr_sub(const Byte opcode);
+    void instr_cmp(const Byte opcode);
+    void instr_mov(const Byte opcode);
+    void instr_int();
+
 };
 
 

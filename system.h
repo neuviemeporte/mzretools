@@ -25,15 +25,15 @@ private:
 public:
     System();
     std::string info() const;
-    CmdStatus commandDispatch(const std::string &cmd);
+    CmdStatus command(const std::string &cmd);
 
 private:
     void printHelp();
-    void cmdOutput(const std::string &msg);
-    void cmdError(const std::string &verb, const std::string &message);
-    CmdStatus loadCommand(const std::vector<std::string> &params);
-    CmdStatus execCommand();
-    CmdStatus dumpCommand(const std::vector<std::string> &params);
+    void output(const std::string &msg);
+    void error(const std::string &verb, const std::string &message);
+    CmdStatus commandLoad(const std::vector<std::string> &params);
+    CmdStatus commandRun();
+    CmdStatus commandDump(const std::vector<std::string> &params);
 };
 
 #endif // SYSTEM_H

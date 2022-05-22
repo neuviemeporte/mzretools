@@ -21,7 +21,7 @@ int main(int argc, char* argv[])
         // TODO: implement command history
         getline(cin, command);
         try {
-            const CmdStatus status = vm.commandDispatch(command);
+            const CmdStatus status = vm.command(command);
             switch (status) {
             case CMD_UNKNOWN:
                 cout << "Unrecognized command: " << command << endl;
