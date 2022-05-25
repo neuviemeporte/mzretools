@@ -77,24 +77,28 @@ enum Opcode : Byte {
     OP_AND_Gv_Ev  = 0x23,
     OP_AND_AL_Ib  = 0x24,
     OP_AND_AX_Iv  = 0x25,
+    OP_PREFIX_ES  = 0x26,
     OP_SUB_Eb_Gb  = 0x28,
     OP_SUB_Ev_Gv  = 0x29,
     OP_SUB_Gb_Eb  = 0x2a,
     OP_SUB_Gv_Ev  = 0x2b,
     OP_SUB_AL_Ib  = 0x2c,
     OP_SUB_AX_Iv  = 0x2d,
+    OP_PREFIX_CS  = 0x2e,
     OP_XOR_Eb_Gb  = 0x30,
     OP_XOR_Ev_Gv  = 0x31,
     OP_XOR_Gb_Eb  = 0x32,
     OP_XOR_Gv_Ev  = 0x33,
     OP_XOR_AL_Ib  = 0x34,
     OP_XOR_AX_Iv  = 0x35,
+    OP_PREFIX_SS  = 0x36,
     OP_CMP_Eb_Gb  = 0x38,
     OP_CMP_Ev_Gv  = 0x39,
     OP_CMP_Gb_Eb  = 0x3a,
     OP_CMP_Gv_Ev  = 0x3b,
     OP_CMP_AL_Ib  = 0x3c,
     OP_CMP_AX_Iv  = 0x3d,
+    OP_PREFIX_DS  = 0x3e,
     OP_INC_AX     = 0x40,
     OP_INC_CX     = 0x41,
     OP_INC_DX     = 0x42,
@@ -233,8 +237,8 @@ enum Opcode : Byte {
     OP_OUT_DX_AL  = 0xee,
     OP_OUT_DX_AX  = 0xef,
     OP_LOCK       = 0xf0,
-    OP_REPNZ      = 0xf2,
-    OP_REPZ       = 0xf3,
+    OP_REPNZ      = 0xf2, // REPNE
+    OP_REPZ       = 0xf3, // REP, REPE
     OP_HLT        = 0xf4,
     OP_CMC        = 0xf5,
     OP_CLC        = 0xf8,
@@ -245,6 +249,9 @@ enum Opcode : Byte {
     OP_STD        = 0xfd,
 };
 
+// parity flag values for all possible 8-bit results, used as a lookup table
+// to avoid counting 1 bits after an arithmetic instruction 
+// (8086 only checks the lower 8 bits, even for 16bit results)
 static const Word parity_lookup[256] = {
   1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1,
   0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0,
@@ -264,9 +271,161 @@ static const Word parity_lookup[256] = {
   1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1
 };
 
+// ModR/M byte semantics: it follows some instructions and has the following bits: MMRRRTTT
+// MM: MOD field:
+//    00: interpret TTT as Table1 to calculate address of memory operand
+//    01: interpret TTT as Table2 with 8bit signed displacement to calculate address of memory operand
+//    10: interpret TTT as Table2 with 16bit unsigned displacement to calculate address of memory operand
+//    11: interpret TTT as REG to use register as operand
+// RRR: REG field:
+//    8bit instruction:  000: AL     001: CL     010: DL     011: BL     100: AH     101: CH     110: DH     111: BH
+//    16bit instruction: 000: AX     001: CX     010: DX     011: BX     100: SP     101: BP     110: SI     111: DI
+//    segment register:  000: ES     001: CS     010: SS     011: DS
+// TTT: MEM field:
+// TTT Table1 (when MOD = 00)
+//    000: [BX+SI]      001: [BX+DI]     010: [BP+SI]           011: [BP+DI]
+//    100: [SI]         101: [DI]        110: direct address    111: [BX] 
+// TTT Table2 (when MOD = 01 or 10):
+//    000: [BX+SI+Offset]     001: [BX+DI+Offset]     010: [BP+SI+Offset]     011: [BP+DI+Offset]
+//    100: [SI+Offset]        101: [DI+Offset]        110: [BP+Offset]        111: [BX+Offset]
+
+
+// possible values of the MOD field in the ModR/M byte
+enum ModRMMod : Byte {
+    MODRM_TAB1 = 0, 
+    MODRM_TAB2_8 = 1, 
+    MODRM_TAB2_16 = 2, 
+    MODRM_REG = 3,
+};
+
+// register ids of subsequent values of the REG field in the ModR/M byte
+static const Register modrm_regs8[8] = {
+    REG_AL, REG_CL, REG_DL, REG_BL, REG_AH, REG_CH, REG_DH, REG_BH    
+};
+
+static const Register modrm_regs16[8] = {
+    REG_AX, REG_CX, REG_DX, REG_BX, REG_SP, REG_BP, REG_SI, REG_DI
+};
+
+static const Register modrm_segreg[4] = {
+    REG_ES, REG_CS, REG_SS, REG_DS
+};
+
+// possible values of the MEM field in the ModR/M byte, both Table1 and Table2
+enum ModRMAddress : Byte {
+    MODRM_BX_SI = 0, MODRM_BX_SI_OFF = 0,
+    MODRM_BX_DI = 1, MODRM_BX_DI_OFF = 1,
+    MODRM_BP_SI = 2, MODRM_BP_SI_OFF = 2,
+    MODRM_BP_DI = 3, MODRM_BP_DI_OFF = 3,
+    MODRM_SI    = 4, MODRM_SI_OFF    = 4,
+    MODRM_DI    = 5, MODRM_DI_OFF    = 5,
+    MODRM_ADDR  = 6, MODRM_BP_OFF    = 6,
+    MODRM_BX    = 7, MODRM_BX_OFF    = 7,
+};
+
 static const Byte NIBBLE_CARRY = 0x10;
 static const Byte BYTE_SIGN = 0x80;
 static const Word WORD_SIGN = 0x8000;
+
+Offset Cpu_8086::modrmAddress(const Byte mod, const Byte rm) const {
+    // data pointed to by the modrm byte is always relative to DS?
+    Offset address = SEG_TO_LINEAR(reg16(REG_DS));
+    // obtain byte/word offset value for the displacement addressing modes, if applicable
+    Offset offset;
+    switch (mod) {
+    // assuming cs:ip points at the opcode, so the offset will be 2 bytes past that,
+    // after the opcode and the modrm byte itself
+    case MODRM_TAB2_8:  offset = ipByte(2); break; 
+    case MODRM_TAB2_16: offset = ipWord(2); break;
+    }
+    // calculate address of the word or byte
+    switch (mod) {
+    // no displacement mode
+    case MODRM_TAB1: 
+        switch (rm) {
+        case MODRM_BX_SI: address += reg16(REG_BX) + reg16(REG_SI); break;
+        case MODRM_BX_DI: address += reg16(REG_BX) + reg16(REG_DI); break;
+        case MODRM_BP_SI: address += reg16(REG_BP) + reg16(REG_SI); break;
+        case MODRM_BP_DI: address += reg16(REG_BP) + reg16(REG_DI); break;
+        case MODRM_SI:    address += reg16(REG_SI); break;
+        case MODRM_DI:    address += reg16(REG_DI); break;
+        case MODRM_ADDR:  address += ipWord(2); break; // address is the word past the opcode and modrm byte itself
+        case MODRM_BX:    address += reg16(REG_BX); break;
+        }
+        break;
+    // 8- and 16-bit displacement modes
+    case MODRM_TAB2_8: // fall through
+    case MODRM_TAB2_16:
+        switch (rm) {
+        case MODRM_BX_SI_OFF: address += reg16(REG_BX) + reg16(REG_SI) + offset; break;
+        case MODRM_BX_DI_OFF: address += reg16(REG_BX) + reg16(REG_DI) + offset; break;
+        case MODRM_BP_SI_OFF: address += reg16(REG_BP) + reg16(REG_SI) + offset; break;
+        case MODRM_BP_DI_OFF: address += reg16(REG_BP) + reg16(REG_DI) + offset; break;
+        case MODRM_SI_OFF:    address += reg16(REG_SI) + offset; break;
+        case MODRM_DI_OFF:    address += reg16(REG_DI) + offset; break;
+        case MODRM_BP_OFF:    address += reg16(REG_BP) + offset; break;
+        case MODRM_BX_OFF:    address += reg16(REG_BX) + offset; break;
+        }
+        break;
+    }    
+    return address;
+}
+
+// obtain the byte value pointed to by the ModR/M byte of an instruction
+Byte Cpu_8086::modrmByte(const Byte modrm) const {
+    const Byte 
+        mod = modrm_mod(modrm),
+        rm  = modrm_rm(modrm);
+    switch (mod) {
+    // modrm byte indicates a memory operand, calculate its address and return it
+    case MODRM_TAB1:
+    case MODRM_TAB2_8: // fall through
+    case MODRM_TAB2_16:
+        return memBase_[modrmAddress(mod, rm)];
+    // modrm byte indicates a register
+    case MODRM_REG:
+        return reg8(modrm_regs8[rm]);
+    }
+}
+
+Word Cpu_8086::modrmWord(const Byte modrm) const {
+    const Byte 
+        mod = modrm_mod(modrm),
+        rm  = modrm_rm(modrm);
+    switch (mod) {
+    // modrm byte indicates a memory operand, calculate its address and return it
+    case MODRM_TAB1:
+    case MODRM_TAB2_8: // fall through
+    case MODRM_TAB2_16:
+        return *reinterpret_cast<Word*>(memBase_ + modrmAddress(mod, rm));
+    // modrm byte indicates a register
+    case MODRM_REG:
+        return reg16(modrm_regs16[rm]);
+    }
+}
+
+// calculate length of instruction with modrm byte
+Word Cpu_8086::modrmLength(const Byte modrm) const {
+    const Word length = 2; // at least opcode + modrm byte
+    switch (modrm_mod(modrm)) {
+    case MODRM_TAB1:
+        switch (modrm_rm(modrm)) {
+        // opcode + modrm + direct address word
+        case MODRM_ADDR: return length + 2;
+        // opcode + modrm
+        default: return length;
+        }
+    case MODRM_TAB2_8:
+        // opcode + modrm + displacement byte
+        return length + 1;
+    case MODRM_TAB2_16:
+        // opcode + modrm + displacement word
+        return length + 2;
+    case MODRM_REG:
+        // opcode + modrm
+        return length;   
+    }
+}
 
 void Cpu_8086::init(const SegmentedAddress &codeAddr, const SegmentedAddress &stackAddr) {
     // initialize registers
@@ -323,15 +482,33 @@ void Cpu_8086::fetch() {
     opcode_ = ipByte();
     // fetch first operand (optional)
     switch (opcode_) {
-    case OP_MOV_AL_Ib: byte1_ = ipByte(1); return;
+    case OP_MOV_Gv_Ev:
+        modrm_ = ipByte(1);
+        regid_ = modrm_regs16[modrm_reg(modrm_)];
+        word1_ = modrmWord(modrm_);
+        return;
+    case OP_ADD_AL_Ib: 
     case OP_SUB_AL_Ib:
-    case OP_ADD_AL_Ib: byte1_ = reg8(REG_AL); break;
+    case OP_CMP_AL_Ib:
+        byte1_ = reg8(REG_AL); 
+        break;
+    case OP_JNB_Jb:
+    case OP_MOV_AL_Ib: 
+    case OP_MOV_AH_Ib:
+    case OP_INT_Ib:
+        byte1_ = ipByte(1); 
+        return;
+    case OP_MOV_DI_Iv:
+        word1_ = ipWord(1); 
+        return;
     default: unknown("fetch#1");
     }
     // fetch second operand (optional)
     switch (opcode_) {
+    case OP_ADD_AL_Ib: 
     case OP_SUB_AL_Ib:
-    case OP_ADD_AL_Ib: byte2_ = ipByte(1); break;
+    case OP_CMP_AL_Ib:
+        byte2_ = ipByte(1); break;
     default: unknown("fetch#2");
     }    
 }
@@ -339,24 +516,38 @@ void Cpu_8086::fetch() {
 void Cpu_8086::evaluate() {
     // evaluate result, update carry and overflow
     switch (opcode_) {
-    case OP_MOV_AL_Ib: resultb_ = byte1_; return;
-    case OP_SUB_AL_Ib:
-        resultb_ = byte1_ - byte2_;
-        setFlag(FLAG_CARRY, byte1_ < byte2_);
-        setFlag(FLAG_OVER, ((byte1_ ^ byte2_) & (byte1_ ^ resultb_)) & BYTE_SIGN);
-        break;
     case OP_ADD_AL_Ib: 
         resultb_ = byte1_ + byte2_;
         setFlag(FLAG_CARRY, resultb_ < byte1_);
         setFlag(FLAG_OVER, ((byte1_ ^ byte2_ ^ BYTE_SIGN) & (resultb_ ^ byte2_)) & BYTE_SIGN);
         break;
+    case OP_SUB_AL_Ib:
+    case OP_CMP_AL_Ib:
+        resultb_ = byte1_ - byte2_;
+        setFlag(FLAG_CARRY, byte1_ < byte2_);
+        setFlag(FLAG_OVER, ((byte1_ ^ byte2_) & (byte1_ ^ resultb_)) & BYTE_SIGN);
+        break;
+    case OP_JNB_Jb:
+        resultb_ = getFlag(FLAG_CARRY) ? 0 : byte1_;
+        return;
+    case OP_MOV_AL_Ib:
+    case OP_MOV_AH_Ib:
+        resultb_ = byte1_; // not actually stupid, do not remove
+        return; 
+    case OP_MOV_Gv_Ev:
+    case OP_MOV_DI_Iv:
+        resultw_ = word1_; // likewise
+        return; 
+    case OP_INT_Ib:
+        return;
     default: unknown("evaluate#1");
     }
     // update remaining arithmetic flags
     switch (opcode_)
     {
-    case OP_SUB_AL_Ib:
     case OP_ADD_AL_Ib: 
+    case OP_SUB_AL_Ib:
+    case OP_CMP_AL_Ib:
         setFlag(FLAG_ZERO, resultb_ == 0);
         setFlag(FLAG_SIGN, resultb_ & BYTE_SIGN);
         setFlag(FLAG_AUXC, ((byte1_ ^ byte2_) ^ resultb_) & NIBBLE_CARRY);
@@ -367,31 +558,57 @@ void Cpu_8086::evaluate() {
 }
 
 void Cpu_8086::commit() {
+    // write evaluation result (if any) to a register, memory or wherever it belongs,
+    // or trigger an external action (interrupt, IO port r/w)
     switch (opcode_) {
+    case OP_CMP_AL_Ib:
+    case OP_JNB_Jb:
+        return;
+    case OP_MOV_Gv_Ev:
+        reg16(regid_) = resultw_;
+        break;
+    case OP_ADD_AL_Ib: 
     case OP_SUB_AL_Ib:        
     case OP_MOV_AL_Ib:
-    case OP_ADD_AL_Ib: reg8(REG_AL) = resultb_; break;
-    default: unknown("store");
+        reg8(REG_AL) = resultb_; 
+        break;
+    case OP_MOV_AH_Ib: 
+        reg8(REG_AH) = resultb_; 
+        break;
+    case OP_MOV_DI_Iv:
+        reg16(REG_DI) = resultw_; 
+        break;
+    case OP_INT_Ib:
+        switch (int_->interrupt(*this, byte1_)) {
+        case INT_EXIT:
+            done_ = true;
+            break;
+        case INT_TERMINATE:
+            throw CpuError("Program terminated at "s + csip().toString());
+        }
+        break;
+    default: unknown("commit");
     }
 }
 
 void Cpu_8086::advance() {
     Word amount;
     switch (opcode_) {
+    case OP_MOV_Gv_Ev: amount = modrmLength(modrm_); break;
+    case OP_JNB_Jb:    amount = 2 + resultb_; break;
+    case OP_ADD_AL_Ib: 
     case OP_SUB_AL_Ib:
+    case OP_CMP_AL_Ib:
     case OP_MOV_AL_Ib:
-    case OP_ADD_AL_Ib: amount = 2; break;
+    case OP_MOV_AH_Ib:
+    case OP_INT_Ib:    amount = 2; break;
+    case OP_MOV_DI_Iv: amount = 3; break;
     default: unknown("advance");
     }
     ipAdvance(amount);
 }
 
 void Cpu_8086::unknown(const string &stage) {
-    throw CpuError("Unknown opcode at "s + stage + " stage, address "s + SegmentedAddress(reg16(REG_CS), reg16(REG_IP)).toString() + ": " + hexVal(opcode_));
+    throw CpuError("Unknown opcode at "s + stage + " stage, address "s + csip().toString() + ": " + hexVal(opcode_));
 }
 
-void Cpu_8086::instr_int() {
-    // invoke interrupt handler with value of argument as interrupt index
-    int_->interrupt(*this, ipByte(1));
-    ipAdvance(2);
-}

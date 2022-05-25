@@ -60,6 +60,7 @@ protected:
     virtual const Word& reg16(const Register reg) const = 0;
     virtual bool getFlag(const Flag flag) const = 0;
     virtual void setFlag(const Flag flag, const bool val) = 0;
+    virtual SegmentedAddress csip() const = 0;
 };
 
 class InterruptInterface;
@@ -75,8 +76,9 @@ private:
         Word reg16[REG_FLAGS + 1]; // 14x 16bit registers
         Byte reg8[REG_DL + 1];     // 8x 8bit registers
     } regs_;
-    Byte opcode_, byte1_, byte2_, resultb_;
+    Byte opcode_, modrm_, byte1_, byte2_, resultb_;
     Word word1_, word2_, resultw_;
+    Register regid_;
     bool done_, step_;
 
 public:
@@ -97,8 +99,18 @@ private:
         if (val) regs_.reg16[REG_FLAGS] |= flag; 
         else regs_.reg16[REG_FLAGS] &= ~flag; 
     }
-    inline Byte ipByte(const Word offset = 0) { return code_[regs_.reg16[REG_IP] + offset]; }
+    inline Byte ipByte(const Word offset = 0) const { return code_[reg16(REG_IP) + offset]; }
+    inline Word ipWord(const Word offset = 0) const { return *reinterpret_cast<Word*>(code_ + reg16(REG_IP) + offset); }
     inline void ipAdvance(const Word amount) { regs_.reg16[REG_IP] += amount; }
+    inline SegmentedAddress csip() const override { return {reg16(REG_CS), reg16(REG_IP)}; }
+    inline Byte modrm_mod(const Byte modrm) const { return modrm >> 6; }
+    inline Byte modrm_reg(const Byte modrm) const { return (modrm >> 3) & 0b111; }
+    inline Byte modrm_rm(const Byte modrm) const { return modrm & 0b111; }
+    Offset modrmAddress(const Byte mod, const Byte rm) const;
+    Byte modrmByte(const Byte modrm) const;
+    Word modrmWord(const Byte modrm) const;
+    Word modrmLength(const Byte modrm) const;
+
     std::string flagString(const Word flags) const;
     void resetRegs();
 
@@ -108,17 +120,6 @@ private:
     void commit();
     void advance();
     void unknown(const std::string &stage);
-    
-    void instr_add(const Byte opcode);
-    void instr_sub(const Byte opcode);
-    void instr_cmp(const Byte opcode);
-    void instr_mov(const Byte opcode);
-    void instr_int();
-
 };
-
-
-// stc: 0x3103 0011000100000011
-// clc: 0x3102 0011000100000010
 
 #endif // CPU_H

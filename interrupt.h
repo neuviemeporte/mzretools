@@ -5,9 +5,13 @@
 class Cpu;
 class Dos;
 
+enum IntStatus {
+    INT_OK, INT_FAIL, INT_EXIT, INT_TERMINATE
+};
+
 class InterruptInterface {
 public:
-    virtual void interrupt(Cpu &cpu, const Byte num) = 0;
+    virtual IntStatus interrupt(Cpu &cpu, const Byte num) = 0;
 };
 
 // an adapter class for dispatching interrupt requests from the CPU to other system components,
@@ -21,7 +25,7 @@ protected:
 
 public:
     InterruptHandler(Dos *dos) : dos_(dos) {}
-    void interrupt(Cpu &cpu, const Byte num) override;
+    IntStatus interrupt(Cpu &cpu, const Byte num) override;
 
 private:
     void dosFunction(Cpu &cpu, const Byte funcHi, const Byte funcLo);

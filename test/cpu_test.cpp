@@ -29,6 +29,17 @@ protected:
     bool getFlag(const Flag flag) { return cpu_->getFlag(flag); }
     void setFlag(const Flag flag, const bool val) { cpu_->setFlag(flag, val); }
     string info() { return cpu_->info(); }
+    void setupCode(const Byte *code, const Size size) {
+        const Offset
+            memStartLinear = mem_->freeStart(),
+            memEndLinear = mem_->freeEnd();
+        const SegmentedAddress 
+            memStart(memStartLinear),
+            memEnd(memEndLinear);
+        Byte *execMem = mem_->pointer(memStartLinear);
+        copy(code, code + size, execMem);
+        cpu_->init(memStart, memEnd);
+    }
 };
 
 TEST_F(Cpu_8086_Test, OrderHL) {
@@ -85,15 +96,7 @@ TEST_F(Cpu_8086_Test, Arithmetic) {
     };
     //                  XXXXODITSZXAXPXC
     const Word mask = 0b0000100011010101;
-    const Offset
-        memStartLinear = mem_->freeStart(),
-        memEndLinear = mem_->freeEnd();
-    const SegmentedAddress 
-        memStart(memStartLinear),
-        memEnd(memEndLinear);
-    Byte *execMem = mem_->pointer(memStartLinear);
-    copy(begin(code), end(code), execMem);
-    cpu_->init(memStart, memEnd);
+    setupCode(code, sizeof(code));
     ASSERT_EQ(reg16(REG_IP), 0);
     cpu_->step(); // mov al, 0xff
     ASSERT_EQ(reg16(REG_IP), 2);
@@ -123,4 +126,23 @@ TEST_F(Cpu_8086_Test, Arithmetic) {
     ASSERT_EQ(reg16(REG_IP), 16);
     ASSERT_EQ(reg8(REG_AL), 0xff);
     ASSERT_EQ(reg16(REG_FLAGS) & mask, 0b10010101); // C1 Z0 S1 O0 A1 P1
+}
+
+TEST_F(Cpu_8086_Test, WordOperand) {
+    const Byte code[] = {
+        0xbf, 0x6f, 0x01 // mov di,0x16f
+    };
+    setupCode(code, sizeof(code));
+    cpu_->step();
+    ASSERT_EQ(reg16(REG_DI), 0x16f);
+}
+
+TEST_F(Cpu_8086_Test, MovEvGv) {
+    const Byte code[] = {
+        0x8b, 0x36, 0x02, 0x00 // mov si,[0x2]
+    };
+    setupCode(code, sizeof(code));
+    mem_->write(SegmentedAddress(reg16(REG_DS), 2).toLinear(), (Word)0x1234);
+    cpu_->step();
+    ASSERT_EQ(reg16(REG_SI), 0x1234);
 }

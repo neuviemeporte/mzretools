@@ -5,6 +5,9 @@
 #include <array>
 #include "types.h"
 
+const int SEGMENT_SHIFT = 4;
+inline Offset SEG_TO_LINEAR(const Word seg) { return static_cast<Offset>(seg) << SEGMENT_SHIFT; }
+
 struct MemoryRange {
     const Offset begin, end;
     MemoryRange(Offset begin, Offset end);
@@ -22,7 +25,7 @@ struct SegmentedAddress {
     std::string toString() const;
 
     inline Offset toLinear() const {
-        return (static_cast<Offset>(segment) << 4) + offset;
+        return SEG_TO_LINEAR(segment) + offset;
     }
     void normalize();
 };

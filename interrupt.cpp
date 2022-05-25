@@ -11,6 +11,7 @@
 using namespace std;
 
 enum Interrupt : Byte {
+    INT_DOS_TERMINATE = 0x20,
     INT_DOS = 0x21,
 };
 
@@ -18,16 +19,18 @@ void intMessage(const string &msg) {
     cout << msg << endl;
 }
 
-void InterruptHandler::interrupt(Cpu &cpu, const Byte num) {
+IntStatus InterruptHandler::interrupt(Cpu &cpu, const Byte num) {
     const Byte 
         funcHi = cpu.reg8(REG_AH), 
         funcLo = cpu.reg8(REG_AL);
     switch (num) {
+    case INT_DOS_TERMINATE:
+        return INT_TERMINATE;
     case INT_DOS:
         dosFunction(cpu, funcHi, funcLo);
-        break;
+        return INT_OK;
     default:
-        throw InterruptError("Interrupt not implemented: "s + hexVal(num));
+        throw InterruptError("Interrupt not implemented: "s + hexVal(num) + " at " + cpu.csip().toString());
     }
 }
 
