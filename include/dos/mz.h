@@ -5,8 +5,8 @@
 #include <string>
 #include <vector>
 #include <ostream>
-#include "types.h"
-#include "memory.h"
+#include "dos/types.h"
+#include "dos/address.h"
 
 constexpr Size MAX_COMFILE_SIZE = 0xff00;
 
@@ -48,6 +48,7 @@ private:
     std::vector<Relocation> relocs_;
     Offset loadModuleOffset_;
     Address entrypoint_;
+    Byte *loadModuleData_;
 
 public:
     MzImage(const std::string &path);
@@ -55,11 +56,12 @@ public:
     std::string dump() const;
     Size loadModuleSize() const { return loadModuleSize_; }
     Offset loadModuleOffset() const { return loadModuleOffset_; }
+    const Byte* loadModuleData() const { return loadModuleData_; }
     Size minAlloc() const { return header_.min_extra_paragraphs * PARAGRAPH_SIZE; }
     Size maxAlloc() const { return header_.max_extra_paragraphs * PARAGRAPH_SIZE; }
     Address codeAddress() const { return Address(header_.cs, header_.ip); }
     Address stackAddress() const { return Address(header_.ss, header_.sp); }
-    void load(Byte* arenaPtr, const Word loadSegment) const;
+    void load(const Word loadSegment);
 };
 
 #endif // MZ_H

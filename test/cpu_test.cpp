@@ -1,19 +1,23 @@
-#include "memory.h"
-#include "cpu.h"
-#include "test/debug.h"
+#include "debug.h"
 #include "gtest/gtest.h"
+#include "dos/memory.h"
+#include "dos/cpu.h"
 
 using namespace std;
 
 class Cpu_8086_Test : public ::testing::Test {
 protected:
     Cpu_8086 *cpu_;
-    Arena *mem_;
+    Memory *mem_;
+    Byte* regs8_;
+    Word* regs16_;
 
 protected:
     void SetUp() override {
-        mem_ = new Arena();
-        cpu_ = new Cpu_8086(mem_->base(), nullptr);
+        mem_ = new Memory();
+        cpu_ = new Cpu_8086(mem_, nullptr);
+        regs8_ = cpu_->regs8();
+        regs16_ = cpu_->regs16();
     }
 
     void TearDown() override {
@@ -24,10 +28,18 @@ protected:
         delete mem_;
     }
 
-    Byte& reg8(const Register reg) { return cpu_->reg8(reg); }
-    Word& reg16(const Register reg) { return cpu_->reg16(reg); }
-    bool getFlag(const Flag flag) { return cpu_->getFlag(flag); }
-    void setFlag(const Flag flag, const bool val) { cpu_->setFlag(flag, val); }
+    // registers and flags access and manipulation
+    inline Byte& reg8(const int reg) { return regs8_[reg]; }
+    inline Word& reg16(const int reg) { return regs16_[reg]; }
+    inline const Byte& reg8(const int reg) const { return regs8_[reg]; }
+    inline const Word& reg16(const int reg) const { return regs16_[reg]; }    
+    inline Address csip() const { return {reg16(REG_CS), reg16(REG_IP)}; }
+    inline bool getFlag(const Flag flag) const { return reg16(REG_FLAGS) & flag; }
+    inline void setFlag(const Flag flag, const bool val) { 
+        if (val) reg16(REG_FLAGS) |= flag; 
+        else reg16(REG_FLAGS) &= ~flag; 
+    }    
+
     string info() { return cpu_->info(); }
     void setupCode(const Byte *code, const Size size) {
         const Offset
@@ -36,8 +48,7 @@ protected:
         const Address 
             memStart(memStartLinear),
             memEnd(memEndLinear);
-        Byte *execMem = mem_->pointer(memStartLinear);
-        copy(code, code + size, execMem);
+        mem_->writeBuf(memStartLinear, code, size);
         cpu_->init(memStart, memEnd);
     }
 };

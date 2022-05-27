@@ -7,26 +7,28 @@
 #include <vector>
 #include <memory>
 
-#include "system.h"
-#include "cpu.h"
-#include "memory.h"
-#include "mz.h"
-#include "error.h"
-#include "util.h"
+#include "dos/system.h"
+#include "dos/cpu.h"
+#include "dos/memory.h"
+#include "dos/interrupt.h"
+#include "dos/mz.h"
+#include "dos/error.h"
+#include "dos/util.h"
 
 using namespace std;
 
 System::System() {
-    memory_ = make_unique<Arena>(); 
-    os_ = make_unique<Dos>(memory_.get());
+    mem_ = make_unique<Memory>(); 
+    os_ = make_unique<Dos>(mem_.get());
     int_ = make_unique<InterruptHandler>(os_.get());
-    cpu_ = make_unique<Cpu_8086>(memory_->base(), int_.get());
+    cpu_ = make_unique<Cpu_8086>(mem_.get(), int_.get());
+    int_->setup(cpu_->regs8(), cpu_->regs16());
     cout << "Initialized VM, " << info() << endl;
 }
 
 string System::info() const {
     ostringstream infoStr;
-    infoStr << "CPU: " << cpu_->type() << ", Memory: " << memory_->info() << ", OS: " << os_->name();
+    infoStr << "CPU: " << cpu_->type() << ", Memory: " << mem_->info() << ", OS: " << os_->name();
     return infoStr.str();
 }
 
@@ -90,7 +92,7 @@ CmdStatus System::command(const string &cmd) {
         printHelp();
         return CMD_OK;
     }
-    else return CMD_UNKNOWN;
+    return CMD_UNKNOWN;
 }
 
 
@@ -140,7 +142,7 @@ CmdStatus System::commandLoad(const vector<string> &params) {
         return CMD_FAIL;
     }
     data.close();
-    const Size memFree= memory_->availableBytes();
+    const Size memFree= mem_->availableBytes();
     // load as exe
     if (memcmp(magic, mz, 2) == 0) {
         output("Detected MZ header, loading as .exe image");
@@ -149,7 +151,7 @@ CmdStatus System::commandLoad(const vector<string> &params) {
             output("Load module size ("s + to_string(image.loadModuleSize()) + " of executable exceeds available memory: " + to_string(memFree));
             return CMD_FAIL;
         }
-        os_->loadExe(image, loadedCode_, loadedStack_);
+        loadAddr_ = os_->loadExe(image);
     }
     // load as com
     else {
@@ -168,8 +170,8 @@ CmdStatus System::commandLoad(const vector<string> &params) {
 }
 
 CmdStatus System::commandRun() {
-    output("Starting execution at entrypoint "s + loadedCode_.toString() + " / " + hexVal(loadedCode_.toLinear()));
-    cpu_->init(loadedCode_, loadedStack_);
+    output("Starting execution at entrypoint "s + loadAddr_.code.toString());
+    cpu_->init(loadAddr_.code, loadAddr_.stack);
     cpu_->run();
     return CMD_OK;
 }
@@ -189,6 +191,6 @@ CmdStatus System::commandDump(const vector<string> &params) {
         output("Dump file '"s + path + "' already exists, overwriting!");
         //return CMD_FAIL;
     }    
-    memory_->dump(path);
+    mem_->dump(path);
     return CMD_OK;
 }

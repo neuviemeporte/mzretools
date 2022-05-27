@@ -1,11 +1,11 @@
-#include "util.h"
-
 #include <iostream>
 #include <fstream>
 #include <iomanip>
 #include <bitset>
 #include <unistd.h>
 #include <sys/stat.h>
+
+#include "dos/util.h"
 
 using namespace std;
 

@@ -1,36 +1,10 @@
-#ifndef ADDRESS_H
-#define ADDRESS_H
+#ifndef MEMORY_H
+#define MEMORY_H
 
 #include <ostream>
 #include <array>
-#include "types.h"
-
-const int SEGMENT_SHIFT = 4;
-inline Offset SEG_TO_LINEAR(const Word seg) { return static_cast<Offset>(seg) << SEGMENT_SHIFT; }
-inline Size BYTES_TO_PARA(const Size bytes) { return bytes / PARAGRAPH_SIZE + (bytes % PARAGRAPH_SIZE ? 1 : 0); }
-
-struct MemoryRange {
-    const Offset begin, end;
-    MemoryRange(Offset begin, Offset end);
-    Size size() const { return end - begin + 1; }
-    bool operator==(const MemoryRange &arg) const { return arg.begin == begin && arg.end == end; }
-    bool contains(const Offset addr) const { return addr >= begin && addr <= end; }
-};
-
-struct Address {
-    Word segment, offset;
-    Address(const Word segment, const Word offset) : segment(segment), offset(offset) {}
-    Address(const Offset linear);
-    Address() : Address(0, 0) {}
-    operator std::string() const;
-    std::string toString() const;
-
-    inline Offset toLinear() const {
-        return SEG_TO_LINEAR(segment) + offset;
-    }
-    void normalize();
-};
-std::ostream& operator<<(std::ostream &os, const Address &arg);
+#include "dos/types.h"
+#include "dos/address.h"
 
 /*Real mode memory map:
 --- 640 KiB RAM ("Low memory") 
@@ -52,7 +26,7 @@ std::ostream& operator<<(std::ostream &os, const Address &arg);
 0x100000 - 0x10FFEF: (64KiB - 16)
 --- extended memory available from protected mode only
 */
-class Arena {
+class Memory {
 private:
     static constexpr Offset INIT_BREAK = 0x500; // beginning of free conventional memory block
     static constexpr Offset MEM_END = 0xa0000; // end of usable memory, start of UMA
@@ -62,7 +36,7 @@ private:
     Offset break_;
 
 public:
-    Arena();
+    Memory();
     Size size() const { return MEM_TOTAL; }
     Size availableBlock() const { return BYTES_TO_PARA(MEM_END - break_); }
     Size availableBytes() const { return availableBlock() * PARAGRAPH_SIZE; }
@@ -75,15 +49,13 @@ public:
     Word readWord(const Offset addr) const;
     void writeByte(const Offset addr, const Byte value);
     void writeWord(const Offset addr, const Word value);
-    Byte* pointer(const Offset addr) { return data_.begin() + addr; }
-    Byte* pointer(const Address &addr) { return data_.begin() + addr.toLinear(); }
-    Byte* base() { return pointer(0); }
-    const Byte* base() const { return pointer(0); }
+    void writeBuf(const Offset addr, const Byte *data, const Size size);
     const Byte* pointer(const Offset addr) const { return data_.cbegin() + addr; }
     const Byte* pointer(const Address &addr) const { return data_.cbegin() + addr.toLinear(); }
+    const Byte* base() const { return pointer(0); }
 
     std::string info() const;
     void dump(const std::string &path) const;
 };
 
-#endif // ADDRESS_H
+#endif // MEMORY_H

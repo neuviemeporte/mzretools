@@ -1,13 +1,14 @@
-#include "dos.h"
-#include "memory.h"
-#include "mz.h"
-#include "util.h"
-#include "error.h"
 
 #include <iostream>
 #include <algorithm>
 #include <fstream>
 #include <cassert>
+
+#include "dos/dos.h"
+#include "dos/memory.h"
+#include "dos/mz.h"
+#include "dos/util.h"
+#include "dos/error.h"
 
 using namespace std;
 
@@ -44,10 +45,10 @@ ProgramSegmentPrefix::ProgramSegmentPrefix() :
     fill(begin(cmdline), end(cmdline), 0);
 }
 
-Dos::Dos(Arena *memory) : memory_(memory) {
+Dos::Dos(Memory *memory) : memory_(memory) {
 }
 
-void Dos::loadExe(const MzImage &mz, Address &codeReloc, Address &stackReloc) {
+LoadAddresses Dos::loadExe(MzImage &mz) {
     const Address freeStart{memory_->freeStart()};
     const Size memSize = memory_->availableBytes(),
                memBlock = memory_->availableBlock();
@@ -78,20 +79,21 @@ void Dos::loadExe(const MzImage &mz, Address &codeReloc, Address &stackReloc) {
     // blit psp data over to memory
     // TODO: implement cmdline
     ProgramSegmentPrefix psp;
-    Byte
-        *pspData = reinterpret_cast<Byte*>(&psp),
-        *pspPtr = memory_->pointer(pspAddr),
-        *exePtr = memory_->pointer(loadAddr);
-    copy(pspData, pspData + PSP_SIZE, pspPtr);
+    const Byte *pspData = reinterpret_cast<const Byte*>(&psp);
+    memory_->writeBuf(pspAddr.toLinear(), pspData, PSP_SIZE);
     // read load module data from exe file into memory
     const Offset loadModuleOffset = mz.loadModuleOffset();
     dosMessage("Loading from offset "s + hexVal(loadModuleOffset) + ", size = " );
-    mz.load(exePtr, loadAddr.segment);
+    mz.load(loadAddr.segment);
+    const Byte *exeData = mz.loadModuleData();
+    memory_->writeBuf(loadAddr.toLinear(), exeData, mz.loadModuleSize());
     // calculate relocated addresses for code and stack
-    codeReloc = mz.codeAddress();
-    stackReloc = mz.stackAddress();
-    codeReloc.segment += loadAddr.segment;
-    stackReloc.segment += loadAddr.segment;
+    LoadAddresses ret;
+    ret.code = mz.codeAddress();
+    ret.stack = mz.stackAddress();
+    ret.code.segment += loadAddr.segment;
+    ret.stack.segment += loadAddr.segment;
+    return ret;
 }
 
 std::ostream& operator<<(std::ostream &os, const ProgramSegmentPrefix &arg) {

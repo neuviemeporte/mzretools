@@ -3,9 +3,10 @@
 
 #include <string>
 #include <ostream>
-#include "types.h"
+#include "dos/types.h"
+#include "dos/address.h"
 
-class Arena;
+class Memory;
 class MzImage;
 class Address;
 
@@ -42,14 +43,18 @@ static_assert(sizeof(ProgramSegmentPrefix) == PSP_SIZE, "Invalid PSP structure s
 
 std::ostream& operator<<(std::ostream &os, const ProgramSegmentPrefix &arg);
 
+struct LoadAddresses {
+    Address code, stack;
+};
+
 class Dos {
 private:
-    Arena* memory_;
+    Memory* memory_;
 
 public:
-    Dos(Arena *memory);
+    Dos(Memory *memory);
     std::string name() const { return "NinjaDOS 1.0"; };
-    void loadExe(const MzImage &mz, Address &codeReloc, Address &stackReloc);
+    LoadAddresses loadExe(MzImage &mz);
     int version() const { return 2; }
 };
 

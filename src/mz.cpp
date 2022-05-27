@@ -9,14 +9,13 @@
 #include <cassert>
 #include <cstddef>
 
-#include "mz.h"
-#include "error.h"
-#include "util.h"
+#include "dos/mz.h"
+#include "dos/error.h"
+#include "dos/util.h"
 
 using namespace std;
 
-MzImage::MzImage(const std::string &path) :
-    path_(path) {
+MzImage::MzImage(const std::string &path) : path_(path), loadModuleData_(nullptr) {
     if (path_.empty()) 
         throw ArgError("Empty path for MzImage!");
     const char* cpath = path.c_str();
@@ -86,7 +85,7 @@ MzImage::MzImage(const std::string &path) :
         auto relocValSize = fread(&relocVal, 1, sizeof(Word), mzFile);
         if (relocValSize != sizeof(Word)) {
             fclose(mzFile);
-            throw IoError("Invalid relocation value read size from MzImage file: "s + to_string(relocValSize));                
+            throw IoError("Invalid relocation value read size from MzImage file: "s + to_string(relocValSize));
         }
         reloc.value = relocVal;
     }
@@ -135,12 +134,13 @@ std::string MzImage::dump() const {
     return msg.str();
 }
 
-// put load module data into emulated memory
-void MzImage::load(Byte* arenaPtr, const Word loadSegment) const {
+void MzImage::load(const Word loadSegment) {
     ifstream mzFile(path_, ios::binary);
     if (!mzFile.is_open()) throw IoError("Unable to open exe file: " + path_);
     mzFile.seekg(loadModuleOffset_);
-    mzFile.read(reinterpret_cast<char*>(arenaPtr), loadModuleSize_);
+    assert(loadModuleData_ == nullptr);
+    loadModuleData_ = new Byte[loadModuleSize_];
+    mzFile.read(reinterpret_cast<char*>(loadModuleData_), loadModuleSize_);
     const auto bytesRead = mzFile.gcount();
     if (!mzFile) throw IoError("Error while reading load module data from "s + path_);
     if (bytesRead != loadModuleSize_) throw IoError("Incorrect number of bytes read from "s  + path_ + ": " + to_string(bytesRead));
@@ -150,6 +150,6 @@ void MzImage::load(Byte* arenaPtr, const Word loadSegment) const {
         const Address addr(r.segment, r.offset);
         const Offset off = addr.toLinear();
         const Word patchedVal = r.value + loadSegment;
-        arenaPtr[off] = patchedVal;
+        loadModuleData_[off] = patchedVal;
     }
 }

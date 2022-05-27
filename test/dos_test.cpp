@@ -1,7 +1,7 @@
-#include "dos.h"
-#include "mz.h"
-#include "test/debug.h"
+#include "debug.h"
 #include "gtest/gtest.h"
+#include "dos/dos.h"
+#include "dos/mz.h"
 
 using namespace std;
 

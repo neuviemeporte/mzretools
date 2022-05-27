@@ -2,8 +2,8 @@
 #include <string>
 #include <regex>
 #include <iomanip>
-#include "memory.h"
-#include "types.h"
+#include "dos/memory.h"
+#include "dos/types.h"
 
 using namespace std;
 

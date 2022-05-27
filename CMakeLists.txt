@@ -6,14 +6,37 @@ set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ggdb")
 
-set(LIBDOS_SRC system.cpp cpu.cpp interrupt.cpp memory.cpp dos.cpp mz.cpp util.cpp)
-set(LIBDOS_HDR system.h types.h error.h debug.h util.h cpu.h interrupt.h memory.h dos.h mz.h)
+set(LIBDOS_SRC 
+    src/system.cpp
+    src/cpu.cpp
+    src/interrupt.cpp
+    src/address.cpp
+    src/memory.cpp
+    src/dos.cpp
+    src/mz.cpp
+    src/util.cpp)
+
+set(LIBDOS_HDR 
+    include/dos/system.h
+    include/dos/types.h
+    include/dos/error.h
+    include/dos/debug.h
+    include/dos/util.h
+    include/dos/opcodes.h
+    include/dos/cpu.h
+    include/dos/interrupt.h
+    include/dos/address.h
+    include/dos/memory.h
+    include/dos/dos.h
+    include/dos/mz.h)
 
 # the DOS emulation library
 add_library(libdos STATIC ${LIBDOS_SRC} ${LIBDOS_HDR})
+target_include_directories(libdos PUBLIC include)
 
 # the main application executable
-add_executable(dostrace main.cpp)
+add_executable(dostrace src/main.cpp)
+target_include_directories(dostrace PUBLIC include)
 target_link_libraries(dostrace PUBLIC libdos)
 
 # Include Google testing framework
@@ -23,6 +46,7 @@ set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 add_subdirectory(googletest)
 
 set(TEST_SRC
+    test/test_main.cpp
     test/debug.h
     test/debug.cpp
     test/cpu_test.cpp
@@ -31,15 +55,18 @@ set(TEST_SRC
     test/functional_test.cpp)
 
 # the test application executable
-add_executable(runtest test_main.cpp ${TEST_SRC})
-target_include_directories(runtest PUBLIC ${gtest_SOURCE_DIR} ${PROJECT_SOURCE_DIR})
+add_executable(runtest ${TEST_SRC})
+target_include_directories(runtest PUBLIC ${gtest_SOURCE_DIR} include)
 target_link_libraries(runtest PUBLIC gtest libdos)
+# run tests automatically as part of the build
 add_custom_target(run_unit_test ALL COMMAND ./runtest DEPENDS runtest)
 
 # utility executables
-add_executable(mzhdr mzhdr.cpp)
+add_executable(mzhdr tools/mzhdr.cpp)
 target_link_libraries(mzhdr PUBLIC libdos)
-add_executable(addrtool addrtool.cpp)
+
+add_executable(addrtool tools/addrtool.cpp)
 target_link_libraries(addrtool PUBLIC libdos)
-add_executable(psptool psptool.cpp) 
+
+add_executable(psptool tools/psptool.cpp) 
 target_link_libraries(psptool PUBLIC libdos)

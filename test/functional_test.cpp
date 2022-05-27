@@ -1,9 +1,8 @@
 #include <string>
-
-#include "system.h"
-#include "util.h"
-#include "test/debug.h"
+#include "debug.h"
 #include "gtest/gtest.h"
+#include "dos/system.h"
+#include "dos/util.h"
 
 using namespace std;
 

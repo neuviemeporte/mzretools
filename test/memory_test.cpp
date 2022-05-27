@@ -1,14 +1,14 @@
 #include <iostream>
-#include "memory.h"
-#include "util.h"
-#include "test/debug.h"
+#include "debug.h"
 #include "gtest/gtest.h"
+#include "dos/memory.h"
+#include "dos/util.h"
 
 using namespace std;
 
 class MemoryTest : public ::testing::Test {
 protected:
-    Arena mem;
+    Memory mem;
 };
 
 TEST_F(MemoryTest, Segmentation) {
@@ -29,7 +29,6 @@ TEST_F(MemoryTest, Init) {
 }
 
 TEST_F(MemoryTest, Access) {
-    Byte* data = mem.base();
     const Offset off = 0x1234;
     const Byte b = 0xab;
     const Word w = 0x12fe;

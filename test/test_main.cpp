@@ -1,5 +1,5 @@
 #include "gtest/gtest.h"
-#include "test/debug.h"
+#include "debug.h"
 
 int main(int argc, char* argv[]) {
     TRACE_ENABLE(true);

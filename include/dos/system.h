@@ -5,10 +5,10 @@
 #include <vector>
 #include <memory>
 
-#include "cpu.h"
-#include "memory.h"
-#include "dos.h"
-#include "interrupt.h"
+#include "dos/cpu.h"
+#include "dos/memory.h"
+#include "dos/dos.h"
+#include "dos/interrupt.h"
 
 enum CmdStatus {
     CMD_OK, CMD_FAIL, CMD_UNKNOWN, CMD_EXIT
@@ -17,10 +17,10 @@ enum CmdStatus {
 class System {
 private:
     std::unique_ptr<Cpu> cpu_;
-    std::unique_ptr<Arena> memory_;
+    std::unique_ptr<Memory> mem_;
     std::unique_ptr<Dos> os_;
     std::unique_ptr<InterruptInterface> int_;
-    Address loadedCode_, loadedStack_;
+    LoadAddresses loadAddr_;
 
 public:
     System();
