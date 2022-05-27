@@ -20,6 +20,7 @@ enum Register {
     REG_SS = 11, 
     REG_IP = 12, 
     REG_FLAGS = 13,
+    REG_NONE
 };
 
 // XXXXODITSZXAXPXC
@@ -49,7 +50,7 @@ class Cpu {
 public:
     virtual std::string type() const = 0;
     virtual std::string info() const = 0;
-    virtual void init(const SegmentedAddress &code, const SegmentedAddress &stack) = 0;
+    virtual void init(const Address &code, const Address &stack) = 0;
     virtual void step() = 0;
     virtual void run() = 0;
 
@@ -60,7 +61,7 @@ protected:
     virtual const Word& reg16(const Register reg) const = 0;
     virtual bool getFlag(const Flag flag) const = 0;
     virtual void setFlag(const Flag flag, const bool val) = 0;
-    virtual SegmentedAddress csip() const = 0;
+    virtual Address csip() const = 0;
 };
 
 class InterruptInterface;
@@ -76,16 +77,17 @@ private:
         Word reg16[REG_FLAGS + 1]; // 14x 16bit registers
         Byte reg8[REG_DL + 1];     // 8x 8bit registers
     } regs_;
-    Byte opcode_, modrm_, byte1_, byte2_, resultb_;
-    Word word1_, word2_, resultw_;
-    Register regid_;
+    Byte opcode_, modrm_;
+    Byte byteOperand1_, byteOperand2_, byteResult_;
+    Word wordOperand1_, wordOperand2_, wordResult_;
+    Register segmentReg_, destReg_;
     bool done_, step_;
 
 public:
     Cpu_8086(Byte *memBase, InterruptInterface *intif);
     std::string type() const override { return "8086"; };
     std::string info() const override;
-    void init(const SegmentedAddress &codeAddr, const SegmentedAddress &stackAddr) override;
+    void init(const Address &codeAddr, const Address &stackAddr) override;
     void step() override;
     void run() override;
 
@@ -102,10 +104,12 @@ private:
     inline Byte ipByte(const Word offset = 0) const { return code_[reg16(REG_IP) + offset]; }
     inline Word ipWord(const Word offset = 0) const { return *reinterpret_cast<Word*>(code_ + reg16(REG_IP) + offset); }
     inline void ipAdvance(const Word amount) { regs_.reg16[REG_IP] += amount; }
-    inline SegmentedAddress csip() const override { return {reg16(REG_CS), reg16(REG_IP)}; }
+    inline Address csip() const override { return {reg16(REG_CS), reg16(REG_IP)}; }
     inline Byte modrm_mod(const Byte modrm) const { return modrm >> 6; }
     inline Byte modrm_reg(const Byte modrm) const { return (modrm >> 3) & 0b111; }
     inline Byte modrm_rm(const Byte modrm) const { return modrm & 0b111; }
+    Register destinationRegister(const Byte opcode) const;
+    Register defaultSeg(const Register) const;
     Offset modrmAddress(const Byte mod, const Byte rm) const;
     Byte modrmByte(const Byte modrm) const;
     Word modrmWord(const Byte modrm) const;

@@ -7,7 +7,7 @@
 
 class Arena;
 class MzImage;
-class SegmentedAddress;
+class Address;
 
 #pragma pack(push, 1)
     struct ProgramSegmentPrefix {
@@ -49,7 +49,7 @@ private:
 public:
     Dos(Arena *memory);
     std::string name() const { return "NinjaDOS 1.0"; };
-    void loadExe(const MzImage &mz, SegmentedAddress &codeReloc, SegmentedAddress &stackReloc);
+    void loadExe(const MzImage &mz, Address &codeReloc, Address &stackReloc);
     int version() const { return 2; }
 };
 

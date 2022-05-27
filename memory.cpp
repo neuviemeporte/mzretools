@@ -13,29 +13,30 @@ MemoryRange::MemoryRange(Offset begin, Offset end) : begin(begin), end(end) {
     if (end < begin) throw MemoryError("Invalid range extents");
 }
 
-SegmentedAddress::SegmentedAddress(const Offset linear) {
+Address::Address(const Offset linear) {
     if (linear >= MEM_TOTAL) throw MemoryError("Linear address too big while converting to segmented representation");
     segment = static_cast<Word>(linear >> 4);
     offset = static_cast<Word>(linear & 0xf);
 }
 
-SegmentedAddress::operator std::string() const {
+Address::operator std::string() const {
     ostringstream str;
     str << *this;
     return str.str();
 }
 
-std::string SegmentedAddress::toString() const {
+std::string Address::toString() const {
     return static_cast<string>(*this);
 }
 
-void SegmentedAddress::normalize() {
+void Address::normalize() {
     segment += offset >> 4;
     offset &= 0xf;
 }
 
-std::ostream& operator<<(std::ostream &os, const SegmentedAddress &arg) {
-    return os << std::hex << arg.segment << ":" << arg.offset;
+std::ostream& operator<<(std::ostream &os, const Address &arg) {
+    return os << std::hex << std::setw(4) << std::setfill('0') << arg.segment 
+        << ":" << std::setw(4) << std::setfill('0') << arg.offset << " / 0x" << arg.toLinear();
 }
 
 Arena::Arena() : break_(INIT_BREAK) {
@@ -48,31 +49,38 @@ Arena::Arena() : break_(INIT_BREAK) {
     }
 }
 
-void Arena::alloc(const Size size) {
-    if (break_ + size < MEM_END)
+void Arena::allocBlock(const Size para) {
+    const Size size = para * PARAGRAPH_SIZE;
+    if (break_ + size <= MEM_END)
         break_ += size;
     else
-        throw MemoryError("No room to allocate "s + to_string(size) + ", avail = "s + to_string(available()));
+        throw MemoryError("No room to allocate "s + to_string(size) + ", avail = "s + to_string(availableBytes()));
 }
 
-void Arena::free(const Size size) {
-    if (break_ - size > INIT_BREAK)
+void Arena::freeBlock(const Size para) {
+    const Size size = para * PARAGRAPH_SIZE;
+    if (break_ - size >= INIT_BREAK)
         break_ -= size;
     else
-        throw MemoryError("No room to free "s + to_string(size) + ", avail = "s + to_string(available()));
+        throw MemoryError("No room to free "s + to_string(size) + ", avail = "s + to_string(availableBytes()));
 }
 
-Byte Arena::read(const Offset addr) const {
-    if (addr >= MEM_TOTAL) throw MemoryError(std::string("Read outside memory bounds"));
+Byte Arena::readByte(const Offset addr) const {
+    if (addr >= MEM_TOTAL) throw MemoryError(std::string("Read byte outside memory bounds"));
     return data_[addr];
 }
 
-void Arena::write(const Offset addr, const Byte value) {
+Word Arena::readWord(const Offset addr) const {
+    if (addr >= MEM_TOTAL) throw MemoryError(std::string("Read word outside memory bounds"));
+    return *reinterpret_cast<const Word*>(&data_[addr]);
+}
+
+void Arena::writeByte(const Offset addr, const Byte value) {
     if (addr >= MEM_TOTAL) throw MemoryError(std::string("Byte write outside memory bounds"));
     data_[addr] = value;
 }
 
-void Arena::write(const Offset addr, const Word value) {
+void Arena::writeWord(const Offset addr, const Word value) {
     if (addr >= MEM_TOTAL) throw MemoryError(std::string("Word write outside memory bounds"));
     Word *dest = reinterpret_cast<Word*>(&data_[addr]);
     *dest = value;
@@ -81,7 +89,7 @@ void Arena::write(const Offset addr, const Word value) {
 string Arena::info() const {
     ostringstream infoStr;
     infoStr << "total size = " << MEM_TOTAL << " / " << MEM_TOTAL / KB << " kB @" << hexVal(reinterpret_cast<Offset>(base())) << ", "
-            << "available = " << available() << " / " << available() / KB << " kB";
+            << "available = " << availableBytes() << " / " << availableBytes() / KB << " kB";
     return infoStr.str();
 }
 

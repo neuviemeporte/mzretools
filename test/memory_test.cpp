@@ -1,13 +1,18 @@
 #include <iostream>
-#include <memory>
 #include "memory.h"
+#include "util.h"
 #include "test/debug.h"
 #include "gtest/gtest.h"
 
 using namespace std;
 
-TEST(Memory, Segmentation) {
-    SegmentedAddress a(0x6ef, 0x1234);
+class MemoryTest : public ::testing::Test {
+protected:
+    Arena mem;
+};
+
+TEST_F(MemoryTest, Segmentation) {
+    Address a(0x6ef, 0x1234);
     ASSERT_EQ(a.toLinear(), 0x8124);
     a.normalize();
     ASSERT_EQ(a.segment, 0x812);
@@ -15,18 +20,30 @@ TEST(Memory, Segmentation) {
     ASSERT_EQ(a.toLinear(), 0x8124);
 }
 
-TEST(Memory, Init) {
-    auto mem = make_unique<Arena>();
-    const Size memSize = mem->size();
-
+TEST_F(MemoryTest, Init) {
+    const Size memSize = mem.size();
     const Byte pattern[] = { 0xde, 0xad, 0xbe, 0xef };
     for (Offset i = 0; i < memSize; ++i) {
-        ASSERT_EQ(mem->read(i), pattern[i % sizeof pattern]);
+        ASSERT_EQ(mem.readByte(i), pattern[i % sizeof pattern]);
     }
 }
 
-TEST(Memory, Access) {
-    auto mem = make_unique<Arena>();
-    Byte* data = mem->base();
-    Byte val = data[0];
+TEST_F(MemoryTest, Access) {
+    Byte* data = mem.base();
+    const Offset off = 0x1234;
+    const Byte b = 0xab;
+    const Word w = 0x12fe;
+    mem.writeByte(off, b);
+    ASSERT_EQ(mem.readByte(off), b);
+    mem.writeWord(off, w);
+    ASSERT_EQ(mem.readWord(off), w);
+}
+
+TEST_F(MemoryTest, Alloc) {
+    const Size avail = mem.availableBlock();
+    mem.allocBlock(avail);
+    cout << "Allocated max block of " << avail << " paragraphs, free mem at " << hexVal(mem.freeStart()) << endl;
+    ASSERT_EQ(mem.availableBlock(), 0);
+    mem.freeBlock(avail);
+    ASSERT_EQ(mem.availableBlock(), avail);
 }

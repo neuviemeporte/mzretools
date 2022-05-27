@@ -21,6 +21,4 @@ constexpr Size operator "" _MB(unsigned long long bytes) { return static_cast<Si
 static constexpr Size MEM_TOTAL = 1_MB;
 static constexpr Size PSP_SIZE = 0x100;
 
-
-
 #endif // TYPES_H

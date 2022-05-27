@@ -7,6 +7,7 @@
 
 const int SEGMENT_SHIFT = 4;
 inline Offset SEG_TO_LINEAR(const Word seg) { return static_cast<Offset>(seg) << SEGMENT_SHIFT; }
+inline Size BYTES_TO_PARA(const Size bytes) { return bytes / PARAGRAPH_SIZE + (bytes % PARAGRAPH_SIZE ? 1 : 0); }
 
 struct MemoryRange {
     const Offset begin, end;
@@ -16,11 +17,11 @@ struct MemoryRange {
     bool contains(const Offset addr) const { return addr >= begin && addr <= end; }
 };
 
-struct SegmentedAddress {
+struct Address {
     Word segment, offset;
-    SegmentedAddress(const Word segment, const Word offset) : segment(segment), offset(offset) {}
-    SegmentedAddress(const Offset linear);
-    SegmentedAddress() : SegmentedAddress(0, 0) {}
+    Address(const Word segment, const Word offset) : segment(segment), offset(offset) {}
+    Address(const Offset linear);
+    Address() : Address(0, 0) {}
     operator std::string() const;
     std::string toString() const;
 
@@ -29,7 +30,7 @@ struct SegmentedAddress {
     }
     void normalize();
 };
-std::ostream& operator<<(std::ostream &os, const SegmentedAddress &arg);
+std::ostream& operator<<(std::ostream &os, const Address &arg);
 
 /*Real mode memory map:
 --- 640 KiB RAM ("Low memory") 
@@ -39,7 +40,7 @@ std::ostream& operator<<(std::ostream &os, const SegmentedAddress &arg);
 0x00500 - 0x07BFF: (29 KiB): Conventional memory, usable memory
 0x07C00 - 0x07DFF: (512 B): OS BootSector
 0x07E00 - 0x7FFFF: (480.5 KiB): Conventional memory
-0x80000 - 0x9FFFF: (128 KiB): EBDA (Extended BIOS Data Area) 
+0x80000 - 0x9FFFF: (128 KiB): EBDA (Extended BIOS Data Area), actual size varies, obtainable through int12
 --- 384 KiB System / Reserved / UMA ("Upper Memory")
 0xA0000 - 0xBFFFF: (128 KiB): Video display memory, hardware mapped 
 --- ROM and hardware mapped / Shadow RAM
@@ -63,21 +64,23 @@ private:
 public:
     Arena();
     Size size() const { return MEM_TOTAL; }
-    Size available() const { return MEM_END - break_; }
+    Size availableBlock() const { return BYTES_TO_PARA(MEM_END - break_); }
+    Size availableBytes() const { return availableBlock() * PARAGRAPH_SIZE; }
     Offset freeStart() const { return break_; }
     Offset freeEnd() const { return MEM_END; }
 
-    void alloc(const Size size);
-    void free(const Size size);
-    Byte read(const Offset addr) const;
-    void write(const Offset addr, const Byte value);
-    void write(const Offset addr, const Word value);
+    void allocBlock(const Size para);
+    void freeBlock(const Size para);
+    Byte readByte(const Offset addr) const;
+    Word readWord(const Offset addr) const;
+    void writeByte(const Offset addr, const Byte value);
+    void writeWord(const Offset addr, const Word value);
     Byte* pointer(const Offset addr) { return data_.begin() + addr; }
-    Byte* pointer(const SegmentedAddress &addr) { return data_.begin() + addr.toLinear(); }
+    Byte* pointer(const Address &addr) { return data_.begin() + addr.toLinear(); }
     Byte* base() { return pointer(0); }
     const Byte* base() const { return pointer(0); }
     const Byte* pointer(const Offset addr) const { return data_.cbegin() + addr; }
-    const Byte* pointer(const SegmentedAddress &addr) const { return data_.cbegin() + addr.toLinear(); }
+    const Byte* pointer(const Address &addr) const { return data_.cbegin() + addr.toLinear(); }
 
     std::string info() const;
     void dump(const std::string &path) const;

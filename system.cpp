@@ -140,7 +140,7 @@ CmdStatus System::commandLoad(const vector<string> &params) {
         return CMD_FAIL;
     }
     data.close();
-    const Size memFree = memory_->available();
+    const Size memFree= memory_->availableBytes();
     // load as exe
     if (memcmp(magic, mz, 2) == 0) {
         output("Detected MZ header, loading as .exe image");

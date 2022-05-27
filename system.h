@@ -20,7 +20,7 @@ private:
     std::unique_ptr<Arena> memory_;
     std::unique_ptr<Dos> os_;
     std::unique_ptr<InterruptInterface> int_;
-    SegmentedAddress loadedCode_, loadedStack_;
+    Address loadedCode_, loadedStack_;
 
 public:
     System();

@@ -33,7 +33,7 @@ protected:
         const Offset
             memStartLinear = mem_->freeStart(),
             memEndLinear = mem_->freeEnd();
-        const SegmentedAddress 
+        const Address 
             memStart(memStartLinear),
             memEnd(memEndLinear);
         Byte *execMem = mem_->pointer(memStartLinear);
@@ -142,7 +142,7 @@ TEST_F(Cpu_8086_Test, MovEvGv) {
         0x8b, 0x36, 0x02, 0x00 // mov si,[0x2]
     };
     setupCode(code, sizeof(code));
-    mem_->write(SegmentedAddress(reg16(REG_DS), 2).toLinear(), (Word)0x1234);
+    mem_->writeWord(Address(reg16(REG_DS), 2).toLinear(), 0x1234);
     cpu_->step();
     ASSERT_EQ(reg16(REG_SI), 0x1234);
 }

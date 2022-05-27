@@ -76,7 +76,7 @@ MzImage::MzImage(const std::string &path) :
     loadModuleSize_ = (header_.pages_in_file - 1) * PAGE_SIZE + header_.last_page_size - loadModuleOffset_;
     // store original values at relocation offsets
     for (auto &reloc : relocs_) {
-        SegmentedAddress relocAddr(reloc.segment, reloc.offset);
+        Address relocAddr(reloc.segment, reloc.offset);
         Offset fileOffset = relocAddr.toLinear() + loadModuleOffset_;
         if (fseek(mzFile, fileOffset, SEEK_SET) != 0) {
             fclose(mzFile);
@@ -119,7 +119,7 @@ std::string MzImage::dump() const {
         msg << "--- relocations: " << endl;
         size_t i = 0;
         for (const auto &r : relocs_) {
-            SegmentedAddress a(r.segment, r.offset);
+            Address a(r.segment, r.offset);
             a.normalize();
             msg << "\t[" << std::dec << i << "]: " << std::hex << r.segment << ":" << r.offset 
                 << ", linear: 0x" << a.toLinear() 
@@ -147,7 +147,7 @@ void MzImage::load(Byte* arenaPtr, const Word loadSegment) const {
     mzFile.close();
     // patch relocations
     for (const auto &r : relocs_) {
-        const SegmentedAddress addr(r.segment, r.offset);
+        const Address addr(r.segment, r.offset);
         const Offset off = addr.toLinear();
         const Word patchedVal = r.value + loadSegment;
         arenaPtr[off] = patchedVal;

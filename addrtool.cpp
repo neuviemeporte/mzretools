@@ -23,7 +23,7 @@ int main() {
             Word seg, ofs;
             segStr >> hex >> seg;
             ofsStr >> hex >> ofs;
-            SegmentedAddress addr(seg, ofs);
+            Address addr(seg, ofs);
             cout << "Segmented address 0x" << hex << seg << ":" << ofs << " -> linear 0x" << addr.toLinear();
             addr.normalize();
             cout << ", normalized: 0x" << hex << addr.segment << ":" << addr.offset << ", linear 0x" << addr.toLinear() << endl;
@@ -32,7 +32,7 @@ int main() {
             istringstream addrStr(line);
             Offset linear;
             addrStr >> hex >> linear;
-            SegmentedAddress addr(linear);
+            Address addr(linear);
             cout << "Linear address 0x" << hex << linear << " -> 0x" << addr.segment << ":" << addr.offset;
             addr.normalize();
             cout << ", normalized: 0x" << hex << addr.toLinear() << " -> 0x" << addr.segment << ":" << addr.offset << endl;

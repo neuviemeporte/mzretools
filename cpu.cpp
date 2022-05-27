@@ -12,33 +12,6 @@
 
 using namespace std;
 
-void cpuMessage(const string &msg) {
-    cout << msg << endl;
-}
-
-Cpu_8086::Cpu_8086(Byte *memBase, InterruptInterface *intif) : memBase_(memBase), code_(nullptr), int_(intif), done_(false), step_(false) {
-    resetRegs();
-}
-
-std::string Cpu_8086::info() const {
-    ostringstream str;
-    const Word flags = reg16(REG_FLAGS);
-    str << std::hex 
-        << "IP = " << hexVal(reg16(REG_IP)) << ", FLAGS = " << hexVal(flags) << " / " << binString(flags) << " / " << flagString(flags) << endl
-        << "AX = " << hexVal(reg16(REG_AX)) << ", BX = " << hexVal(reg16(REG_BX)) << ", CX = " << hexVal(reg16(REG_CX)) << ", DX = " << hexVal(reg16(REG_DX)) << endl
-        << "SI = " << hexVal(reg16(REG_SI)) << ", DI = " << hexVal(reg16(REG_DI)) << ", BP = " << hexVal(reg16(REG_BP)) << ", SP = " << hexVal(reg16(REG_SP)) << endl
-        << "CS = " << hexVal(reg16(REG_CS)) << ", DS = " << hexVal(reg16(REG_DS)) << ", SS = " << hexVal(reg16(REG_SS)) << ", ES = " << hexVal(reg16(REG_ES));
-    return str.str();
-}
-
-string Cpu_8086::flagString(const Word flags) const {
-    std::ostringstream str; // // C1 Z1 S0 O0 A1 P1
-    str << "C" << ((flags & FLAG_CARRY) != 0) << " Z" << ((flags & FLAG_ZERO) != 0) << " S" << ((flags & FLAG_SIGN  ) != 0)
-       << " O" << ((flags & FLAG_OVER ) != 0) << " A" << ((flags & FLAG_AUXC) != 0) << " P" << ((flags & FLAG_PARITY) != 0)
-       << " D" << ((flags & FLAG_DIR  ) != 0) << " I" << ((flags & FLAG_INT ) != 0) << " T" << ((flags & FLAG_TRAP  ) != 0);
-    return str.str();
-}
-
 enum Opcode : Byte {
     OP_ADD_Eb_Gb  = 0x00,
     OP_ADD_Ev_Gv  = 0x01,
@@ -249,6 +222,39 @@ enum Opcode : Byte {
     OP_STD        = 0xfd,
 };
 
+void cpuMessage(const string &msg) {
+    cout << msg << endl;
+}
+
+Cpu_8086::Cpu_8086(Byte *memBase, InterruptInterface *intif) : memBase_(memBase), code_(nullptr), int_(intif), 
+    opcode_(OP_NOP), modrm_(0), 
+    byteOperand1_(0), byteOperand2_(0), byteResult_(0),
+    wordOperand1_(0), wordOperand2_(0), wordResult_(0),
+    segmentReg_(REG_NONE), destReg_(REG_NONE),
+    done_(false), step_(false) {
+    resetRegs();
+}
+
+std::string Cpu_8086::info() const {
+    ostringstream str;
+    const Word flags = reg16(REG_FLAGS);
+    str << std::hex 
+        << "IP = " << hexVal(reg16(REG_IP)) << ", FLAGS = " << hexVal(flags) << " / " << binString(flags) << " / " << flagString(flags) << endl
+        << "AX = " << hexVal(reg16(REG_AX)) << ", BX = " << hexVal(reg16(REG_BX)) << ", CX = " << hexVal(reg16(REG_CX)) << ", DX = " << hexVal(reg16(REG_DX)) << endl
+        << "SI = " << hexVal(reg16(REG_SI)) << ", DI = " << hexVal(reg16(REG_DI)) << ", BP = " << hexVal(reg16(REG_BP)) << ", SP = " << hexVal(reg16(REG_SP)) << endl
+        << "CS = " << hexVal(reg16(REG_CS)) << ", DS = " << hexVal(reg16(REG_DS)) << ", SS = " << hexVal(reg16(REG_SS)) << ", ES = " << hexVal(reg16(REG_ES));
+    return str.str();
+}
+
+string Cpu_8086::flagString(const Word flags) const {
+    std::ostringstream str; // // C1 Z1 S0 O0 A1 P1
+    str << "C" << ((flags & FLAG_CARRY) != 0) << " Z" << ((flags & FLAG_ZERO) != 0) << " S" << ((flags & FLAG_SIGN  ) != 0)
+       << " O" << ((flags & FLAG_OVER ) != 0) << " A" << ((flags & FLAG_AUXC) != 0) << " P" << ((flags & FLAG_PARITY) != 0)
+       << " D" << ((flags & FLAG_DIR  ) != 0) << " I" << ((flags & FLAG_INT ) != 0) << " T" << ((flags & FLAG_TRAP  ) != 0);
+    return str.str();
+}
+
+
 // parity flag values for all possible 8-bit results, used as a lookup table
 // to avoid counting 1 bits after an arithmetic instruction 
 // (8086 only checks the lower 8 bits, even for 16bit results)
@@ -292,9 +298,9 @@ static const Word parity_lookup[256] = {
 
 // possible values of the MOD field in the ModR/M byte
 enum ModRMMod : Byte {
-    MODRM_TAB1 = 0, 
-    MODRM_TAB2_8 = 1, 
-    MODRM_TAB2_16 = 2, 
+    MODRM_NODISP = 0, 
+    MODRM_DISP8 = 1, 
+    MODRM_DISP16 = 2, 
     MODRM_REG = 3,
 };
 
@@ -323,52 +329,64 @@ enum ModRMAddress : Byte {
     MODRM_BX    = 7, MODRM_BX_OFF    = 7,
 };
 
-static const Byte NIBBLE_CARRY = 0x10;
-static const Byte BYTE_SIGN = 0x80;
-static const Word WORD_SIGN = 0x8000;
+Register Cpu_8086::destinationRegister(const Byte opcode) const {
+    return REG_NONE;
+}
+
+Register Cpu_8086::defaultSeg(const Register reg) const {
+    switch (reg) {
+    case REG_IP: return REG_CS;
+    case REG_SP:
+    case REG_BP: return REG_SS;
+    case REG_DI: return REG_ES;
+    default: return REG_DS;
+    }
+}
 
 Offset Cpu_8086::modrmAddress(const Byte mod, const Byte rm) const {
-    // data pointed to by the modrm byte is always relative to DS?
-    Offset address = SEG_TO_LINEAR(reg16(REG_DS));
+    Register baseReg;
     // obtain byte/word offset value for the displacement addressing modes, if applicable
-    Offset offset;
+    Offset displacement, address;
     switch (mod) {
     // assuming cs:ip points at the opcode, so the offset will be 2 bytes past that,
     // after the opcode and the modrm byte itself
-    case MODRM_TAB2_8:  offset = ipByte(2); break; 
-    case MODRM_TAB2_16: offset = ipWord(2); break;
+    case MODRM_DISP8:  displacement = ipByte(2); break; 
+    case MODRM_DISP16: displacement = ipWord(2); break;
     }
-    // calculate address of the word or byte
+    // calculate address of the word or byte from the register values and optionally the displacement
     switch (mod) {
     // no displacement mode
-    case MODRM_TAB1: 
+    case MODRM_NODISP: 
         switch (rm) {
-        case MODRM_BX_SI: address += reg16(REG_BX) + reg16(REG_SI); break;
-        case MODRM_BX_DI: address += reg16(REG_BX) + reg16(REG_DI); break;
-        case MODRM_BP_SI: address += reg16(REG_BP) + reg16(REG_SI); break;
-        case MODRM_BP_DI: address += reg16(REG_BP) + reg16(REG_DI); break;
-        case MODRM_SI:    address += reg16(REG_SI); break;
-        case MODRM_DI:    address += reg16(REG_DI); break;
-        case MODRM_ADDR:  address += ipWord(2); break; // address is the word past the opcode and modrm byte itself
-        case MODRM_BX:    address += reg16(REG_BX); break;
+        case MODRM_BX_SI: baseReg = REG_BX;   address = reg16(REG_BX) + reg16(REG_SI); break;
+        case MODRM_BX_DI: baseReg = REG_BX;   address = reg16(REG_BX) + reg16(REG_DI); break;
+        case MODRM_BP_SI: baseReg = REG_BP;   address = reg16(REG_BP) + reg16(REG_SI); break;
+        case MODRM_BP_DI: baseReg = REG_BP;   address = reg16(REG_BP) + reg16(REG_DI); break;
+        case MODRM_SI:    baseReg = REG_SI;   address = reg16(REG_SI); break;
+        case MODRM_DI:    baseReg = REG_DI;   address = reg16(REG_DI); break;
+        case MODRM_ADDR:  baseReg = REG_NONE; address = ipWord(2); break; // address is the word past the opcode and modrm byte itself
+        case MODRM_BX:    baseReg = REG_BX;   address = reg16(REG_BX); break;
         }
         break;
     // 8- and 16-bit displacement modes
-    case MODRM_TAB2_8: // fall through
-    case MODRM_TAB2_16:
+    case MODRM_DISP8: // fall through
+    case MODRM_DISP16:
         switch (rm) {
-        case MODRM_BX_SI_OFF: address += reg16(REG_BX) + reg16(REG_SI) + offset; break;
-        case MODRM_BX_DI_OFF: address += reg16(REG_BX) + reg16(REG_DI) + offset; break;
-        case MODRM_BP_SI_OFF: address += reg16(REG_BP) + reg16(REG_SI) + offset; break;
-        case MODRM_BP_DI_OFF: address += reg16(REG_BP) + reg16(REG_DI) + offset; break;
-        case MODRM_SI_OFF:    address += reg16(REG_SI) + offset; break;
-        case MODRM_DI_OFF:    address += reg16(REG_DI) + offset; break;
-        case MODRM_BP_OFF:    address += reg16(REG_BP) + offset; break;
-        case MODRM_BX_OFF:    address += reg16(REG_BX) + offset; break;
+        case MODRM_BX_SI_OFF: baseReg = REG_BX; address = reg16(REG_BX) + reg16(REG_SI) + displacement; break;
+        case MODRM_BX_DI_OFF: baseReg = REG_BX; address = reg16(REG_BX) + reg16(REG_DI) + displacement; break;
+        case MODRM_BP_SI_OFF: baseReg = REG_BP; address = reg16(REG_BP) + reg16(REG_SI) + displacement; break;
+        case MODRM_BP_DI_OFF: baseReg = REG_BP; address = reg16(REG_BP) + reg16(REG_DI) + displacement; break;
+        case MODRM_SI_OFF:    baseReg = REG_SI; address = reg16(REG_SI) + displacement; break;
+        case MODRM_DI_OFF:    baseReg = REG_DI; address = reg16(REG_DI) + displacement; break;
+        case MODRM_BP_OFF:    baseReg = REG_BP; address = reg16(REG_BP) + displacement; break;
+        case MODRM_BX_OFF:    baseReg = REG_BX; address = reg16(REG_BX) + displacement; break;
         }
         break;
-    }    
-    return address;
+    }
+    // the calculated address is relative to a segment that is implicitly associated with the base register
+    // TODO: implement segment override prefix which changes the default segment
+    Offset segAddress = SEG_TO_LINEAR(reg16(defaultSeg(baseReg)));
+    return segAddress + address;
 }
 
 // obtain the byte value pointed to by the ModR/M byte of an instruction
@@ -378,9 +396,9 @@ Byte Cpu_8086::modrmByte(const Byte modrm) const {
         rm  = modrm_rm(modrm);
     switch (mod) {
     // modrm byte indicates a memory operand, calculate its address and return it
-    case MODRM_TAB1:
-    case MODRM_TAB2_8: // fall through
-    case MODRM_TAB2_16:
+    case MODRM_NODISP:
+    case MODRM_DISP8: // fall through
+    case MODRM_DISP16:
         return memBase_[modrmAddress(mod, rm)];
     // modrm byte indicates a register
     case MODRM_REG:
@@ -394,9 +412,9 @@ Word Cpu_8086::modrmWord(const Byte modrm) const {
         rm  = modrm_rm(modrm);
     switch (mod) {
     // modrm byte indicates a memory operand, calculate its address and return it
-    case MODRM_TAB1:
-    case MODRM_TAB2_8: // fall through
-    case MODRM_TAB2_16:
+    case MODRM_NODISP:
+    case MODRM_DISP8: // fall through
+    case MODRM_DISP16:
         return *reinterpret_cast<Word*>(memBase_ + modrmAddress(mod, rm));
     // modrm byte indicates a register
     case MODRM_REG:
@@ -408,17 +426,17 @@ Word Cpu_8086::modrmWord(const Byte modrm) const {
 Word Cpu_8086::modrmLength(const Byte modrm) const {
     const Word length = 2; // at least opcode + modrm byte
     switch (modrm_mod(modrm)) {
-    case MODRM_TAB1:
+    case MODRM_NODISP:
         switch (modrm_rm(modrm)) {
         // opcode + modrm + direct address word
         case MODRM_ADDR: return length + 2;
         // opcode + modrm
         default: return length;
         }
-    case MODRM_TAB2_8:
+    case MODRM_DISP8:
         // opcode + modrm + displacement byte
         return length + 1;
-    case MODRM_TAB2_16:
+    case MODRM_DISP16:
         // opcode + modrm + displacement word
         return length + 2;
     case MODRM_REG:
@@ -427,17 +445,17 @@ Word Cpu_8086::modrmLength(const Byte modrm) const {
     }
 }
 
-void Cpu_8086::init(const SegmentedAddress &codeAddr, const SegmentedAddress &stackAddr) {
+void Cpu_8086::init(const Address &codeAddr, const Address &stackAddr) {
     // initialize registers
     resetRegs();
     reg16(REG_CS) = codeAddr.segment;
     reg16(REG_IP) = codeAddr.offset;
     reg16(REG_SS) = stackAddr.segment;
     reg16(REG_SP) = stackAddr.offset;
-    SegmentedAddress codeSeg(reg16(REG_CS), 0);
+    Address codeSeg(reg16(REG_CS), 0);
     const Offset codeLinearAddr = codeSeg.toLinear();
     const Offset pspLinearAddr = codeLinearAddr - PSP_SIZE;
-    SegmentedAddress pspAddr(pspLinearAddr);
+    Address pspAddr(pspLinearAddr);
     assert(pspAddr.offset == 0);
     reg16(REG_DS) = reg16(REG_ES) = pspAddr.segment;
 
@@ -480,63 +498,67 @@ void Cpu_8086::pipeline() {
 void Cpu_8086::fetch() {
     // fetch opcode
     opcode_ = ipByte();
-    // fetch first operand (optional)
+    // fetch value of first operand (optional)
     switch (opcode_) {
     case OP_MOV_Gv_Ev:
         modrm_ = ipByte(1);
-        regid_ = modrm_regs16[modrm_reg(modrm_)];
-        word1_ = modrmWord(modrm_);
+        destReg_ = modrm_regs16[modrm_reg(modrm_)];
+        wordOperand1_ = modrmWord(modrm_);
         return;
     case OP_ADD_AL_Ib: 
     case OP_SUB_AL_Ib:
     case OP_CMP_AL_Ib:
-        byte1_ = reg8(REG_AL); 
+        byteOperand1_ = reg8(REG_AL); 
         break;
     case OP_JNB_Jb:
     case OP_MOV_AL_Ib: 
     case OP_MOV_AH_Ib:
     case OP_INT_Ib:
-        byte1_ = ipByte(1); 
+        byteOperand1_ = ipByte(1); 
         return;
     case OP_MOV_DI_Iv:
-        word1_ = ipWord(1); 
+        wordOperand1_ = ipWord(1); 
         return;
     default: unknown("fetch#1");
     }
-    // fetch second operand (optional)
+    // fetch value of second operand (optional)
     switch (opcode_) {
     case OP_ADD_AL_Ib: 
     case OP_SUB_AL_Ib:
     case OP_CMP_AL_Ib:
-        byte2_ = ipByte(1); break;
+        byteOperand2_ = ipByte(1); break;
     default: unknown("fetch#2");
     }    
 }
+
+static const Byte NIBBLE_CARRY = 0x10;
+static const Byte BYTE_SIGN = 0x80;
+static const Word WORD_SIGN = 0x8000;
 
 void Cpu_8086::evaluate() {
     // evaluate result, update carry and overflow
     switch (opcode_) {
     case OP_ADD_AL_Ib: 
-        resultb_ = byte1_ + byte2_;
-        setFlag(FLAG_CARRY, resultb_ < byte1_);
-        setFlag(FLAG_OVER, ((byte1_ ^ byte2_ ^ BYTE_SIGN) & (resultb_ ^ byte2_)) & BYTE_SIGN);
+        byteResult_ = byteOperand1_ + byteOperand2_;
+        setFlag(FLAG_CARRY, byteResult_ < byteOperand1_);
+        setFlag(FLAG_OVER, ((byteOperand1_ ^ byteOperand2_ ^ BYTE_SIGN) & (byteResult_ ^ byteOperand2_)) & BYTE_SIGN);
         break;
     case OP_SUB_AL_Ib:
     case OP_CMP_AL_Ib:
-        resultb_ = byte1_ - byte2_;
-        setFlag(FLAG_CARRY, byte1_ < byte2_);
-        setFlag(FLAG_OVER, ((byte1_ ^ byte2_) & (byte1_ ^ resultb_)) & BYTE_SIGN);
+        byteResult_ = byteOperand1_ - byteOperand2_;
+        setFlag(FLAG_CARRY, byteOperand1_ < byteOperand2_);
+        setFlag(FLAG_OVER, ((byteOperand1_ ^ byteOperand2_) & (byteOperand1_ ^ byteResult_)) & BYTE_SIGN);
         break;
     case OP_JNB_Jb:
-        resultb_ = getFlag(FLAG_CARRY) ? 0 : byte1_;
+        byteResult_ = getFlag(FLAG_CARRY) ? 0 : byteOperand1_;
         return;
     case OP_MOV_AL_Ib:
     case OP_MOV_AH_Ib:
-        resultb_ = byte1_; // not actually stupid, do not remove
+        byteResult_ = byteOperand1_; // this lets mov share the switch with add, sub etc. below
         return; 
     case OP_MOV_Gv_Ev:
     case OP_MOV_DI_Iv:
-        resultw_ = word1_; // likewise
+        wordResult_ = wordOperand1_; // likewise
         return; 
     case OP_INT_Ib:
         return;
@@ -548,10 +570,10 @@ void Cpu_8086::evaluate() {
     case OP_ADD_AL_Ib: 
     case OP_SUB_AL_Ib:
     case OP_CMP_AL_Ib:
-        setFlag(FLAG_ZERO, resultb_ == 0);
-        setFlag(FLAG_SIGN, resultb_ & BYTE_SIGN);
-        setFlag(FLAG_AUXC, ((byte1_ ^ byte2_) ^ resultb_) & NIBBLE_CARRY);
-        setFlag(FLAG_PARITY, parity_lookup[resultb_]);
+        setFlag(FLAG_ZERO, byteResult_ == 0);
+        setFlag(FLAG_SIGN, byteResult_ & BYTE_SIGN);
+        setFlag(FLAG_AUXC, ((byteOperand1_ ^ byteOperand2_) ^ byteResult_) & NIBBLE_CARRY);
+        setFlag(FLAG_PARITY, parity_lookup[byteResult_]);
         break;
     default: unknown("evaluate#2");        
     }
@@ -565,21 +587,21 @@ void Cpu_8086::commit() {
     case OP_JNB_Jb:
         return;
     case OP_MOV_Gv_Ev:
-        reg16(regid_) = resultw_;
+        reg16(destReg_) = wordResult_;
         break;
     case OP_ADD_AL_Ib: 
     case OP_SUB_AL_Ib:        
     case OP_MOV_AL_Ib:
-        reg8(REG_AL) = resultb_; 
+        reg8(REG_AL) = byteResult_; 
         break;
     case OP_MOV_AH_Ib: 
-        reg8(REG_AH) = resultb_; 
+        reg8(REG_AH) = byteResult_; 
         break;
     case OP_MOV_DI_Iv:
-        reg16(REG_DI) = resultw_; 
+        reg16(REG_DI) = wordResult_; 
         break;
     case OP_INT_Ib:
-        switch (int_->interrupt(*this, byte1_)) {
+        switch (int_->interrupt(*this, byteOperand1_)) {
         case INT_EXIT:
             done_ = true;
             break;
@@ -595,7 +617,7 @@ void Cpu_8086::advance() {
     Word amount;
     switch (opcode_) {
     case OP_MOV_Gv_Ev: amount = modrmLength(modrm_); break;
-    case OP_JNB_Jb:    amount = 2 + resultb_; break;
+    case OP_JNB_Jb:    amount = 2 + byteResult_; break;
     case OP_ADD_AL_Ib: 
     case OP_SUB_AL_Ib:
     case OP_CMP_AL_Ib:

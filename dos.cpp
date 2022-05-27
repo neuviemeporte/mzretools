@@ -47,23 +47,34 @@ ProgramSegmentPrefix::ProgramSegmentPrefix() :
 Dos::Dos(Arena *memory) : memory_(memory) {
 }
 
-void Dos::loadExe(const MzImage &mz, SegmentedAddress &codeReloc, SegmentedAddress &stackReloc) {
-    const Offset freeMemStart = memory_->freeStart();
-    SegmentedAddress pspAddr(freeMemStart);
-    dosMessage("Free DOS memory starts at address "s + pspAddr.toString());
+void Dos::loadExe(const MzImage &mz, Address &codeReloc, Address &stackReloc) {
+    const Address freeStart{memory_->freeStart()};
+    const Size memSize = memory_->availableBytes(),
+               memBlock = memory_->availableBlock();
+    Address pspAddr = freeStart;
     // align PSP to paragraph boundary
     if (pspAddr.offset != 0) {
         pspAddr.segment += 1;
         pspAddr.offset = 0;
     }
-    SegmentedAddress loadAddr(pspAddr.toLinear() + PSP_SIZE);
+    dosMessage("Free DOS memory: "s + to_string(memSize) + ", starts at address "s + freeStart.toString());
+    Address loadAddr(pspAddr.toLinear() + PSP_SIZE);
     assert(loadAddr.offset == 0);
     dosMessage("Determined address of PSP: "s + pspAddr.toString() + ", load module: " + loadAddr.toString());
     const Size 
         loadModuleSize = mz.loadModuleSize(),
-        allocSize = PSP_SIZE + loadModuleSize + mz.minAlloc();
-    // allocate minimum memory
-    memory_->alloc(allocSize);
+        minSize = PSP_SIZE + loadModuleSize + mz.minAlloc(),
+        maxSize = PSP_SIZE + loadModuleSize + mz.maxAlloc(),
+        minBlock = BYTES_TO_PARA(minSize),
+        maxBlock = BYTES_TO_PARA(maxSize);
+    dosMessage("Load module is "s + to_string(loadModuleSize) + " / " + hexVal(loadModuleSize) + " bytes, min alloc = " 
+                + to_string(minSize) + ", max = " + to_string(maxSize));
+    if (minBlock > memBlock) throw DosError("Minimum alloc size of " + to_string(minSize) + " bytes exceeds available memory: " + to_string(memSize));
+    const Size allocBlock = min(memBlock, maxBlock);
+    assert(allocBlock % PARAGRAPH_SIZE == 0);
+    // allocate memory
+    memory_->allocBlock(allocBlock);
+    dosMessage("Allocated memory: "s + to_string(allocBlock) + " paragraphs, free mem at " + Address{memory_->freeStart()}.toString());
     // blit psp data over to memory
     // TODO: implement cmdline
     ProgramSegmentPrefix psp;
@@ -74,7 +85,7 @@ void Dos::loadExe(const MzImage &mz, SegmentedAddress &codeReloc, SegmentedAddre
     copy(pspData, pspData + PSP_SIZE, pspPtr);
     // read load module data from exe file into memory
     const Offset loadModuleOffset = mz.loadModuleOffset();
-    dosMessage("Loading from offset "s + hexVal(loadModuleOffset) + ", size = " + to_string(loadModuleSize));
+    dosMessage("Loading from offset "s + hexVal(loadModuleOffset) + ", size = " );
     mz.load(exePtr, loadAddr.segment);
     // calculate relocated addresses for code and stack
     codeReloc = mz.codeAddress();
