@@ -31,6 +31,7 @@ struct FileStatus {
 FileStatus checkFile(const std::string &path);
 bool deleteFile(const std::string &path);
 bool readBinaryFile(const std::string &path, char *buf, const Size size = 0);
+void writeBinaryFile(const std::string &path, const char *buf, const Size size);
 std::string binString(const Word &value);
 
 #endif // UTIL_H

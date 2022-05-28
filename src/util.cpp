@@ -136,6 +136,11 @@ bool readBinaryFile(const std::string &path, char *buf, const Size size) {
     return true;
 }
 
+void writeBinaryFile(const std::string &path, const char *buf, const Size size) {
+    ofstream file{path, ios::binary};
+    file.write(buf, size);
+}
+
 std::string binString(const Word &value) {
     bitset<16> bits{value};
     return bits.to_string();

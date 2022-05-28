@@ -25,6 +25,7 @@ set(LIBDOS_HDR
     include/dos/util.h
     include/dos/opcodes.h
     include/dos/registers.h
+    include/dos/modrm.h
     include/dos/cpu.h
     include/dos/interrupt.h
     include/dos/address.h

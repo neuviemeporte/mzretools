@@ -25,7 +25,7 @@ private:
     InterruptInterface *int_;
     Registers regs_;
     const Byte *memBase_, *code_;
-    Byte opcode_, modrm_mod_, modrm_reg_, modrm_mem_;
+    Byte opcode_, modrm_;
     Byte byteOperand1_, byteOperand2_, byteResult_;
     Word wordOperand1_, wordOperand2_, wordResult_;
     bool done_, step_;
@@ -44,14 +44,13 @@ private:
 
     // instruction pointer access and manipulation
     inline Byte ipByte(const Word offset = 0) const { return code_[regs_.bit16(REG_IP) + offset]; }
-    inline Word ipWord(const Word offset = 0) const { return *reinterpret_cast<const Word*>(code_ + regs_.bit16(REG_IP) + offset); }
+    inline Word ipWord(const Word offset = 0) const { return *WORD_PTR(code_, regs_.bit16(REG_IP) + offset); }
     inline void ipAdvance(const Word amount) { regs_.bit16(REG_IP) += amount; }
 
-    // ModR/M byte parsing and evaluation
-    inline Byte modrm_mod(const Byte modrm) const { return modrm >> 6; }
-    inline Byte modrm_reg(const Byte modrm) const { return (modrm >> 3) & 0b111; }
-    inline Byte modrm_mem(const Byte modrm) const { return modrm & 0b111; }
-    void modrmParse();
+    inline Byte memByte(const Offset offset) const { return memBase_[offset]; }
+    inline Word memWord(const Offset offset) const { return *WORD_PTR(memBase_, offset); }
+
+    // ModR/M byte and evaluation
     Register modrmRegister(const RegType type, const Byte value) const;
     inline Register modrmRegRegister(const RegType regType) const;
     inline Register modrmMemRegister(const RegType regType) const;
@@ -61,7 +60,7 @@ private:
     // instruction execution pipeline
     void pipeline();
     void dispatch();
-    void unknown(const std::string &stage);
+    void unknown();
 
     // instructions 
     void instr_mov();
