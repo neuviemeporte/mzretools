@@ -32,16 +32,21 @@ TEST_F(MemoryTest, Access) {
     const Offset off = 0x1234;
     const Byte b = 0xab;
     const Word w = 0x12fe;
+    const Byte a[] = { 0xca, 0xfe, 0xba, 0xbe };
     mem.writeByte(off, b);
     ASSERT_EQ(mem.readByte(off), b);
     mem.writeWord(off, w);
     ASSERT_EQ(mem.readWord(off), w);
+    mem.writeBuf(off, a, sizeof(a));
+    for (size_t i = 0; i < sizeof(a); ++i) {
+        ASSERT_EQ(mem.readByte(off + i), a[i]);
+    }
 }
 
 TEST_F(MemoryTest, Alloc) {
     const Size avail = mem.availableBlock();
     mem.allocBlock(avail);
-    cout << "Allocated max block of " << avail << " paragraphs, free mem at " << hexVal(mem.freeStart()) << endl;
+    TRACELN("Allocated max block of " << avail << " paragraphs, free mem at " << hexVal(mem.freeStart()));
     ASSERT_EQ(mem.availableBlock(), 0);
     mem.freeBlock(avail);
     ASSERT_EQ(mem.availableBlock(), avail);

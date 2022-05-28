@@ -58,7 +58,7 @@ void Memory::writeWord(const Offset addr, const Word value) {
 
 void Memory::writeBuf(const Offset addr, const Byte *data, const Size size) {
     if (addr + size > MEM_TOTAL) throw MemoryError(std::string("Buffer write outside memory bounds"));
-    copy(data, data + size, begin(data_));
+    copy(data, data + size, begin(data_) + addr);
 }
 
 string Memory::info() const {

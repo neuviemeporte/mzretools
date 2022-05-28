@@ -112,10 +112,10 @@ std::string MzImage::dump() const {
         << "\t[0x" << hex << offsetof(Header, checksum) << "] checksum = " << std::hex << "0x" << header_.checksum << endl
         << "\t[0x" << hex << offsetof(Header, cs) << "] cs:ip = " << std::hex << header_.cs << ":" << header_.ip << endl
         << "\t[0x" << hex << offsetof(Header, reloc_table_offset) << "] reloc_table_offset = " << std::hex << "0x" << header_.reloc_table_offset << endl
-        << "\t[0x" << hex << offsetof(Header, overlay_number) << "] overlay_number = " << std::dec << header_.overlay_number << endl;
+        << "\t[0x" << hex << offsetof(Header, overlay_number) << "] overlay_number = " << std::dec << header_.overlay_number;
 
     if (relocs_.size()) {
-        msg << "--- relocations: " << endl;
+        msg << endl << "--- relocations: " << endl;
         size_t i = 0;
         for (const auto &r : relocs_) {
             Address a(r.segment, r.offset);
@@ -123,14 +123,13 @@ std::string MzImage::dump() const {
             msg << "\t[" << std::dec << i << "]: " << std::hex << r.segment << ":" << r.offset 
                 << ", linear: 0x" << a.toLinear() 
                 << ", file offset: 0x" << a.toLinear() + loadModuleOffset_ 
-                << ", file value = 0x" << r.value
-                << endl;
+                << ", file value = 0x" << r.value << endl;
             i++;
         }
     }
 
     msg << "--- load module @ " << hex << "0x" << loadModuleOffset_ 
-        << ", size = 0x" << loadModuleSize_ << " / " << dec << loadModuleSize_ << " bytes" << endl;
+        << ", size = 0x" << loadModuleSize_ << " / " << dec << loadModuleSize_ << " bytes";
     return msg.str();
 }
 

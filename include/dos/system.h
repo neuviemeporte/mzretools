@@ -25,6 +25,7 @@ private:
 public:
     System();
     std::string info() const;
+    std::string cpuInfo() const { return cpu_->info(); }
     CmdStatus command(const std::string &cmd);
 
 private:

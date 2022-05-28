@@ -1,6 +1,6 @@
 #include <iostream>
-#include "system.h"
-#include "error.h"
+#include "dos/system.h"
+#include "dos/error.h"
 
 using namespace std;
 

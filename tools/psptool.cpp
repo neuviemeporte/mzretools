@@ -1,8 +1,7 @@
-#include "dos.h"
-#include "util.h"
-#include "error.h"
-
 #include <iostream>
+#include "dos/dos.h"
+#include "dos/util.h"
+#include "dos/error.h"
 
 using namespace std;
 
