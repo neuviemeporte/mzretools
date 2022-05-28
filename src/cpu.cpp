@@ -88,26 +88,11 @@ Cpu_8086::Cpu_8086(Memory *memory, InterruptInterface *inthandler) :
     wordOperand1_(0), wordOperand2_(0), wordResult_(0),
     done_(false), step_(false) {
     memBase_ = mem_->base();
-    resetRegs();
+    regs_.reset();
 }
 
 std::string Cpu_8086::info() const {
-    ostringstream str;
-    const Word flags = reg16(REG_FLAGS);
-    str << std::hex 
-        << "IP = " << hexVal(reg16(REG_IP)) << ", FLAGS = " << hexVal(flags) << " / " << binString(flags) << " / " << flagString(flags) << endl
-        << "AX = " << hexVal(reg16(REG_AX)) << ", BX = " << hexVal(reg16(REG_BX)) << ", CX = " << hexVal(reg16(REG_CX)) << ", DX = " << hexVal(reg16(REG_DX)) << endl
-        << "SI = " << hexVal(reg16(REG_SI)) << ", DI = " << hexVal(reg16(REG_DI)) << ", BP = " << hexVal(reg16(REG_BP)) << ", SP = " << hexVal(reg16(REG_SP)) << endl
-        << "CS = " << hexVal(reg16(REG_CS)) << ", DS = " << hexVal(reg16(REG_DS)) << ", SS = " << hexVal(reg16(REG_SS)) << ", ES = " << hexVal(reg16(REG_ES));
-    return str.str();
-}
-
-string Cpu_8086::flagString(const Word flags) const {
-    std::ostringstream str; // // C1 Z1 S0 O0 A1 P1
-    str << "C" << ((flags & FLAG_CARRY) != 0) << " Z" << ((flags & FLAG_ZERO) != 0) << " S" << ((flags & FLAG_SIGN  ) != 0)
-       << " O" << ((flags & FLAG_OVER ) != 0) << " A" << ((flags & FLAG_AUXC) != 0) << " P" << ((flags & FLAG_PARITY) != 0)
-       << " D" << ((flags & FLAG_DIR  ) != 0) << " I" << ((flags & FLAG_INT ) != 0) << " T" << ((flags & FLAG_TRAP  ) != 0);
-    return str.str();
+    return regs_.dump();
 }
 
 Register Cpu_8086::defaultSeg(const Register reg) const {
@@ -178,28 +163,28 @@ Offset Cpu_8086::modrmMemAddress() const {
     // no displacement mode
     case MODRM_NODISP: 
         switch (modrm_mem_) {
-        case MODRM_BX_SI: baseReg = REG_BX;   address = reg16(REG_BX) + reg16(REG_SI); break;
-        case MODRM_BX_DI: baseReg = REG_BX;   address = reg16(REG_BX) + reg16(REG_DI); break;
-        case MODRM_BP_SI: baseReg = REG_BP;   address = reg16(REG_BP) + reg16(REG_SI); break;
-        case MODRM_BP_DI: baseReg = REG_BP;   address = reg16(REG_BP) + reg16(REG_DI); break;
-        case MODRM_SI:    baseReg = REG_SI;   address = reg16(REG_SI); break;
-        case MODRM_DI:    baseReg = REG_DI;   address = reg16(REG_DI); break;
+        case MODRM_BX_SI: baseReg = REG_BX;   address = regs_.bit16(REG_BX) + regs_.bit16(REG_SI); break;
+        case MODRM_BX_DI: baseReg = REG_BX;   address = regs_.bit16(REG_BX) + regs_.bit16(REG_DI); break;
+        case MODRM_BP_SI: baseReg = REG_BP;   address = regs_.bit16(REG_BP) + regs_.bit16(REG_SI); break;
+        case MODRM_BP_DI: baseReg = REG_BP;   address = regs_.bit16(REG_BP) + regs_.bit16(REG_DI); break;
+        case MODRM_SI:    baseReg = REG_SI;   address = regs_.bit16(REG_SI); break;
+        case MODRM_DI:    baseReg = REG_DI;   address = regs_.bit16(REG_DI); break;
         case MODRM_ADDR:  baseReg = REG_NONE; address = ipWord(2); break; // address is the word past the opcode and modrm byte itself
-        case MODRM_BX:    baseReg = REG_BX;   address = reg16(REG_BX); break;
+        case MODRM_BX:    baseReg = REG_BX;   address = regs_.bit16(REG_BX); break;
         }
         break;
     // 8- and 16-bit displacement modes
     case MODRM_DISP8: // fall through
     case MODRM_DISP16:
         switch (modrm_mem_) {
-        case MODRM_BX_SI_OFF: baseReg = REG_BX; address = reg16(REG_BX) + reg16(REG_SI) + displacement; break;
-        case MODRM_BX_DI_OFF: baseReg = REG_BX; address = reg16(REG_BX) + reg16(REG_DI) + displacement; break;
-        case MODRM_BP_SI_OFF: baseReg = REG_BP; address = reg16(REG_BP) + reg16(REG_SI) + displacement; break;
-        case MODRM_BP_DI_OFF: baseReg = REG_BP; address = reg16(REG_BP) + reg16(REG_DI) + displacement; break;
-        case MODRM_SI_OFF:    baseReg = REG_SI; address = reg16(REG_SI) + displacement; break;
-        case MODRM_DI_OFF:    baseReg = REG_DI; address = reg16(REG_DI) + displacement; break;
-        case MODRM_BP_OFF:    baseReg = REG_BP; address = reg16(REG_BP) + displacement; break;
-        case MODRM_BX_OFF:    baseReg = REG_BX; address = reg16(REG_BX) + displacement; break;
+        case MODRM_BX_SI_OFF: baseReg = REG_BX; address = regs_.bit16(REG_BX) + regs_.bit16(REG_SI) + displacement; break;
+        case MODRM_BX_DI_OFF: baseReg = REG_BX; address = regs_.bit16(REG_BX) + regs_.bit16(REG_DI) + displacement; break;
+        case MODRM_BP_SI_OFF: baseReg = REG_BP; address = regs_.bit16(REG_BP) + regs_.bit16(REG_SI) + displacement; break;
+        case MODRM_BP_DI_OFF: baseReg = REG_BP; address = regs_.bit16(REG_BP) + regs_.bit16(REG_DI) + displacement; break;
+        case MODRM_SI_OFF:    baseReg = REG_SI; address = regs_.bit16(REG_SI) + displacement; break;
+        case MODRM_DI_OFF:    baseReg = REG_DI; address = regs_.bit16(REG_DI) + displacement; break;
+        case MODRM_BP_OFF:    baseReg = REG_BP; address = regs_.bit16(REG_BP) + displacement; break;
+        case MODRM_BX_OFF:    baseReg = REG_BX; address = regs_.bit16(REG_BX) + displacement; break;
         }
         break;
     default:
@@ -208,7 +193,7 @@ Offset Cpu_8086::modrmMemAddress() const {
     }
     // the calculated address is relative to a segment that is implicitly associated with the base register
     // TODO: implement segment override prefix which changes the default segment
-    Offset segAddress = SEG_TO_LINEAR(reg16(defaultSeg(baseReg)));
+    Offset segAddress = SEG_TO_LINEAR(regs_.bit16(defaultSeg(baseReg)));
     return segAddress + address;
 }
 
@@ -238,16 +223,16 @@ Word Cpu_8086::modrmInstructionLength() const {
 
 void Cpu_8086::init(const Address &codeAddr, const Address &stackAddr) {
     // initialize registers
-    resetRegs();
-    reg16(REG_CS) = codeAddr.segment;
-    reg16(REG_IP) = codeAddr.offset;
-    reg16(REG_SS) = stackAddr.segment;
-    reg16(REG_SP) = stackAddr.offset;
-    const Offset codeLinearAddr = SEG_TO_LINEAR(reg16(REG_CS));
+    regs_.reset();
+    regs_.bit16(REG_CS) = codeAddr.segment;
+    regs_.bit16(REG_IP) = codeAddr.offset;
+    regs_.bit16(REG_SS) = stackAddr.segment;
+    regs_.bit16(REG_SP) = stackAddr.offset;
+    const Offset codeLinearAddr = SEG_TO_LINEAR(regs_.bit16(REG_CS));
     const Offset pspLinearAddr = codeLinearAddr - PSP_SIZE;
     Address pspAddr(pspLinearAddr);
     assert(pspAddr.offset == 0);
-    reg16(REG_DS) = reg16(REG_ES) = pspAddr.segment;
+    regs_.bit16(REG_DS) = regs_.bit16(REG_ES) = pspAddr.segment;
     // obtain pointer to beginning of executable code
     code_ = memBase_ + codeLinearAddr;
 }
@@ -260,16 +245,6 @@ void Cpu_8086::step() {
 void Cpu_8086::run() {
     step_ = false;
     pipeline();
-}
-
-void Cpu_8086::resetRegs() {
-    fill(begin(regs_.reg16), end(regs_.reg16), 0);
-    setFlag(FLAG_INT, true);
-    // these are supposed to be always 1 on 8086
-    setFlag(FLAG_B12, true); 
-    setFlag(FLAG_B13, true);
-    setFlag(FLAG_B14, true); 
-    setFlag(FLAG_B15, true);
 }
 
 // main loop for evaluating and executing instructions
@@ -496,7 +471,7 @@ void Cpu_8086::dispatch() {
 }
 
 void Cpu_8086::unknown(const string &stage) {
-    throw CpuError("Unknown opcode at "s + stage + " stage, address "s + csip().toString() + ": " + hexVal(opcode_));
+    throw CpuError("Unknown opcode at "s + stage + " stage, address "s + regs_.csip().toString() + ": " + hexVal(opcode_));
 }
 
 void Cpu_8086::instr_mov() {
@@ -506,8 +481,8 @@ void Cpu_8086::instr_mov() {
         modrmParse();
         r_src = modrmRegRegister(REG_GP8);
         r_dst = modrmMemRegister(REG_GP8);
-        if (r_dst != REG_NONE) reg8(r_dst) = reg8(r_src);
-        else mem_->writeByte(modrmMemAddress(), reg8(r_src));
+        if (r_dst != REG_NONE) regs_.bit8(r_dst) = regs_.bit8(r_src);
+        else mem_->writeByte(modrmMemAddress(), regs_.bit8(r_src));
         ipAdvance(modrmInstructionLength());
         break;
     case OP_MOV_Ev_Gv:

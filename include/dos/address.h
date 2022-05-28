@@ -1,6 +1,7 @@
 #ifndef ADDRESS_H
 #define ADDRESS_H
 
+#include <string>
 #include "dos/types.h"
 
 const int SEGMENT_SHIFT = 4;

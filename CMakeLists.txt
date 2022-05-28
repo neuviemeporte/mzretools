@@ -8,6 +8,7 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ggdb")
 
 set(LIBDOS_SRC 
     src/system.cpp
+    src/registers.cpp
     src/cpu.cpp
     src/interrupt.cpp
     src/address.cpp
@@ -23,6 +24,7 @@ set(LIBDOS_HDR
     include/dos/debug.h
     include/dos/util.h
     include/dos/opcodes.h
+    include/dos/registers.h
     include/dos/cpu.h
     include/dos/interrupt.h
     include/dos/address.h

@@ -22,7 +22,6 @@ System::System() {
     os_ = make_unique<Dos>(mem_.get());
     int_ = make_unique<InterruptHandler>(os_.get());
     cpu_ = make_unique<Cpu_8086>(mem_.get(), int_.get());
-    int_->setup(cpu_->regs8(), cpu_->regs16());
     cout << "Initialized VM, " << info() << endl;
 }
 

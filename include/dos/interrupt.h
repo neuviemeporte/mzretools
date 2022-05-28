@@ -3,7 +3,7 @@
 
 #include "dos/types.h"
 #include "dos/memory.h"
-class Dos;
+#include "dos/registers.h"
 
 enum IntStatus {
     INT_OK, INT_FAIL, INT_EXIT, INT_TERMINATE
@@ -11,9 +11,10 @@ enum IntStatus {
 
 class InterruptInterface {
 public:
-    virtual void setup(Byte *regs8, Word *regs16) = 0;
-    virtual IntStatus interrupt(const Byte num) = 0;
+    virtual IntStatus interrupt(const Byte num, Registers &regs) = 0;
 };
+
+class Dos;
 
 // an adapter class for dispatching interrupt requests from the CPU to other system components,
 // whose aim is to decouple the CPU from these components. This class is a friend of the Cpu class
@@ -23,22 +24,13 @@ public:
 class InterruptHandler : public InterruptInterface {
 protected:
     Dos *dos_;
-    Byte* regs8_;
-    Word* regs16_;
 
 public:
-    InterruptHandler(Dos *dos) : dos_(dos), regs8_(nullptr), regs16_(nullptr) {}
-    void setup(Byte *regs8, Word *regs16) override { regs8_ = regs8; regs16_ = regs16; }
-    IntStatus interrupt(const Byte num) override;
+    InterruptHandler(Dos *dos) : dos_(dos) {}
+    IntStatus interrupt(const Byte num, Registers &regs) override;
 
 private:
-    inline Byte& reg8(const int reg) { return regs8_[reg]; }
-    inline Word& reg16(const int reg) { return regs16_[reg]; }
-    inline const Byte& reg8(const int reg) const { return regs8_[reg]; }
-    inline const Word& reg16(const int reg) const { return regs16_[reg]; }    
-    inline Address csip() const;
-
-    void dosFunction(const Byte funcHi, const Byte funcLo);
+    void dosFunction(const Byte funcHi, const Byte funcLo, Registers &regs);
 };
 
 #endif // INTERRUPT_H
