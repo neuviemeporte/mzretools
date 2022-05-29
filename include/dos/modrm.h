@@ -7,7 +7,7 @@
 // AA: MOD field:
 //    00: interpret CCC as Table1 to calculate address of memory operand
 //    01: interpret CCC as Table2 with 8bit signed displacement to calculate address of memory operand
-//    10: interpret CCC as Table2 with 16bit unsigned displacement to calculate address of memory operand
+//    10: interpret CCC as Table2 with 16bit signed displacement to calculate address of memory operand
 //    11: interpret CCC as REG to use register as operand
 // BBB: REG field:
 //    8bit instruction:  000: AL     001: CL     010: DL     011: BL     100: AH     101: CH     110: DH     111: BH
@@ -29,7 +29,7 @@ enum ModRM : Byte {
     MODRM_MOD_REG    = 0b11000000, 
     MODRM_MOD_MASK   = 0b11000000,
     // REG
-    MODRM_REG_AL     = 0b000000, MODRM_REG_AX = MODRM_REG_AL, MODRM_REG_ES = MODRM_REG_AL,
+    MODRM_REG_AL     = 0b000000, MODRM_REG_AX = MODRM_REG_AL, MODRM_REG_ES = MODRM_REG_AL, MODRM_REG_NONE = MODRM_REG_AL,
     MODRM_REG_CL     = 0b001000, MODRM_REG_CX = MODRM_REG_CL, MODRM_REG_CS = MODRM_REG_CL,
     MODRM_REG_DL     = 0b010000, MODRM_REG_DX = MODRM_REG_DL, MODRM_REG_SS = MODRM_REG_DL,
     MODRM_REG_BL     = 0b011000, MODRM_REG_BX = MODRM_REG_BL, MODRM_REG_DS = MODRM_REG_BL,

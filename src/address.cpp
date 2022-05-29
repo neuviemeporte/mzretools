@@ -3,11 +3,12 @@
 #include <sstream>
 #include "dos/address.h"
 #include "dos/error.h"
+#include "dos/util.h"
 
 using namespace std;
 
 Address::Address(const Offset linear) {
-    if (linear >= MEM_TOTAL) throw MemoryError("Linear address too big while converting to segmented representation");
+    if (linear >= MEM_TOTAL) throw MemoryError("Linear address too big while converting to segmented representation: "s + hexVal(linear));
     segment = static_cast<Word>(linear >> 4);
     offset = static_cast<Word>(linear & 0xf);
 }

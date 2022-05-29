@@ -151,63 +151,66 @@ TEST_F(Cpu_8086_Test, Mov) {
         OP_MOV_Ev_Gv, MODRM_MOD_DISP16 | MODRM_REG_DX | MODRM_MEM_SI_OFF, disp2, disp1, // mov [si+0xa8c],dx
         OP_MOV_Gv_Ev, MODRM_MOD_REG | MODRM_REG_SI | MODRM_REG_CX >> MODRM_REG_SHIFT, // mov si,cx
         OP_MOV_Ew_Sw, MODRM_MOD_NODISP | MODRM_REG_ES | MODRM_MEM_BX, // mov [bx],es
-        OP_MOV_Sw_Ew, MODRM_MOD_DISP8 | MODRM_REG_SS | MODRM_MEM_DI_OFF, disp2, // mov ss,[di+0x8c]
+        OP_MOV_Sw_Ew, MODRM_MOD_DISP8 | MODRM_REG_SS | MODRM_MEM_DI_OFF, disp2, // mov ss,[di-0x74]
         OP_MOV_AL_Ob, 0xab, 0xcd, // mov al,[0xcdab]
         OP_MOV_AX_Ov, 0xcd, 0xab, // mov ax,[0xabcd]
         OP_MOV_Ob_AL, 0xcd, 0xab, // mov [0xabcd],al
         OP_MOV_Ov_AX, 0xab, 0xcd, // mov [0xcdab],ax
         OP_MOV_AL_Ib, 0x66, // mov al,0x66
-        OP_MOV_CL_Ib, 0x66, // mov cl,0x66
-        OP_MOV_DL_Ib, 0x66, // mov dl,0x66
-        OP_MOV_BL_Ib, 0x66, // mov bl,0x66
-        OP_MOV_AH_Ib, 0x66, // mov ah,0x66
-        OP_MOV_CH_Ib, 0x66, // mov ch,0x66
-        OP_MOV_DH_Ib, 0x66, // mov dh,0x66
-        OP_MOV_BH_Ib, 0x66, // mov bh,0x66
-        OP_MOV_AX_Iv, 
-        OP_MOV_CX_Iv, 
-        OP_MOV_DX_Iv, 
-        OP_MOV_BX_Iv, 
-        OP_MOV_SP_Iv, 
-        OP_MOV_BP_Iv, 
-        OP_MOV_SI_Iv, 
-        OP_MOV_DI_Iv, 
-        OP_MOV_Eb_Ib, 
-        OP_MOV_Ev_Iv,         
+        OP_MOV_CL_Ib, 0x67, // mov cl,0x67
+        OP_MOV_DL_Ib, 0x68, // mov dl,0x68
+        OP_MOV_BL_Ib, 0x69, // mov bl,0x69
+        OP_MOV_AH_Ib, 0x6a, // mov ah,0x6a
+        OP_MOV_CH_Ib, 0x6b, // mov ch,0x6b
+        OP_MOV_DH_Ib, 0x6c, // mov dh,0x6c
+        OP_MOV_BH_Ib, 0x6d, // mov bh,0x6d
+        OP_MOV_AX_Iv, 0x34, 0x12, // mov ax,0x1234
+        OP_MOV_CX_Iv, 0x35, 0x12, // mov cx,0x1235
+        OP_MOV_DX_Iv, 0x36, 0x12, // mov dx,0x1236
+        OP_MOV_BX_Iv, 0x37, 0x12, // mov bx,0x1237
+        OP_MOV_SP_Iv, 0x38, 0x12, // mov sp,0x1238
+        OP_MOV_BP_Iv, 0x39, 0x12, // mov bp,0x1239
+        OP_MOV_SI_Iv, 0x3a, 0x12, // mov si,0x123a
+        OP_MOV_DI_Iv, 0x3b, 0x12, // mov di,0x123b
+        OP_MOV_Eb_Ib, MODRM_MOD_DISP16 | MODRM_REG_NONE | MODRM_MEM_BX_DI_OFF, 0x24, 0x10, 0xab,  // mov [bx+di+0x1024],0xab
+        OP_MOV_Ev_Iv, MODRM_MOD_NODISP | MODRM_REG_NONE | MODRM_MEM_ADDR, 0xbe, 0xba, 0xcd, 0xab, // mov [0xbabe],0xabcd
+        OP_MOV_Eb_Ib, MODRM_MOD_DISP16 | MODRM_REG_NONE | MODRM_MEM_BX_DI_OFF, 0xff, 0xfe, 0xab, // mov [bx+di-0x101], 0xab
+        OP_PREFIX_ES, OP_MOV_Eb_Gb, MODRM_MOD_NODISP | MODRM_REG_CH | MODRM_MEM_BX_DI, // mov [es:bx+di],ch
     };
+    writeBinaryFile("mov.bin", code, sizeof(code));
     setupCode(code, sizeof(code));
 
     reg8(REG_AH) = 69;
     reg16(REG_BP) = 123;
     reg16(REG_DI) = 456;
     reg16(REG_SS) = 789;
-    off = SEG_OFFSET(789) + 123 + 456;
+    off = SEG_OFFSET(reg16(REG_SS)) + reg16(REG_BP) + reg16(REG_DI);
     cpu_->step(); // mov [bp+di],ah
-    ASSERT_EQ(mem_->readByte(off), 69);
+    ASSERT_EQ(mem_->readByte(off), reg8(REG_AH));
 
     reg16(REG_BX) = 639;
     reg16(REG_SI) = 157;
     reg16(REG_DS) = 371;
-    off = SEG_OFFSET(371) + 639 + 157 + 0xa;
+    off = SEG_OFFSET(reg16(REG_DS)) + reg16(REG_BX) + reg16(REG_SI) + 0xa;
     mem_->writeByte(off, 201);
     cpu_->step(); // mov cl,[bx+si+0xa]
     ASSERT_EQ(reg8(REG_CL), 201);
 
     reg16(REG_DX) = 4265;
-    off = SEG_OFFSET(371) + 157 + 0xa8c;
+    off = SEG_OFFSET(reg16(REG_DS)) + reg16(REG_SI) + 0xa8c;
     cpu_->step(); // mov [si+0xa8c],dx
-    ASSERT_EQ(mem_->readWord(off), 4265);
+    ASSERT_EQ(mem_->readWord(off), reg16(REG_DX));
 
     reg16(REG_CX) = 7488;
     cpu_->step(); // mov si,cx
-    ASSERT_EQ(reg16(REG_SI), 7488);
+    ASSERT_EQ(reg16(REG_SI), reg16(REG_CX));
 
     reg16(REG_ES) = 6548;
-    off = SEG_OFFSET(371) + 639;
+    off = SEG_OFFSET(reg16(REG_DS)) + reg16(REG_BX);
     cpu_->step(); // mov [bx],es
-    ASSERT_EQ(mem_->readWord(off), 6548);
+    ASSERT_EQ(mem_->readWord(off), reg16(REG_ES));
 
-    off = SEG_OFFSET(6548) + 456 + 0x8c;
+    off = SEG_OFFSET(reg16(REG_ES)) + reg16(REG_DI) - 0x74;
     mem_->writeWord(off, 0xfafe);
     cpu_->step(); // mov ss,[di+0x8c]
     ASSERT_EQ(reg16(REG_SS), 0xfafe);
@@ -229,4 +232,56 @@ TEST_F(Cpu_8086_Test, Mov) {
     off = SEG_OFFSET(reg16(REG_DS)) + 0xcdab;
     cpu_->step(); // mov [0xcdab],ax
     ASSERT_EQ(mem_->readWord(off), reg16(REG_AX));
+
+    cpu_->step(); // mov al,0x66
+    ASSERT_EQ(reg8(REG_AL), 0x66);
+    cpu_->step(); // mov cl,0x67
+    ASSERT_EQ(reg8(REG_CL), 0x67);
+    cpu_->step(); // mov dl,0x68
+    ASSERT_EQ(reg8(REG_DL), 0x68);
+    cpu_->step(); // mov bl,0x69
+    ASSERT_EQ(reg8(REG_BL), 0x69);
+    cpu_->step(); // mov ah,0x6a
+    ASSERT_EQ(reg8(REG_AH), 0x6a);
+    cpu_->step(); // mov ch,0x6b
+    ASSERT_EQ(reg8(REG_CH), 0x6b);
+    cpu_->step(); // mov dh,0x6c
+    ASSERT_EQ(reg8(REG_DH), 0x6c);
+    cpu_->step(); // mov bh,0x6d
+    ASSERT_EQ(reg8(REG_BH), 0x6d);
+
+    cpu_->step(); // mov ax,0x1234
+    ASSERT_EQ(reg16(REG_AX), 0x1234);
+    cpu_->step(); // mov cx,0x1235
+    ASSERT_EQ(reg16(REG_CX), 0x1235);
+    cpu_->step(); // mov dx,0x1236
+    ASSERT_EQ(reg16(REG_DX), 0x1236);
+    cpu_->step(); // mov bx,0x1237
+    ASSERT_EQ(reg16(REG_BX), 0x1237);
+    cpu_->step(); // mov sp,0x1238
+    ASSERT_EQ(reg16(REG_SP), 0x1238);
+    cpu_->step(); // mov bp,0x1239
+    ASSERT_EQ(reg16(REG_BP), 0x1239);
+    cpu_->step(); // mov si,0x123a
+    ASSERT_EQ(reg16(REG_SI), 0x123a);
+    cpu_->step(); // mov di,0x123b
+    ASSERT_EQ(reg16(REG_DI), 0x123b);
+
+    off = SEG_OFFSET(reg16(REG_DS)) + reg16(REG_BX) + reg16(REG_DI) + 0x1024;
+    cpu_->step(); // mov [bx+di+0x1024],0xab
+    ASSERT_EQ(mem_->readByte(off), 0xab);
+
+    off = SEG_OFFSET(reg16(REG_DS)) + 0xbabe;
+    cpu_->step(); // mov [0xbabe],0xabcd
+    ASSERT_EQ(mem_->readWord(off), 0xabcd);
+
+    // negative displacement value
+    off = SEG_OFFSET(reg16(REG_DS)) + reg16(REG_BX) + reg16(REG_DI) - 0x101;
+    cpu_->step(); // mov [bx+di-0x101], 0xab
+    ASSERT_EQ(mem_->readByte(off), 0xab);
+
+    // segment override prefix
+    off = SEG_OFFSET(reg16(REG_ES)) + reg16(REG_BX) + reg16(REG_DI);
+    cpu_->step(); // mov [es:bx+di],ch
+    ASSERT_EQ(mem_->readByte(off), reg8(REG_CH));
 }

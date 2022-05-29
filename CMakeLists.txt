@@ -13,6 +13,7 @@ set(LIBDOS_SRC
     src/interrupt.cpp
     src/address.cpp
     src/memory.cpp
+    src/psp.cpp
     src/dos.cpp
     src/mz.cpp
     src/util.cpp)
@@ -30,6 +31,7 @@ set(LIBDOS_HDR
     include/dos/interrupt.h
     include/dos/address.h
     include/dos/memory.h
+    include/dos/psp.h
     include/dos/dos.h
     include/dos/mz.h)
 

@@ -1,5 +1,5 @@
 #include <iostream>
-#include "dos/dos.h"
+#include "dos/psp.h"
 #include "dos/util.h"
 #include "dos/error.h"
 
@@ -15,7 +15,7 @@ int main(int argc, char* argv[]) {
     const char* pspfile = argv[1];
     try {
         ProgramSegmentPrefix psp;
-        if (!readBinaryFile(string(pspfile), reinterpret_cast<char*>(&psp))) {
+        if (!readBinaryFile(string(pspfile), reinterpret_cast<Byte*>(&psp))) {
             cout << "Unable to read psp data from " << pspfile << endl;
         }
         cout << psp << endl;

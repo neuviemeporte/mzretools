@@ -107,7 +107,7 @@ bool deleteFile(const std::string &path) {
     return unlink(path.c_str()) == 0;
 }
 
-bool readBinaryFile(const std::string &path, char *buf, const Size size) {
+bool readBinaryFile(const std::string &path, Byte *buf, const Size size) {
     auto status = checkFile(path);
     if (!status.exists || status.size == 0) {
         cout << "File " << path << " does not exist or has size zero!";
@@ -127,7 +127,7 @@ bool readBinaryFile(const std::string &path, char *buf, const Size size) {
     ifstream file{path, ios::binary};
     for (Size i = 1; i <= block_count; ++i) {
         const Size read_size = remainder == 0 || i != block_count ? block_size : remainder;
-        if (!file.read(buf, read_size)) {
+        if (!file.read(reinterpret_cast<char*>(buf), read_size)) {
             cout << "Unable to read " << read_size << " bytes, block " << i << ", block count = " << block_count << ", remainder = " << remainder << endl;
             return false;
         }
@@ -136,9 +136,9 @@ bool readBinaryFile(const std::string &path, char *buf, const Size size) {
     return true;
 }
 
-void writeBinaryFile(const std::string &path, const char *buf, const Size size) {
+void writeBinaryFile(const std::string &path, const Byte *buf, const Size size) {
     ofstream file{path, ios::binary};
-    file.write(buf, size);
+    file.write(reinterpret_cast<const char*>(buf), size);
 }
 
 std::string binString(const Word &value) {

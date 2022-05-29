@@ -4,7 +4,9 @@
 #include <string>
 #include "dos/types.h"
 
-const int SEGMENT_SHIFT = 4;
+static constexpr Size MEM_TOTAL = 1_MB;
+static const int SEGMENT_SHIFT = 4;
+
 inline Offset SEG_OFFSET(const Word seg) { return static_cast<Offset>(seg) << SEGMENT_SHIFT; }
 inline Size BYTES_TO_PARA(const Size bytes) { return bytes / PARAGRAPH_SIZE + (bytes % PARAGRAPH_SIZE ? 1 : 0); }
 inline const Word* WORD_PTR(const Byte* buf, const Offset off = 0) { return reinterpret_cast<const Word*>(buf + off); }

@@ -26,6 +26,7 @@ private:
     Registers regs_;
     const Byte *memBase_, *code_;
     Byte opcode_, modrm_;
+    Register segOverride_;
     Byte byteOperand1_, byteOperand2_, byteResult_;
     Word wordOperand1_, wordOperand2_, wordResult_;
     bool done_, step_;
