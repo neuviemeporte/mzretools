@@ -65,6 +65,7 @@ private:
 
     // instructions 
     void instr_mov();
+    void instr_int();
 };
 
 #endif // CPU_H

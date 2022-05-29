@@ -403,10 +403,10 @@ void Cpu_8086::dispatch() {
     case OP_MOV_Eb_Ib : 
     case OP_MOV_Ev_Iv : instr_mov(); break;
     case OP_RETF_Iw   :
-    case OP_RETF      :
-    case OP_INT_3     :
+    case OP_RETF      : unknown();
+    case OP_INT_3     : 
     case OP_INT_Ib    :
-    case OP_INTO      :
+    case OP_INTO      : instr_int(); break;
     case OP_IRET      :
     case OP_XLAT      :
     case OP_LOOPNZ_Jb :
@@ -592,4 +592,24 @@ void Cpu_8086::instr_mov() {
     default: 
         throw CpuError("Unsupported opcode for MOV: " + hexVal(opcode_));
     }
+}
+
+void Cpu_8086::instr_int() {
+    Byte num;
+    switch (opcode_) {
+    case OP_INT_3:
+        int_->interrupt(3, regs_);
+        ipAdvance(1);
+        break;
+    case OP_INT_Ib:
+        num = ipByte(1);
+        int_->interrupt(num, regs_);
+        ipAdvance(2);
+        break;
+    case OP_INTO:
+        if (regs_.getFlag(FLAG_OVER)) int_->interrupt(4, regs_);
+        ipAdvance(1);
+        break;    
+    }
+
 }
