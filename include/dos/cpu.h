@@ -56,16 +56,22 @@ private:
     inline Register modrmRegRegister(const RegType regType) const;
     inline Register modrmMemRegister(const RegType regType) const;
     Offset modrmMemAddress() const;
+    void modrmStoreByte(const Byte value);
+    void modrmStoreWord(const Word value);
+    Byte modrmGetByte();
+    Word modrmGetWord();
     Word modrmInstructionLength() const;
 
     // instruction execution pipeline
     void pipeline();
     void dispatch();
+    void updateFlags();
     void unknown();
 
     // instructions 
     void instr_mov();
     void instr_int();
+    void instr_cmp();
 };
 
 #endif // CPU_H
