@@ -60,8 +60,8 @@ set(TEST_SRC
 
 # the test application executable
 add_executable(runtest ${TEST_SRC})
-target_include_directories(runtest PUBLIC ${gtest_SOURCE_DIR} include)
-target_link_libraries(runtest PUBLIC gtest libdos)
+target_include_directories(runtest PUBLIC include ${gtest_SOURCE_DIR}/include ${gmock_SOURCE_DIR}/include)
+target_link_libraries(runtest PUBLIC gtest gmock libdos)
 # run tests automatically as part of the build
 add_custom_target(run_unit_test ALL COMMAND ./runtest DEPENDS runtest)
 

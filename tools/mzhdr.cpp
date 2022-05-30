@@ -1,6 +1,6 @@
 #include <iostream>
-#include "mz.h"
-#include "error.h"
+#include "dos/mz.h"
+#include "dos/error.h"
 
 using namespace std;
 

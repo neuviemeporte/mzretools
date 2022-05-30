@@ -1,24 +1,35 @@
 #include <vector>
-#include "debug.h"
 #include "gtest/gtest.h"
+#include "gmock/gmock.h"
+#include "debug.h"
 #include "dos/memory.h"
 #include "dos/cpu.h"
 #include "dos/opcodes.h"
 #include "dos/modrm.h"
 #include "dos/util.h"
+#include "dos/interrupt.h"
 
 using namespace std;
+using ::testing::_;
+using ::testing::Return;
+
+class MockInterruptHandler : public InterruptInterface {
+public:
+    MOCK_METHOD(IntStatus, interrupt, (const Byte num, Registers &regs), (override));
+};
 
 class Cpu_8086_Test : public ::testing::Test {
 protected:
     Cpu_8086 *cpu_;
     Memory *mem_;
     Registers *regs_;
+    MockInterruptHandler *int_;
 
 protected:
     void SetUp() override {
         mem_ = new Memory();
-        cpu_ = new Cpu_8086(mem_, nullptr);
+        int_ = new MockInterruptHandler();
+        cpu_ = new Cpu_8086(mem_, int_);
         regs_ = &cpu_->regs_;
     }
 
@@ -27,6 +38,7 @@ protected:
             cout << cpu_->info() << endl;
         }
         delete cpu_;
+        delete int_;
         delete mem_;
     }
 
@@ -284,4 +296,29 @@ TEST_F(Cpu_8086_Test, Mov) {
     off = SEG_OFFSET(reg16(REG_ES)) + reg16(REG_BX) + reg16(REG_DI);
     cpu_->step(); // mov [es:bx+di],ch
     ASSERT_EQ(mem_->readByte(off), reg8(REG_CH));
+}
+
+TEST_F(Cpu_8086_Test, Int) {
+    const Byte code[] = {
+        OP_INT_3,
+        OP_INT_Ib, 0x21,
+        OP_INTO,
+        OP_INTO,
+    };
+    setupCode(code, sizeof(code));
+
+    EXPECT_CALL(*int_, interrupt(3, _)).Times(1).WillOnce(Return(INT_OK));
+    cpu_->step(); // int 3
+
+    EXPECT_CALL(*int_, interrupt(0x21, _)).Times(1).WillOnce(Return(INT_OK));
+    cpu_->step(); // int 0x21
+
+    EXPECT_CALL(*int_, interrupt(_, _)).Times(0);
+    regs_->setFlag(FLAG_OVER, false);
+    cpu_->step(); // into
+
+    EXPECT_CALL(*int_, interrupt(4, _)).Times(1).WillOnce(Return(INT_OK));
+    regs_->setFlag(FLAG_OVER, true);
+    cpu_->step(); // into    
+
 }
