@@ -59,6 +59,10 @@ private:
     inline Register modrmRegRegister(const RegType regType) const;
     inline Register modrmMemRegister(const RegType regType) const;
     Offset modrmMemAddress() const;
+    void modrmStoreByte(const Byte value);
+    void modrmStoreWord(const Word value);
+    Byte modrmGetByte();
+    Word modrmGetWord();
     Word modrmInstructionLength() const;
 
     std::string disasm() const;
@@ -70,6 +74,7 @@ private:
     void pipeline();
     void dispatch();
     void unknown(const std::string &stage) const;
+    void updateFlags();
 
     // instructions 
     void instr_mov();

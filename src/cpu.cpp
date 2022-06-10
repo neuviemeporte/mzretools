@@ -21,28 +21,6 @@ using namespace std;
 #define UNKNOWN_DISPATCH unknown("dispatch")
 #define UNKNOWN_ILEN unknown("instr_length")
 
-// parity flag values for all possible 8-bit results, used as a lookup table
-// to avoid counting 1 bits after an arithmetic instruction 
-// (8086 only checks the lower 8 bits, even for 16bit results)
-static const Word parity_lookup[256] = {
-  1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1,
-  0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0,
-  0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0,
-  1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1,
-  0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0,
-  1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1,
-  1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1,
-  0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0,
-  0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0,
-  1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1,
-  1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1,
-  0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0,
-  1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1,
-  0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0,
-  0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0,
-  1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1
-};
-
 static void cpuMessage(const string &msg) {
     cout << msg << endl;
 }
@@ -162,6 +140,34 @@ Offset Cpu_8086::modrmMemAddress() const {
     // the calculated address is relative to a segment that is implicitly associated with the base register
     const Offset segOffset = SEG_OFFSET(regs_.bit16(defaultSeg(baseReg)));
     return segOffset + offset;
+}
+
+// write a byte to the location (memory or register) referenced by the MEM field in the ModR/M byte
+void Cpu_8086::modrmStoreByte(const Byte value) {
+    const Register regDest = modrmMemRegister(REG_GP8);
+    if (regDest == REG_NONE) mem_->writeByte(modrmMemAddress(), value);
+    else regs_.bit8(regDest) = value;
+}
+
+// write a word to the location (memory or register) referenced by the MEM field in the ModR/M byte
+void Cpu_8086::modrmStoreWord(const Word value) {
+    const Register regDest = modrmMemRegister(REG_GP16);
+    if (regDest == REG_NONE) mem_->writeWord(modrmMemAddress(), value);
+    else regs_.bit16(regDest) = value;
+}
+
+// read a byte from the location (memory or register) referenced by the MEM field in the ModR/M byte
+Byte Cpu_8086::modrmGetByte() {
+    const Register regSrc = modrmMemRegister(REG_GP8);
+    if (regSrc == REG_NONE) return memByte(modrmMemAddress());
+    else return regs_.bit8(regSrc);
+}
+
+// read a word from the location (memory or register) referenced by the MEM field in the ModR/M byte
+Word Cpu_8086::modrmGetWord() {
+    const Register regSrc = modrmMemRegister(REG_GP16);
+    if (regSrc == REG_NONE) return memWord(modrmMemAddress());
+    else return regs_.bit16(regSrc);
 }
 
 // calculate length of instruction with modrm byte
@@ -800,44 +806,101 @@ void Cpu_8086::unknown(const string &stage) const {
     throw CpuError("Unknown opcode during "s + stage + " stage @ "s + regs_.csip().toString() + ": " + hexVal(opcode_));
 }
 
+void Cpu_8086::updateFlags() {
+    static const Byte NIBBLE_CARRY = 0x10;
+    static const Byte BYTE_SIGN = 0x80;
+    static const Word WORD_SIGN = 0x8000;
+    // parity flag values for all possible 8-bit results, used as a lookup table
+    // to avoid counting 1 bits after an arithmetic instruction 
+    // (8086 only checks the lower 8 bits, even for 16bit results)
+    static const Word parity_lookup[256] = {
+    1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1,
+    0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0,
+    0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0,
+    1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1,
+    0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0,
+    1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1,
+    1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1,
+    0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0,
+    0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0,
+    1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1,
+    1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1,
+    0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0,
+    1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1,
+    0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0,
+    0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0,
+    1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1
+    };    
+    // update carry and overflow
+    switch (opcode_) {
+    case OP_ADD_AL_Ib: 
+        // byte add
+        regs_.setFlag(FLAG_CARRY, byteResult_ < byteOperand1_);
+        regs_.setFlag(FLAG_OVER, ((byteOperand1_ ^ byteOperand2_ ^ BYTE_SIGN) & (byteResult_ ^ byteOperand2_)) & BYTE_SIGN);
+        break;
+    case OP_SUB_AL_Ib:
+    case OP_CMP_Eb_Gb:
+    case OP_CMP_Gb_Eb:
+    case OP_CMP_AL_Ib:
+        // byte sub
+        regs_.setFlag(FLAG_CARRY, byteOperand1_ < byteOperand2_);
+        regs_.setFlag(FLAG_OVER, ((byteOperand1_ ^ byteOperand2_) & (byteOperand1_ ^ byteResult_)) & BYTE_SIGN);
+        break;
+    case OP_CMP_Ev_Gv:
+    case OP_CMP_Gv_Ev:
+    case OP_CMP_AX_Iv:    
+        // word sub
+        regs_.setFlag(FLAG_CARRY, wordOperand1_ < wordOperand2_);
+        regs_.setFlag(FLAG_OVER, ((wordOperand1_ ^ wordOperand2_) & (wordOperand1_ ^ wordResult_)) & WORD_SIGN);
+    default:
+        throw CpuError("Unexpected opcode in flag update stage 1: "s + hexVal(opcode_));
+    }
+    // update remaining arithmetic flags, these are simpler
+    switch (opcode_)
+    {
+    case OP_ADD_AL_Ib: 
+    case OP_SUB_AL_Ib:
+    case OP_CMP_Eb_Gb:
+    case OP_CMP_Gb_Eb:    
+    case OP_CMP_AL_Ib:
+        // byte result
+        regs_.setFlag(FLAG_ZERO, byteResult_ == 0);
+        regs_.setFlag(FLAG_SIGN, byteResult_ & BYTE_SIGN);
+        regs_.setFlag(FLAG_AUXC, ((byteOperand1_ ^ byteOperand2_) ^ byteResult_) & NIBBLE_CARRY);
+        regs_.setFlag(FLAG_PARITY, parity_lookup[byteResult_]);
+        break;
+    case OP_CMP_Ev_Gv:
+    case OP_CMP_Gv_Ev:
+    case OP_CMP_AX_Iv:
+        // word result
+        regs_.setFlag(FLAG_ZERO, wordResult_ == 0);
+        regs_.setFlag(FLAG_SIGN, wordResult_ & WORD_SIGN);
+        regs_.setFlag(FLAG_AUXC, ((wordOperand1_ ^ wordOperand2_) ^ wordResult_) & NIBBLE_CARRY);
+        regs_.setFlag(FLAG_PARITY, parity_lookup[wordResult_ & 0xff]);    
+    default:
+        throw CpuError("Unexpected opcode in flag update stage 2: "s + hexVal(opcode_));
+    }
+}
+
 void Cpu_8086::instr_mov() {
-    Register r_src, r_dst;
     switch (opcode_) {
     case OP_MOV_Eb_Gb:
-        r_src = modrmRegRegister(REG_GP8);
-        r_dst = modrmMemRegister(REG_GP8);
-        if (r_dst == REG_NONE) mem_->writeByte(modrmMemAddress(), regs_.bit8(r_src));
-        else regs_.bit8(r_dst) = regs_.bit8(r_src);
+        modrmStoreByte(regs_.bit8(modrmRegRegister(REG_GP8)));
         break;
     case OP_MOV_Ev_Gv:
-        r_src = modrmRegRegister(REG_GP16);
-        r_dst = modrmMemRegister(REG_GP16);
-        if (r_dst == REG_NONE) mem_->writeWord(modrmMemAddress(), regs_.bit16(r_src));
-        else regs_.bit16(r_dst) = regs_.bit16(r_src);
+        modrmStoreWord(regs_.bit16(modrmRegRegister(REG_GP16)));
         break;    
     case OP_MOV_Gb_Eb:
-        r_src = modrmMemRegister(REG_GP8);
-        r_dst = modrmRegRegister(REG_GP8);
-        if (r_src == REG_NONE) regs_.bit8(r_dst) = memByte(modrmMemAddress());
-        else regs_.bit8(r_dst) = regs_.bit8(r_src);
+        regs_.bit8(modrmRegRegister(REG_GP8)) = modrmGetByte();
         break;
     case OP_MOV_Gv_Ev:
-        r_src = modrmMemRegister(REG_GP16);
-        r_dst = modrmRegRegister(REG_GP16);
-        if (r_src == REG_NONE) regs_.bit16(r_dst) = memWord(modrmMemAddress());
-        else regs_.bit16(r_dst) = regs_.bit16(r_src);
+        regs_.bit16(modrmRegRegister(REG_GP16)) = modrmGetWord();
         break;    
     case OP_MOV_Ew_Sw:
-        r_src = modrmRegRegister(REG_SEG);
-        r_dst = modrmMemRegister(REG_GP16);
-        if (r_dst == REG_NONE) mem_->writeWord(modrmMemAddress(), regs_.bit16(r_src));
-        else regs_.bit16(r_dst) = regs_.bit16(r_src);
+        modrmStoreWord(regs_.bit16(modrmRegRegister(REG_SEG)));
         break;
     case OP_MOV_Sw_Ew:
-        r_src = modrmMemRegister(REG_GP16);
-        r_dst = modrmRegRegister(REG_SEG);
-        if (r_src == REG_NONE) regs_.bit16(r_dst) = memWord(modrmMemAddress());
-        else regs_.bit16(r_dst) = regs_.bit16(r_src);
+        regs_.bit16(modrmRegRegister(REG_SEG)) = modrmGetWord();
         break;  
     case OP_MOV_AL_Ob:
         regs_.bit8(REG_AL) = memByte(SEG_OFFSET(regs_.bit16(REG_DS)) + ipWord(1));
@@ -900,14 +963,10 @@ void Cpu_8086::instr_mov() {
         regs_.bit16(REG_DI) = ipWord(1);
         break;    
     case OP_MOV_Eb_Ib:
-        r_dst = modrmMemRegister(REG_GP8);
-        if (r_dst == REG_NONE) mem_->writeByte(modrmMemAddress(), ipByte(modrmInstructionLength()));
-        else regs_.bit8(r_dst) = ipByte(2);
+        modrmStoreByte(ipByte(modrmInstructionLength()));
         break;
     case OP_MOV_Ev_Iv:
-        r_dst = modrmMemRegister(REG_GP16);
-        if (r_dst == REG_NONE) mem_->writeWord(modrmMemAddress(), ipWord(modrmInstructionLength()));
-        else regs_.bit16(r_dst) = ipWord(2);
+        modrmStoreWord(ipWord(modrmInstructionLength()));
         break;    
     default: 
         throw CpuError("Unexpected opcode for MOV: " + hexVal(opcode_));
@@ -933,19 +992,44 @@ void Cpu_8086::instr_int() {
 }
 
 void Cpu_8086::instr_cmp() {
-    Register r_src, r_dst;
     switch (opcode_) {
     case OP_CMP_Eb_Gb:
-        r_src = modrmRegRegister(REG_GP8);
-        r_dst = modrmMemRegister(REG_GP8);
-        if (r_dst == REG_NONE) mem_->writeByte(modrmMemAddress(), regs_.bit8(r_src));
-        else regs_.bit8(r_dst) = regs_.bit8(r_src);
-    case OP_CMP_Ev_Gv :
-    case OP_CMP_Gb_Eb :
-    case OP_CMP_Gv_Ev :
-    case OP_CMP_AL_Ib :
-    case OP_CMP_AX_Iv : 
+        byteOperand1_ = modrmGetByte();
+        byteOperand2_ = regs_.bit8(modrmRegRegister(REG_GP8));
+        byteResult_ = byteOperand1_ - byteOperand2_;
+        updateFlags();
+        break;
+    case OP_CMP_Ev_Gv:
+        wordOperand1_ = modrmGetWord();
+        wordOperand2_ = regs_.bit16(modrmRegRegister(REG_GP16));
+        wordResult_ = wordOperand1_ - wordOperand2_;
+        updateFlags();
+        break;    
+    case OP_CMP_Gb_Eb:
+        byteOperand1_ = regs_.bit8(modrmRegRegister(REG_GP8));
+        byteOperand2_ = modrmGetByte();
+        byteResult_ = byteOperand1_ - byteOperand2_;
+        updateFlags();
+        break;    
+    case OP_CMP_Gv_Ev:
+        wordOperand1_ = regs_.bit16(modrmRegRegister(REG_GP16));
+        wordOperand2_ = modrmGetWord();
+        wordResult_ = wordOperand1_ - wordOperand2_;
+        updateFlags();
+        break;        
+    case OP_CMP_AL_Ib:
+        byteOperand1_ = regs_.bit8(REG_AL);
+        byteOperand2_ = ipByte(1);
+        byteResult_ = byteOperand1_ - byteOperand2_;
+        updateFlags();
+        break;
+    case OP_CMP_AX_Iv:
+        wordOperand1_ = regs_.bit16(REG_AX);
+        wordOperand2_ = ipWord(1);
+        wordResult_ = wordOperand1_ - wordOperand2_;
+        updateFlags();
+        break;    
     default: 
-        throw CpuError("Unexpected opcode for CMP: " + hexVal(opcode_));
+        throw CpuError("Unexpected opcode for CMP: " + hexVal(opcode_));    
     }
 }
