@@ -19,6 +19,7 @@ enum Opcode : Byte {
     OP_OR_AL_Ib   = 0x0c,
     OP_OR_AX_Iv   = 0x0d,
     OP_PUSH_CS    = 0x0e,
+    // 0x0f
     OP_ADC_Eb_Gb  = 0x10,
     OP_ADC_Ev_Gv  = 0x11,
     OP_ADC_Gb_Eb  = 0x12,
@@ -42,6 +43,7 @@ enum Opcode : Byte {
     OP_AND_AL_Ib  = 0x24,
     OP_AND_AX_Iv  = 0x25,
     OP_PREFIX_ES  = 0x26,
+    OP_DAA        = 0x27,
     OP_SUB_Eb_Gb  = 0x28,
     OP_SUB_Ev_Gv  = 0x29,
     OP_SUB_Gb_Eb  = 0x2a,
@@ -49,6 +51,7 @@ enum Opcode : Byte {
     OP_SUB_AL_Ib  = 0x2c,
     OP_SUB_AX_Iv  = 0x2d,
     OP_PREFIX_CS  = 0x2e,
+    OP_DAS        = 0x2f,
     OP_XOR_Eb_Gb  = 0x30,
     OP_XOR_Ev_Gv  = 0x31,
     OP_XOR_Gb_Eb  = 0x32,
@@ -56,6 +59,7 @@ enum Opcode : Byte {
     OP_XOR_AL_Ib  = 0x34,
     OP_XOR_AX_Iv  = 0x35,
     OP_PREFIX_SS  = 0x36,
+    OP_AAA        = 0x37,
     OP_CMP_Eb_Gb  = 0x38,
     OP_CMP_Ev_Gv  = 0x39,
     OP_CMP_Gb_Eb  = 0x3a,
@@ -63,6 +67,7 @@ enum Opcode : Byte {
     OP_CMP_AL_Ib  = 0x3c,
     OP_CMP_AX_Iv  = 0x3d,
     OP_PREFIX_DS  = 0x3e,
+    OP_AAS        = 0x3f,
     OP_INC_AX     = 0x40,
     OP_INC_CX     = 0x41,
     OP_INC_DX     = 0x42,
@@ -95,6 +100,22 @@ enum Opcode : Byte {
     OP_POP_BP     = 0x5d,
     OP_POP_SI     = 0x5e,
     OP_POP_DI     = 0x5f,
+    // 0x60
+    // 0x61
+    // 0x62
+    // 0x63
+    // 0x64
+    // 0x65
+    // 0x66
+    // 0x67
+    // 0x68
+    // 0x69
+    // 0x6a
+    // 0x6b
+    // 0x6c
+    // 0x6d
+    // 0x6e
+    // 0x6f
     OP_JO_Jb      = 0x70,
     OP_JNO_Jb     = 0x71,
     OP_JB_Jb      = 0x72,
@@ -111,6 +132,10 @@ enum Opcode : Byte {
     OP_JGE_Jb     = 0x7d,
     OP_JLE_Jb     = 0x7e,
     OP_JG_Jb      = 0x7f,
+    OP_GRP1_Eb_Ib = 0x80,
+    OP_GRP1_Ev_Iv = 0x81,
+    OP_GRP1_Eb_Ib2= 0x82, // this is a synonym for 0x80?
+    OP_GRP1_Ev_Ib = 0x83,
     OP_TEST_Gb_Eb = 0x84,
     OP_TEST_Gv_Ev = 0x85,
     OP_XCHG_Gb_Eb = 0x86,
@@ -171,19 +196,38 @@ enum Opcode : Byte {
     OP_MOV_BP_Iv  = 0xbd,
     OP_MOV_SI_Iv  = 0xbe,
     OP_MOV_DI_Iv  = 0xbf,
+    // 0xc0
+    // 0xc1
     OP_RET_Iw     = 0xc2,
     OP_RET        = 0xc3,
     OP_LES_Gv_Mp  = 0xc4,
     OP_LDS_Gv_Mp  = 0xc5,
     OP_MOV_Eb_Ib  = 0xc6,
     OP_MOV_Ev_Iv  = 0xc7,
+    // 0xc8
+    // 0xc9
     OP_RETF_Iw    = 0xca,
     OP_RETF       = 0xcb,
     OP_INT_3      = 0xcc,
     OP_INT_Ib     = 0xcd,
     OP_INTO       = 0xce,
     OP_IRET       = 0xcf,
+    OP_GRP2_Eb_1  = 0xd0,
+    OP_GRP2_Ev_1  = 0xd1,
+    OP_GRP2_Eb_CL = 0xd2,
+    OP_GRP2_Ev_CL = 0xd3,
+    OP_AAM_I0     = 0xd4,
+    OP_AAD_I0     = 0xd5,
+    // 0xd6
     OP_XLAT       = 0xd7,
+    // 0xd8
+    // 0xd9
+    // 0xda
+    // 0xdb
+    // 0xdc
+    // 0xdd
+    // 0xde
+    // 0xdf
     OP_LOOPNZ_Jb  = 0xe0,
     OP_LOOPZ_Jb   = 0xe1,
     OP_LOOP_Jb    = 0xe2,
@@ -201,16 +245,25 @@ enum Opcode : Byte {
     OP_OUT_DX_AL  = 0xee,
     OP_OUT_DX_AX  = 0xef,
     OP_LOCK       = 0xf0,
+    // 0xf1
     OP_REPNZ      = 0xf2, // REPNE
     OP_REPZ       = 0xf3, // REP, REPE
     OP_HLT        = 0xf4,
     OP_CMC        = 0xf5,
+    OP_GRP3a_Eb   = 0xf6,
+    OP_GRP3b_Ev   = 0xf7,
     OP_CLC        = 0xf8,
     OP_STC        = 0xf9,
     OP_CLI        = 0xfa,
     OP_STI        = 0xfb,
     OP_CLD        = 0xfc,
     OP_STD        = 0xfd,
+    OP_GRP4_Eb    = 0xfe,
+    OP_GRP5_Ev    = 0xff,
 };
+
+std::string opcodeName(const Byte opcode);
+bool opcodeIsModrm(const Byte opcode);
+bool opcodeIsSementPrefix(const Byte opcode);
 
 #endif // OPCODES_H

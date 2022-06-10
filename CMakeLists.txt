@@ -4,7 +4,7 @@ project(dostrace LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ggdb")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ggdb -Wfatal-errors")
 
 set(LIBDOS_SRC 
     src/system.cpp
@@ -16,7 +16,8 @@ set(LIBDOS_SRC
     src/psp.cpp
     src/dos.cpp
     src/mz.cpp
-    src/util.cpp)
+    src/util.cpp
+    src/opcodes.cpp)
 
 set(LIBDOS_HDR 
     include/dos/system.h

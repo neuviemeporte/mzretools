@@ -56,6 +56,7 @@ protected:
 
     inline Byte& reg8(const Register reg) { return regs_->bit8(reg); }
     inline Word& reg16(const Register reg) { return regs_->bit16(reg); }
+    inline Word instructionLength() const { return cpu_->instructionLength(); }
 };
 
 TEST_F(Cpu_8086_Test, OrderHL) {
@@ -98,7 +99,7 @@ TEST_F(Cpu_8086_Test, Flags) {
     ASSERT_EQ(reg16(REG_FLAGS), 0x0);
 }
 
-TEST_F(Cpu_8086_Test, Arithmetic) {
+TEST_F(Cpu_8086_Test, DISABLED_Arithmetic) {
     // TODO: implement an assembler to generate code from a vector of structs
     const Byte code[] = {
         OP_MOV_AL_Ib, 0xFF, // mov al,0xff
@@ -320,5 +321,17 @@ TEST_F(Cpu_8086_Test, Int) {
     EXPECT_CALL(*int_, interrupt(4, _)).Times(1).WillOnce(Return(INT_OK));
     regs_->setFlag(FLAG_OVER, true);
     cpu_->step(); // into    
-
 }
+
+TEST_F(Cpu_8086_Test, Cmp) {
+    const Byte code[] = {
+        OP_CMP_Eb_Gb, MODRM_MOD_NODISP | MODRM_REG_CX | MODRM_MEM_BX_DI, 0x12,
+        OP_CMP_Ev_Gv, MODRM_MOD_NODISP | MODRM_REG_AX | MODRM_MEM_BX_DI, 0x34, 0x12,
+        OP_CMP_Gb_Eb, 
+        OP_CMP_Gv_Ev, 
+        OP_CMP_AL_Ib, 
+        OP_CMP_AX_Iv,
+    };
+}
+
+// TODO: implement tests for group opcodes

@@ -13,6 +13,7 @@ public:
     virtual void init(const Address &code, const Address &stack) = 0;
     virtual void step() = 0;
     virtual void run() = 0;
+    virtual void analyze() = 0;
 };
 
 class InterruptInterface;
@@ -38,6 +39,7 @@ public:
     void init(const Address &codeAddr, const Address &stackAddr) override;
     void step() override;
     void run() override;
+    void analyze() override;
 
 private:
     // utility
@@ -47,6 +49,7 @@ private:
     inline Byte ipByte(const Word offset = 0) const { return code_[regs_.bit16(REG_IP) + offset]; }
     inline Word ipWord(const Word offset = 0) const { return *WORD_PTR(code_, regs_.bit16(REG_IP) + offset); }
     inline void ipAdvance(const Word amount) { regs_.bit16(REG_IP) += amount; }
+    inline void ipJump(const Address &target) { regs_.bit16(REG_CS) = target.segment; regs_.bit16(REG_IP) = target.offset; }
 
     inline Byte memByte(const Offset offset) const { return memBase_[offset]; }
     inline Word memWord(const Offset offset) const { return *WORD_PTR(memBase_, offset); }
@@ -58,14 +61,20 @@ private:
     Offset modrmMemAddress() const;
     Word modrmInstructionLength() const;
 
+    std::string disasm() const;
+    void preProcessOpcode();
+    void postProcessOpcode();
+    Word instructionLength() const;
+
     // instruction execution pipeline
     void pipeline();
     void dispatch();
-    void unknown();
+    void unknown(const std::string &stage) const;
 
     // instructions 
     void instr_mov();
     void instr_int();
+    void instr_cmp();
 };
 
 #endif // CPU_H

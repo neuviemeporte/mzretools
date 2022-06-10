@@ -1,4 +1,7 @@
 debug/
 release/
 *.user
+*.idb
+bin/*.asm
+bin/*.map
 .vscode/

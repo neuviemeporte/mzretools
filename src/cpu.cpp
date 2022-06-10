@@ -3,17 +3,23 @@
 #include <iomanip>
 #include <algorithm>
 #include <cassert>
-#include <bitset>
+#include <vector>
+#include <queue>
+#include <map>
 
 #include "dos/cpu.h"
 #include "dos/psp.h"
 #include "dos/opcodes.h"
 #include "dos/modrm.h"
 #include "dos/interrupt.h"
+#include "dos/routine.h"
 #include "dos/util.h"
 #include "dos/error.h"
 
 using namespace std;
+
+#define UNKNOWN_DISPATCH unknown("dispatch")
+#define UNKNOWN_ILEN unknown("instr_length")
 
 // parity flag values for all possible 8-bit results, used as a lookup table
 // to avoid counting 1 bits after an arithmetic instruction 
@@ -182,6 +188,278 @@ Word Cpu_8086::modrmInstructionLength() const {
     throw CpuError("Invalid ModR/M MOD value while calculating instruction length: "s + hexVal(modrm_mod(modrm_)));
 }
 
+void Cpu_8086::preProcessOpcode() {
+    static const Register PREFIX_REGS[4] = { REG_ES, REG_CS, REG_SS, REG_DS };
+    Word ipOffset = 0;
+    // in case the current opcode is actually a segment override prefix, set a flag and fetch the actual opcode from the next byte
+    if (opcodeIsSementPrefix(opcode_)) {
+        const size_t index = (opcode_ - OP_PREFIX_ES) / 8; // first prefix opcodes is for ES and subsequent ones are multiples of 8
+        segOverride_ = PREFIX_REGS[index]; 
+        opcode_ = ipByte(1);
+        ipOffset++;
+    }
+    // read modrm byte if opcode contains it
+    if (opcodeIsModrm(opcode_)) {
+        modrm_ = ipByte(1 + ipOffset);
+    }
+}
+
+void Cpu_8086::postProcessOpcode() {
+    // set instruction pointer to next instruction, 
+    // this needs to be done before clearing the segOverride_ value
+    ipAdvance(instructionLength());
+    // clear segment override for next instruction in case it was active,
+    segOverride_ = REG_NONE;
+}
+
+Word Cpu_8086::instructionLength() const {
+    // TODO: get rid of the giant switch, use opcode maps from opcodes.cpp
+    Word length = 0;
+    switch (opcode_) {
+    case OP_PUSH_ES    :
+    case OP_POP_ES     :
+    case OP_PUSH_CS    :
+    case OP_PUSH_SS    :
+    case OP_POP_SS     :
+    case OP_PUSH_DS    :
+    case OP_POP_DS     :
+    case OP_INC_AX     :
+    case OP_INC_CX     :
+    case OP_INC_DX     :
+    case OP_INC_BX     :
+    case OP_INC_SP     :
+    case OP_INC_BP     :
+    case OP_INC_SI     :
+    case OP_INC_DI     :
+    case OP_DEC_AX     :
+    case OP_DEC_CX     :
+    case OP_DEC_DX     :
+    case OP_DEC_BX     :
+    case OP_DEC_SP     :
+    case OP_DEC_BP     :
+    case OP_DEC_SI     :
+    case OP_DEC_DI     :
+    case OP_PUSH_AX    :
+    case OP_PUSH_CX    :
+    case OP_PUSH_DX    :
+    case OP_PUSH_BX    :
+    case OP_PUSH_SP    :
+    case OP_PUSH_BP    :
+    case OP_PUSH_SI    :
+    case OP_PUSH_DI    :
+    case OP_POP_AX     :
+    case OP_POP_CX     :
+    case OP_POP_DX     :
+    case OP_POP_BX     :
+    case OP_POP_SP     :
+    case OP_POP_BP     :
+    case OP_POP_SI     :
+    case OP_POP_DI     :
+    case OP_NOP        :
+    case OP_XCHG_CX_AX :
+    case OP_XCHG_DX_AX :
+    case OP_XCHG_BX_AX :
+    case OP_XCHG_SP_AX :
+    case OP_XCHG_BP_AX :
+    case OP_XCHG_SI_AX :
+    case OP_XCHG_DI_AX :
+    case OP_CBW        :
+    case OP_CWD        :
+    case OP_WAIT       :
+    case OP_PUSHF      :
+    case OP_POPF       :
+    case OP_SAHF       :
+    case OP_LAHF       :
+    case OP_MOVSB      :
+    case OP_MOVSW      :
+    case OP_CMPSB      :
+    case OP_CMPSW      :
+    case OP_STOSB      :
+    case OP_STOSW      :
+    case OP_LODSB      :
+    case OP_LODSW      :
+    case OP_SCASB      :
+    case OP_SCASW      :
+    case OP_RET        :
+    case OP_RETF       :
+    case OP_INT_3      :
+    case OP_INTO       :
+    case OP_IRET       :
+    case OP_XLAT       :
+    case OP_IN_AL_DX   :
+    case OP_IN_AX_DX   :
+    case OP_OUT_DX_AL  :
+    case OP_OUT_DX_AX  :
+    case OP_LOCK       :
+    case OP_REPNZ      : // REPNE
+    case OP_REPZ       : // REP, REPE
+    case OP_HLT        :
+    case OP_CMC        :
+    case OP_CLC        :
+    case OP_STC        :
+    case OP_CLI        :
+    case OP_STI        :
+    case OP_CLD        :
+    case OP_STD        :
+        length = 1;
+        break;
+
+    case OP_ADD_AL_Ib  :
+    case OP_OR_AL_Ib   :
+    case OP_ADC_AL_Ib  :
+    case OP_SBB_AL_Ib  :
+    case OP_AND_AL_Ib  :
+    case OP_SUB_AL_Ib  :
+    case OP_XOR_AL_Ib  :
+    case OP_CMP_AL_Ib  :
+    case OP_TEST_AL_Ib :
+    case OP_MOV_AL_Ib  :
+    case OP_MOV_CL_Ib  :
+    case OP_MOV_DL_Ib  :
+    case OP_MOV_BL_Ib  :
+    case OP_MOV_AH_Ib  :
+    case OP_MOV_CH_Ib  :
+    case OP_MOV_DH_Ib  :
+    case OP_MOV_BH_Ib  :
+    case OP_INT_Ib     :
+    case OP_IN_AL_Ib   :
+    case OP_IN_AX_Ib   :
+    case OP_OUT_Ib_AL  :
+    case OP_OUT_Ib_AX  :
+    case OP_JO_Jb      :
+    case OP_JNO_Jb     :
+    case OP_JB_Jb      :
+    case OP_JNB_Jb     :
+    case OP_JZ_Jb      :
+    case OP_JNZ_Jb     :
+    case OP_JBE_Jb     :
+    case OP_JA_Jb      :
+    case OP_JS_Jb      :
+    case OP_JNS_Jb     :
+    case OP_JPE_Jb     :
+    case OP_JPO_Jb     :
+    case OP_JL_Jb      :
+    case OP_JGE_Jb     :
+    case OP_JLE_Jb     :
+    case OP_JG_Jb      :
+    case OP_LOOPNZ_Jb  :
+    case OP_LOOPZ_Jb   :
+    case OP_LOOP_Jb    :
+    case OP_JCXZ_Jb    :
+    case OP_JMP_Jb     :
+        length = 2; // opcode + immediate byte
+        break;
+
+    case OP_ADD_AX_Iv  :
+    case OP_OR_AX_Iv   :
+    case OP_ADC_AX_Iv  :
+    case OP_SBB_AX_Iv  :
+    case OP_AND_AX_Iv  :
+    case OP_SUB_AX_Iv  :
+    case OP_XOR_AX_Iv  :
+    case OP_CMP_AX_Iv  :
+    case OP_TEST_AX_Iv :
+    case OP_MOV_AX_Iv  :
+    case OP_MOV_CX_Iv  :
+    case OP_MOV_DX_Iv  :
+    case OP_MOV_BX_Iv  :
+    case OP_MOV_SP_Iv  :
+    case OP_MOV_BP_Iv  :
+    case OP_MOV_SI_Iv  :
+    case OP_MOV_DI_Iv  :
+    case OP_MOV_AX_Ov  :
+    case OP_MOV_Ov_AX  :
+    case OP_RET_Iw     :
+    case OP_RETF_Iw    :
+    case OP_CALL_Jv    :
+    case OP_JMP_Jv     :
+    case OP_MOV_AL_Ob  :
+    case OP_MOV_Ob_AL  :    
+        length = 3; // opcode + immediate word
+        break;
+
+    case OP_CALL_Ap    :
+    case OP_JMP_Ap     :    
+        length = 5; // opcode + segment + offset
+        break;
+
+    case OP_ADD_Eb_Gb  :
+    case OP_ADD_Ev_Gv  :
+    case OP_ADD_Gb_Eb  :
+    case OP_ADD_Gv_Ev  :
+    case OP_OR_Eb_Gb   :
+    case OP_OR_Ev_Gv   :
+    case OP_OR_Gb_Eb   :
+    case OP_OR_Gv_Ev   :
+    case OP_ADC_Eb_Gb  :
+    case OP_ADC_Ev_Gv  :
+    case OP_ADC_Gb_Eb  :
+    case OP_ADC_Gv_Ev  :
+    case OP_SBB_Eb_Gb  :
+    case OP_SBB_Ev_Gv  :
+    case OP_SBB_Gb_Eb  :
+    case OP_SBB_Gv_Ev  :
+    case OP_AND_Eb_Gb  :
+    case OP_AND_Ev_Gv  :
+    case OP_AND_Gb_Eb  :
+    case OP_AND_Gv_Ev  :
+    case OP_SUB_Eb_Gb  :
+    case OP_SUB_Ev_Gv  :
+    case OP_SUB_Gb_Eb  :
+    case OP_SUB_Gv_Ev  :
+    case OP_XOR_Eb_Gb  :
+    case OP_XOR_Ev_Gv  :
+    case OP_XOR_Gb_Eb  :
+    case OP_XOR_Gv_Ev  :
+    case OP_CMP_Eb_Gb  :
+    case OP_CMP_Ev_Gv  :
+    case OP_CMP_Gb_Eb  :
+    case OP_CMP_Gv_Ev  :
+    case OP_TEST_Gb_Eb :
+    case OP_TEST_Gv_Ev :
+    case OP_XCHG_Gb_Eb :
+    case OP_XCHG_Gv_Ev :
+    case OP_MOV_Eb_Gb  :
+    case OP_MOV_Ev_Gv  :
+    case OP_MOV_Gb_Eb  :
+    case OP_MOV_Gv_Ev  :
+    case OP_MOV_Ew_Sw  :    
+    case OP_MOV_Sw_Ew  :
+    case OP_LEA_Gv_M   :
+    case OP_POP_Ev     :
+    case OP_GRP2_Eb_1  :
+    case OP_GRP2_Ev_1  :
+    case OP_GRP2_Eb_CL :
+    case OP_GRP2_Ev_CL :
+    case OP_GRP3a_Eb   :
+    case OP_GRP3b_Ev   :
+    case OP_GRP4_Eb    :
+    case OP_GRP5_Ev    :
+        length = modrmInstructionLength();
+        break;
+
+    case OP_MOV_Eb_Ib  :
+    case OP_GRP1_Eb_Ib :
+    case OP_GRP1_Eb_Ib2:
+    case OP_GRP1_Ev_Ib :
+        length = modrmInstructionLength() + 1;
+        break;
+
+    case OP_MOV_Ev_Iv  :
+    case OP_GRP1_Ev_Iv :
+    case OP_LDS_Gv_Mp  :
+    case OP_LES_Gv_Mp  :
+        length = modrmInstructionLength() + 2;
+        break;
+
+    default:
+        UNKNOWN_ILEN;
+    }
+    // one more byte for segment override prefix if active
+    if (segOverride_ != REG_NONE) length += 1;
+    return length;
+}
+
 void Cpu_8086::init(const Address &codeAddr, const Address &stackAddr) {
     // initialize registers
     regs_.reset();
@@ -208,25 +486,103 @@ void Cpu_8086::run() {
     pipeline();
 }
 
+string Cpu_8086::disasm() const {
+    string ret = regs_.csip().toString() + "  " + hexVal(opcode_) + "  ";
+    switch(segOverride_) {
+    case REG_ES: ret += "ES:"; break;
+    case REG_CS: ret += "CS:"; break;
+    case REG_SS: ret += "SS:"; break;
+    case REG_DS: ret += "DS:"; break;
+    }
+    return ret + opcodeName(opcode_);
+}
+
+// explore the code without actually executing instructions, discover routine boundaries
+void Cpu_8086::analyze() {
+    done_ = false;
+    // iterate over opcodes in the current routine
+    Byte shortJump;
+    Word mediumJump;
+    Address farJump;
+    string routineName = "start";
+    bool routineEnd = false;
+    Block routineRange{regs_.csip(), regs_.csip()};
+    while (!routineEnd) {
+        opcode_ = ipByte();
+        preProcessOpcode();
+        //cpuMessage(disasm());
+        switch (opcode_)
+        {
+        // conditional jumps
+        case OP_JO_Jb :
+        case OP_JNO_Jb:
+        case OP_JB_Jb :
+        case OP_JNB_Jb:
+        case OP_JZ_Jb :
+        case OP_JNZ_Jb:
+        case OP_JBE_Jb:
+        case OP_JA_Jb :
+        case OP_JS_Jb :
+        case OP_JNS_Jb:
+        case OP_JPE_Jb:
+        case OP_JPO_Jb:
+        case OP_JL_Jb :
+        case OP_JGE_Jb:
+        case OP_JLE_Jb:
+        case OP_JG_Jb :
+            shortJump = ipByte(1);
+            break;
+        // call
+        case OP_CALL_Ap:
+            farJump.segment = ipWord(1);
+            farJump.segment = ipWord(3);
+            break;
+        // return
+        case OP_RET_Iw:
+        case OP_RET   :
+        case OP_RETF_Iw:
+        case OP_RETF   :
+        case OP_IRET   :
+            routineRange.end = regs_.csip();
+            routineEnd = true;
+            break;
+        // loop
+        case OP_LOOPNZ_Jb:
+        case OP_LOOPZ_Jb :
+        case OP_LOOP_Jb  :
+        case OP_JCXZ_Jb  :
+            shortJump = ipByte(1);
+            break;
+        // call
+        case OP_CALL_Jv:
+            mediumJump = ipWord(1);
+            break;
+        // unconditional jump
+        case OP_JMP_Jv:
+            mediumJump = ipWord(1);
+            break;
+        case OP_JMP_Ap:
+            farJump.segment = ipWord(1);
+            farJump.segment = ipWord(3);
+            break;        
+        case OP_JMP_Jb:
+            shortJump = ipByte(1);
+            break;
+        } // switch on opcode
+        postProcessOpcode();
+    } // iterate over opcodes
+    cpuMessage("Found routine '" + routineName + ": " + routineRange);
+}
+
 // main loop for evaluating and executing instructions
 void Cpu_8086::pipeline() {
     done_ = false;
     while (!done_) {
         opcode_ = ipByte();
-        // process segment override prefix if encountered
-        switch (opcode_) {
-        case OP_PREFIX_ES: segOverride_ = REG_ES; break;
-        case OP_PREFIX_CS: segOverride_ = REG_CS; break;
-        case OP_PREFIX_SS: segOverride_ = REG_SS; break;
-        case OP_PREFIX_DS: segOverride_ = REG_DS; break;
-        }
-        if (segOverride_ != REG_NONE) {
-            ipAdvance(1);
-            opcode_ = ipByte();
-        }
+        preProcessOpcode();
+        // evaluate instruction, apply side efects
         dispatch();
-        segOverride_ = REG_NONE;
-        // clear segment override for next instruction if it was used
+        postProcessOpcode();
         if (step_) break;
     }
 }
@@ -281,13 +637,13 @@ void Cpu_8086::dispatch() {
     case OP_XOR_Gb_Eb :
     case OP_XOR_Gv_Ev :
     case OP_XOR_AL_Ib :
-    case OP_XOR_AX_Iv : 
-    case OP_CMP_Eb_Gb :
+    case OP_XOR_AX_Iv : UNKNOWN_DISPATCH;
+    case OP_CMP_Eb_Gb : 
     case OP_CMP_Ev_Gv :
     case OP_CMP_Gb_Eb :
     case OP_CMP_Gv_Ev :
     case OP_CMP_AL_Ib :
-    case OP_CMP_AX_Iv :
+    case OP_CMP_AX_Iv : instr_cmp(); break;
     case OP_INC_AX    :
     case OP_INC_CX    :
     case OP_INC_DX    :
@@ -339,13 +695,13 @@ void Cpu_8086::dispatch() {
     case OP_TEST_Gb_Eb:
     case OP_TEST_Gv_Ev:
     case OP_XCHG_Gb_Eb:
-    case OP_XCHG_Gv_Ev: unknown();
+    case OP_XCHG_Gv_Ev: UNKNOWN_DISPATCH;
     case OP_MOV_Eb_Gb :
     case OP_MOV_Ev_Gv :
     case OP_MOV_Gb_Eb :
     case OP_MOV_Gv_Ev :
     case OP_MOV_Ew_Sw : instr_mov(); break;
-    case OP_LEA_Gv_M  : unknown();
+    case OP_LEA_Gv_M  : UNKNOWN_DISPATCH;
     case OP_MOV_Sw_Ew : instr_mov(); break;
     case OP_POP_Ev    :
     case OP_NOP       :
@@ -363,7 +719,7 @@ void Cpu_8086::dispatch() {
     case OP_PUSHF     :
     case OP_POPF      :
     case OP_SAHF      :
-    case OP_LAHF      : unknown();
+    case OP_LAHF      : UNKNOWN_DISPATCH;
     case OP_MOV_AL_Ob :
     case OP_MOV_AX_Ov :
     case OP_MOV_Ob_AL :
@@ -379,7 +735,7 @@ void Cpu_8086::dispatch() {
     case OP_LODSB     :
     case OP_LODSW     :
     case OP_SCASB     :
-    case OP_SCASW     : unknown();
+    case OP_SCASW     : UNKNOWN_DISPATCH;
     case OP_MOV_AL_Ib :
     case OP_MOV_CL_Ib :
     case OP_MOV_DL_Ib :
@@ -399,11 +755,11 @@ void Cpu_8086::dispatch() {
     case OP_RET_Iw    : 
     case OP_RET       :
     case OP_LES_Gv_Mp :
-    case OP_LDS_Gv_Mp : unknown();
+    case OP_LDS_Gv_Mp : UNKNOWN_DISPATCH;
     case OP_MOV_Eb_Ib : 
     case OP_MOV_Ev_Iv : instr_mov(); break;
     case OP_RETF_Iw   :
-    case OP_RETF      : unknown();
+    case OP_RETF      : UNKNOWN_DISPATCH;
     case OP_INT_3     : 
     case OP_INT_Ib    :
     case OP_INTO      : instr_int(); break;
@@ -436,161 +792,125 @@ void Cpu_8086::dispatch() {
     case OP_STI       :
     case OP_CLD       :
     case OP_STD       :
-    default: unknown();
+    default: UNKNOWN_DISPATCH;
     }
 }
 
-void Cpu_8086::unknown() {
-    throw CpuError("Unknown opcode at address "s + regs_.csip().toString() + ": " + hexVal(opcode_));
+void Cpu_8086::unknown(const string &stage) const {
+    throw CpuError("Unknown opcode during "s + stage + " stage @ "s + regs_.csip().toString() + ": " + hexVal(opcode_));
 }
 
 void Cpu_8086::instr_mov() {
     Register r_src, r_dst;
     switch (opcode_) {
     case OP_MOV_Eb_Gb:
-        modrm_ = ipByte(1);
         r_src = modrmRegRegister(REG_GP8);
         r_dst = modrmMemRegister(REG_GP8);
         if (r_dst == REG_NONE) mem_->writeByte(modrmMemAddress(), regs_.bit8(r_src));
         else regs_.bit8(r_dst) = regs_.bit8(r_src);
-        ipAdvance(modrmInstructionLength());
         break;
     case OP_MOV_Ev_Gv:
-        modrm_ = ipByte(1);
         r_src = modrmRegRegister(REG_GP16);
         r_dst = modrmMemRegister(REG_GP16);
         if (r_dst == REG_NONE) mem_->writeWord(modrmMemAddress(), regs_.bit16(r_src));
         else regs_.bit16(r_dst) = regs_.bit16(r_src);
-        ipAdvance(modrmInstructionLength());
         break;    
     case OP_MOV_Gb_Eb:
-        modrm_ = ipByte(1);
         r_src = modrmMemRegister(REG_GP8);
         r_dst = modrmRegRegister(REG_GP8);
         if (r_src == REG_NONE) regs_.bit8(r_dst) = memByte(modrmMemAddress());
         else regs_.bit8(r_dst) = regs_.bit8(r_src);
-        ipAdvance(modrmInstructionLength());
         break;
     case OP_MOV_Gv_Ev:
-        modrm_ = ipByte(1);
         r_src = modrmMemRegister(REG_GP16);
         r_dst = modrmRegRegister(REG_GP16);
         if (r_src == REG_NONE) regs_.bit16(r_dst) = memWord(modrmMemAddress());
         else regs_.bit16(r_dst) = regs_.bit16(r_src);
-        ipAdvance(modrmInstructionLength());
         break;    
     case OP_MOV_Ew_Sw:
-        modrm_ = ipByte(1);
         r_src = modrmRegRegister(REG_SEG);
         r_dst = modrmMemRegister(REG_GP16);
         if (r_dst == REG_NONE) mem_->writeWord(modrmMemAddress(), regs_.bit16(r_src));
         else regs_.bit16(r_dst) = regs_.bit16(r_src);
-        ipAdvance(modrmInstructionLength());
         break;
     case OP_MOV_Sw_Ew:
-        modrm_ = ipByte(1);
         r_src = modrmMemRegister(REG_GP16);
         r_dst = modrmRegRegister(REG_SEG);
         if (r_src == REG_NONE) regs_.bit16(r_dst) = memWord(modrmMemAddress());
         else regs_.bit16(r_dst) = regs_.bit16(r_src);
-        ipAdvance(modrmInstructionLength());
         break;  
     case OP_MOV_AL_Ob:
         regs_.bit8(REG_AL) = memByte(SEG_OFFSET(regs_.bit16(REG_DS)) + ipWord(1));
-        ipAdvance(3);
         break;
     case OP_MOV_AX_Ov:
         regs_.bit16(REG_AX) = memWord(SEG_OFFSET(regs_.bit16(REG_DS)) + ipWord(1));
-        ipAdvance(3);
         break;    
     case OP_MOV_Ob_AL:
         mem_->writeByte(SEG_OFFSET(regs_.bit16(REG_DS)) + ipWord(1), regs_.bit8(REG_AL));
-        ipAdvance(3);
         break;    
     case OP_MOV_Ov_AX:
         mem_->writeWord(SEG_OFFSET(regs_.bit16(REG_DS)) + ipWord(1), regs_.bit16(REG_AX));
-        ipAdvance(3);
         break;        
     case OP_MOV_AL_Ib:
         regs_.bit8(REG_AL) = ipByte(1);
-        ipAdvance(2);
         break;
     case OP_MOV_CL_Ib:
         regs_.bit8(REG_CL) = ipByte(1);
-        ipAdvance(2);
         break;    
     case OP_MOV_DL_Ib:
         regs_.bit8(REG_DL) = ipByte(1);
-        ipAdvance(2);
         break;    
     case OP_MOV_BL_Ib:
         regs_.bit8(REG_BL) = ipByte(1);
-        ipAdvance(2);
         break;    
     case OP_MOV_AH_Ib:
         regs_.bit8(REG_AH) = ipByte(1);
-        ipAdvance(2);
         break;    
     case OP_MOV_CH_Ib:
         regs_.bit8(REG_CH) = ipByte(1);
-        ipAdvance(2);
         break;    
     case OP_MOV_DH_Ib:
         regs_.bit8(REG_DH) = ipByte(1);
-        ipAdvance(2);
         break;    
     case OP_MOV_BH_Ib:
         regs_.bit8(REG_BH) = ipByte(1);
-        ipAdvance(2);
         break;    
     case OP_MOV_AX_Iv:
         regs_.bit16(REG_AX) = ipWord(1);
-        ipAdvance(3);
         break;
     case OP_MOV_CX_Iv:
         regs_.bit16(REG_CX) = ipWord(1);
-        ipAdvance(3);
         break;    
     case OP_MOV_DX_Iv:
         regs_.bit16(REG_DX) = ipWord(1);
-        ipAdvance(3);
         break;    
     case OP_MOV_BX_Iv:
         regs_.bit16(REG_BX) = ipWord(1);
-        ipAdvance(3);
         break;    
     case OP_MOV_SP_Iv:
         regs_.bit16(REG_SP) = ipWord(1);
-        ipAdvance(3);
         break;    
     case OP_MOV_BP_Iv:
         regs_.bit16(REG_BP) = ipWord(1);
-        ipAdvance(3);
         break;    
     case OP_MOV_SI_Iv:
         regs_.bit16(REG_SI) = ipWord(1);
-        ipAdvance(3);
         break;    
     case OP_MOV_DI_Iv:
         regs_.bit16(REG_DI) = ipWord(1);
-        ipAdvance(3);
         break;    
     case OP_MOV_Eb_Ib:
-        modrm_ = ipByte(1);
         r_dst = modrmMemRegister(REG_GP8);
         if (r_dst == REG_NONE) mem_->writeByte(modrmMemAddress(), ipByte(modrmInstructionLength()));
         else regs_.bit8(r_dst) = ipByte(2);
-        ipAdvance(modrmInstructionLength() + 1); // account for additional immediate operand
         break;
     case OP_MOV_Ev_Iv:
-        modrm_ = ipByte(1);
         r_dst = modrmMemRegister(REG_GP16);
         if (r_dst == REG_NONE) mem_->writeWord(modrmMemAddress(), ipWord(modrmInstructionLength()));
         else regs_.bit16(r_dst) = ipWord(2);
-        ipAdvance(modrmInstructionLength() + 2); // account for additional immediate operand
         break;    
     default: 
-        throw CpuError("Unsupported opcode for MOV: " + hexVal(opcode_));
+        throw CpuError("Unexpected opcode for MOV: " + hexVal(opcode_));
     }
 }
 
@@ -599,17 +919,33 @@ void Cpu_8086::instr_int() {
     switch (opcode_) {
     case OP_INT_3:
         int_->interrupt(3, regs_);
-        ipAdvance(1);
         break;
     case OP_INT_Ib:
         num = ipByte(1);
         int_->interrupt(num, regs_);
-        ipAdvance(2);
         break;
     case OP_INTO:
         if (regs_.getFlag(FLAG_OVER)) int_->interrupt(4, regs_);
-        ipAdvance(1);
         break;    
+    default: 
+        throw CpuError("Unexpected opcode for INT: " + hexVal(opcode_));        
     }
+}
 
+void Cpu_8086::instr_cmp() {
+    Register r_src, r_dst;
+    switch (opcode_) {
+    case OP_CMP_Eb_Gb:
+        r_src = modrmRegRegister(REG_GP8);
+        r_dst = modrmMemRegister(REG_GP8);
+        if (r_dst == REG_NONE) mem_->writeByte(modrmMemAddress(), regs_.bit8(r_src));
+        else regs_.bit8(r_dst) = regs_.bit8(r_src);
+    case OP_CMP_Ev_Gv :
+    case OP_CMP_Gb_Eb :
+    case OP_CMP_Gv_Ev :
+    case OP_CMP_AL_Ib :
+    case OP_CMP_AX_Iv : 
+    default: 
+        throw CpuError("Unexpected opcode for CMP: " + hexVal(opcode_));
+    }
 }

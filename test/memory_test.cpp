@@ -20,6 +20,26 @@ TEST_F(MemoryTest, Segmentation) {
     ASSERT_EQ(a.toLinear(), 0x8124);
 }
 
+TEST_F(MemoryTest, Block) {
+    Block a{10, 20}, b{15,30}, c{30,40}, d{15,17}, e{20,50};
+    ASSERT_TRUE(a.isValid());
+    ASSERT_TRUE(b.isValid());
+    ASSERT_TRUE(c.isValid());
+    ASSERT_TRUE(d.isValid());
+    // adjacent
+    ASSERT_EQ(a.coalesce(e), Block(10,50));
+    ASSERT_EQ(e.coalesce(a), Block(10,50));
+    // partial
+    ASSERT_EQ(a.coalesce(b), Block(10,30));
+    ASSERT_EQ(b.coalesce(a), Block(10,30));
+    // inclusion
+    ASSERT_EQ(a.coalesce(d), Block(10,20));
+    ASSERT_EQ(d.coalesce(a), Block(10,20));
+    // disjoint
+    ASSERT_FALSE(a.coalesce(c).isValid());
+    ASSERT_FALSE(c.coalesce(a).isValid());
+}
+
 TEST_F(MemoryTest, Init) {
     const Size memSize = mem.size();
     const Byte pattern[] = { 0xde, 0xad, 0xbe, 0xef };

@@ -13,14 +13,10 @@ Address::Address(const Offset linear) {
     offset = static_cast<Word>(linear & 0xf);
 }
 
-Address::operator std::string() const {
+std::string Address::toString() const {
     ostringstream str;
     str << *this;
     return str.str();
-}
-
-std::string Address::toString() const {
-    return static_cast<string>(*this);
 }
 
 void Address::normalize() {
@@ -31,4 +27,28 @@ void Address::normalize() {
 std::ostream& operator<<(std::ostream &os, const Address &arg) {
     return os << std::hex << std::setw(4) << std::setfill('0') << arg.segment 
         << ":" << std::setw(4) << std::setfill('0') << arg.offset << " / 0x" << arg.toLinear();
+}
+
+std::string Block::toString() const {
+    if (isValid()) return "["s + begin + ", " + end + "]";
+    else return "[invalid]";
+}
+
+bool Block::intersects(const Block &other) {
+    const Offset 
+        maxBegin = std::max(begin.toLinear(), other.begin.toLinear()),
+        minEnd   = std::min(end.toLinear(), other.end.toLinear());
+    return (maxBegin <= minEnd);
+}
+
+Block Block::coalesce(const Block &other) {
+    if (!intersects(other)) return {};
+    return { 
+        std::min(begin.toLinear(), other.begin.toLinear()),
+        std::max(end.toLinear(), other.end.toLinear())
+     };
+}
+
+std::ostream& operator<<(std::ostream &os, const Block &arg) {
+    return os << arg.toString();
 }

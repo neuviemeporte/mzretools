@@ -86,6 +86,13 @@ CmdStatus System::command(const string &cmd) {
         }
         return commandRun();
     }
+    else if (verb == "analyze") {
+        if (paramCount != 0) {
+            error(verb, "unexpected syntax");
+            return CMD_FAIL;
+        }
+        return commandAnalyze();        
+    }
     // TODO: implement verb script
     else if (verb == "help") {
         printHelp();
@@ -169,9 +176,24 @@ CmdStatus System::commandLoad(const vector<string> &params) {
 }
 
 CmdStatus System::commandRun() {
+    if (loadAddr_.code.isNull()) {
+        output("Code address is null, unable to execute, try loading a binary first");
+        return CMD_FAIL;
+    }
     output("Starting execution at entrypoint "s + loadAddr_.code.toString());
     cpu_->init(loadAddr_.code, loadAddr_.stack);
     cpu_->run();
+    return CMD_OK;
+}
+
+CmdStatus System::commandAnalyze() {
+    if (loadAddr_.code.isNull()) {
+        output("Code address is null, unable to analyze, try loading a binary first");
+        return CMD_FAIL;
+    }    
+    output("Starting analysis at entrypoint "s + loadAddr_.code.toString());
+    cpu_->init(loadAddr_.code, loadAddr_.stack);
+    cpu_->analyze();
     return CMD_OK;
 }
 

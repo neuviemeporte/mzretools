@@ -16,14 +16,32 @@ struct Address {
     Address(const Word segment, const Word offset) : segment(segment), offset(offset) {}
     Address(const Offset linear);
     Address() : Address(0, 0) {}
-    operator std::string() const;
-    std::string toString() const;
 
-    inline Offset toLinear() const {
-        return SEG_OFFSET(segment) + offset;
-    }
+    bool operator==(const Address &arg) const { return toLinear() == arg.toLinear(); }
+    bool operator<=(const Address &arg) const { return toLinear() <= arg.toLinear(); }
+
+    std::string toString() const;
+    inline Offset toLinear() const { return SEG_OFFSET(segment) + offset; }
+    bool isNull() const { return segment == 0 && offset == 0; }
     void normalize();
 };
 std::ostream& operator<<(std::ostream &os, const Address &arg);
+inline std::string operator+(const std::string &str, const Address &arg) { return str + arg.toString(); }
+
+struct Block {
+    Address begin, end;
+    Block(const Address &begin, const Address &end) : begin(begin), end(end) {}
+    Block(const Offset begin, const Offset end) : Block(Address{begin}, Address{end}) {}
+    Block() : Block(MEM_TOTAL - 1, 0) {}
+
+    bool operator==(const Block &arg) const { return begin == arg.begin && end == arg.end; }
+
+    std::string toString() const;
+    bool isValid() const { return begin <= end; }
+    bool intersects(const Block &other);
+    Block coalesce(const Block &other);
+};
+std::ostream& operator<<(std::ostream &os, const Block &arg);
+inline std::string operator+(const std::string &str, const Block &arg) { return str + arg.toString(); }
 
 #endif // ADDRESS_H
