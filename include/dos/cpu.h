@@ -63,7 +63,7 @@ private:
     void modrmStoreWord(const Word value);
     Byte modrmGetByte();
     Word modrmGetWord();
-    Word modrmInstructionLength() const;
+    Word modrmDisplacementLength() const;
 
     std::string disasm() const;
     void preProcessOpcode();

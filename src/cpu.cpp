@@ -170,26 +170,25 @@ Word Cpu_8086::modrmGetWord() {
     else return regs_.bit16(regSrc);
 }
 
-// calculate length of instruction with modrm byte
-Word Cpu_8086::modrmInstructionLength() const {
-    const Word length = 2; // at least opcode + modrm byte
+// length of modrm data following a modrm byte
+Word Cpu_8086::modrmDisplacementLength() const {
     switch (modrm_mod(modrm_)) {
     case MODRM_MOD_NODISP:
         switch (modrm_mem(modrm_)) {
-        // opcode + modrm + direct address word
-        case MODRM_MEM_ADDR: return length + 2;
-        // opcode + modrm
-        default: return length;
+        // direct address word
+        case MODRM_MEM_ADDR: return 2;
+        // address from registers alone
+        default: return 0;
         }
     case MODRM_MOD_DISP8:
-        // opcode + modrm + displacement byte
-        return length + 1;
+        // displacement byte
+        return 1;
     case MODRM_MOD_DISP16:
-        // opcode + modrm + displacement word
-        return length + 2;
+        // displacement word
+        return 2;
     case MODRM_MOD_REG:
-        // opcode + modrm
-        return length;   
+        // register
+        return 0;   
     }
     throw CpuError("Invalid ModR/M MOD value while calculating instruction length: "s + hexVal(modrm_mod(modrm_)));
 }
@@ -218,249 +217,12 @@ void Cpu_8086::postProcessOpcode() {
     segOverride_ = REG_NONE;
 }
 
+// calculate total instruction length including optional prefix byte, the opcode, 
+// optional ModR/M byte, its (optional) displacement and any (also optional) immediate data
 Word Cpu_8086::instructionLength() const {
-    // TODO: get rid of the giant switch, use opcode maps from opcodes.cpp
-    Word length = 0;
-    switch (opcode_) {
-    case OP_PUSH_ES    :
-    case OP_POP_ES     :
-    case OP_PUSH_CS    :
-    case OP_PUSH_SS    :
-    case OP_POP_SS     :
-    case OP_PUSH_DS    :
-    case OP_POP_DS     :
-    case OP_INC_AX     :
-    case OP_INC_CX     :
-    case OP_INC_DX     :
-    case OP_INC_BX     :
-    case OP_INC_SP     :
-    case OP_INC_BP     :
-    case OP_INC_SI     :
-    case OP_INC_DI     :
-    case OP_DEC_AX     :
-    case OP_DEC_CX     :
-    case OP_DEC_DX     :
-    case OP_DEC_BX     :
-    case OP_DEC_SP     :
-    case OP_DEC_BP     :
-    case OP_DEC_SI     :
-    case OP_DEC_DI     :
-    case OP_PUSH_AX    :
-    case OP_PUSH_CX    :
-    case OP_PUSH_DX    :
-    case OP_PUSH_BX    :
-    case OP_PUSH_SP    :
-    case OP_PUSH_BP    :
-    case OP_PUSH_SI    :
-    case OP_PUSH_DI    :
-    case OP_POP_AX     :
-    case OP_POP_CX     :
-    case OP_POP_DX     :
-    case OP_POP_BX     :
-    case OP_POP_SP     :
-    case OP_POP_BP     :
-    case OP_POP_SI     :
-    case OP_POP_DI     :
-    case OP_NOP        :
-    case OP_XCHG_CX_AX :
-    case OP_XCHG_DX_AX :
-    case OP_XCHG_BX_AX :
-    case OP_XCHG_SP_AX :
-    case OP_XCHG_BP_AX :
-    case OP_XCHG_SI_AX :
-    case OP_XCHG_DI_AX :
-    case OP_CBW        :
-    case OP_CWD        :
-    case OP_WAIT       :
-    case OP_PUSHF      :
-    case OP_POPF       :
-    case OP_SAHF       :
-    case OP_LAHF       :
-    case OP_MOVSB      :
-    case OP_MOVSW      :
-    case OP_CMPSB      :
-    case OP_CMPSW      :
-    case OP_STOSB      :
-    case OP_STOSW      :
-    case OP_LODSB      :
-    case OP_LODSW      :
-    case OP_SCASB      :
-    case OP_SCASW      :
-    case OP_RET        :
-    case OP_RETF       :
-    case OP_INT_3      :
-    case OP_INTO       :
-    case OP_IRET       :
-    case OP_XLAT       :
-    case OP_IN_AL_DX   :
-    case OP_IN_AX_DX   :
-    case OP_OUT_DX_AL  :
-    case OP_OUT_DX_AX  :
-    case OP_LOCK       :
-    case OP_REPNZ      : // REPNE
-    case OP_REPZ       : // REP, REPE
-    case OP_HLT        :
-    case OP_CMC        :
-    case OP_CLC        :
-    case OP_STC        :
-    case OP_CLI        :
-    case OP_STI        :
-    case OP_CLD        :
-    case OP_STD        :
-        length = 1;
-        break;
-
-    case OP_ADD_AL_Ib  :
-    case OP_OR_AL_Ib   :
-    case OP_ADC_AL_Ib  :
-    case OP_SBB_AL_Ib  :
-    case OP_AND_AL_Ib  :
-    case OP_SUB_AL_Ib  :
-    case OP_XOR_AL_Ib  :
-    case OP_CMP_AL_Ib  :
-    case OP_TEST_AL_Ib :
-    case OP_MOV_AL_Ib  :
-    case OP_MOV_CL_Ib  :
-    case OP_MOV_DL_Ib  :
-    case OP_MOV_BL_Ib  :
-    case OP_MOV_AH_Ib  :
-    case OP_MOV_CH_Ib  :
-    case OP_MOV_DH_Ib  :
-    case OP_MOV_BH_Ib  :
-    case OP_INT_Ib     :
-    case OP_IN_AL_Ib   :
-    case OP_IN_AX_Ib   :
-    case OP_OUT_Ib_AL  :
-    case OP_OUT_Ib_AX  :
-    case OP_JO_Jb      :
-    case OP_JNO_Jb     :
-    case OP_JB_Jb      :
-    case OP_JNB_Jb     :
-    case OP_JZ_Jb      :
-    case OP_JNZ_Jb     :
-    case OP_JBE_Jb     :
-    case OP_JA_Jb      :
-    case OP_JS_Jb      :
-    case OP_JNS_Jb     :
-    case OP_JPE_Jb     :
-    case OP_JPO_Jb     :
-    case OP_JL_Jb      :
-    case OP_JGE_Jb     :
-    case OP_JLE_Jb     :
-    case OP_JG_Jb      :
-    case OP_LOOPNZ_Jb  :
-    case OP_LOOPZ_Jb   :
-    case OP_LOOP_Jb    :
-    case OP_JCXZ_Jb    :
-    case OP_JMP_Jb     :
-        length = 2; // opcode + immediate byte
-        break;
-
-    case OP_ADD_AX_Iv  :
-    case OP_OR_AX_Iv   :
-    case OP_ADC_AX_Iv  :
-    case OP_SBB_AX_Iv  :
-    case OP_AND_AX_Iv  :
-    case OP_SUB_AX_Iv  :
-    case OP_XOR_AX_Iv  :
-    case OP_CMP_AX_Iv  :
-    case OP_TEST_AX_Iv :
-    case OP_MOV_AX_Iv  :
-    case OP_MOV_CX_Iv  :
-    case OP_MOV_DX_Iv  :
-    case OP_MOV_BX_Iv  :
-    case OP_MOV_SP_Iv  :
-    case OP_MOV_BP_Iv  :
-    case OP_MOV_SI_Iv  :
-    case OP_MOV_DI_Iv  :
-    case OP_MOV_AX_Ov  :
-    case OP_MOV_Ov_AX  :
-    case OP_RET_Iw     :
-    case OP_RETF_Iw    :
-    case OP_CALL_Jv    :
-    case OP_JMP_Jv     :
-    case OP_MOV_AL_Ob  :
-    case OP_MOV_Ob_AL  :    
-        length = 3; // opcode + immediate word
-        break;
-
-    case OP_CALL_Ap    :
-    case OP_JMP_Ap     :    
-        length = 5; // opcode + segment + offset
-        break;
-
-    case OP_ADD_Eb_Gb  :
-    case OP_ADD_Ev_Gv  :
-    case OP_ADD_Gb_Eb  :
-    case OP_ADD_Gv_Ev  :
-    case OP_OR_Eb_Gb   :
-    case OP_OR_Ev_Gv   :
-    case OP_OR_Gb_Eb   :
-    case OP_OR_Gv_Ev   :
-    case OP_ADC_Eb_Gb  :
-    case OP_ADC_Ev_Gv  :
-    case OP_ADC_Gb_Eb  :
-    case OP_ADC_Gv_Ev  :
-    case OP_SBB_Eb_Gb  :
-    case OP_SBB_Ev_Gv  :
-    case OP_SBB_Gb_Eb  :
-    case OP_SBB_Gv_Ev  :
-    case OP_AND_Eb_Gb  :
-    case OP_AND_Ev_Gv  :
-    case OP_AND_Gb_Eb  :
-    case OP_AND_Gv_Ev  :
-    case OP_SUB_Eb_Gb  :
-    case OP_SUB_Ev_Gv  :
-    case OP_SUB_Gb_Eb  :
-    case OP_SUB_Gv_Ev  :
-    case OP_XOR_Eb_Gb  :
-    case OP_XOR_Ev_Gv  :
-    case OP_XOR_Gb_Eb  :
-    case OP_XOR_Gv_Ev  :
-    case OP_CMP_Eb_Gb  :
-    case OP_CMP_Ev_Gv  :
-    case OP_CMP_Gb_Eb  :
-    case OP_CMP_Gv_Ev  :
-    case OP_TEST_Gb_Eb :
-    case OP_TEST_Gv_Ev :
-    case OP_XCHG_Gb_Eb :
-    case OP_XCHG_Gv_Ev :
-    case OP_MOV_Eb_Gb  :
-    case OP_MOV_Ev_Gv  :
-    case OP_MOV_Gb_Eb  :
-    case OP_MOV_Gv_Ev  :
-    case OP_MOV_Ew_Sw  :    
-    case OP_MOV_Sw_Ew  :
-    case OP_LEA_Gv_M   :
-    case OP_POP_Ev     :
-    case OP_GRP2_Eb_1  :
-    case OP_GRP2_Ev_1  :
-    case OP_GRP2_Eb_CL :
-    case OP_GRP2_Ev_CL :
-    case OP_GRP3a_Eb   :
-    case OP_GRP3b_Ev   :
-    case OP_GRP4_Eb    :
-    case OP_GRP5_Ev    :
-        length = modrmInstructionLength();
-        break;
-
-    case OP_MOV_Eb_Ib  :
-    case OP_GRP1_Eb_Ib :
-    case OP_GRP1_Eb_Ib2:
-    case OP_GRP1_Ev_Ib :
-        length = modrmInstructionLength() + 1;
-        break;
-
-    case OP_MOV_Ev_Iv  :
-    case OP_GRP1_Ev_Iv :
-    case OP_LDS_Gv_Mp  :
-    case OP_LES_Gv_Mp  :
-        length = modrmInstructionLength() + 2;
-        break;
-
-    default:
-        UNKNOWN_ILEN;
-    }
+    Word length = opcodeInstructionLength(opcode_);
+    // if opcode is followed by a modrm byte, that could in turn be followed by a displacement value
+    if (opcodeIsModrm(opcode_)) length += modrmDisplacementLength();
     // one more byte for segment override prefix if active
     if (segOverride_ != REG_NONE) length += 1;
     return length;
@@ -963,10 +725,10 @@ void Cpu_8086::instr_mov() {
         regs_.bit16(REG_DI) = ipWord(1);
         break;    
     case OP_MOV_Eb_Ib:
-        modrmStoreByte(ipByte(modrmInstructionLength()));
+        modrmStoreByte(ipByte(2 + modrmDisplacementLength()));
         break;
     case OP_MOV_Ev_Iv:
-        modrmStoreWord(ipWord(modrmInstructionLength()));
+        modrmStoreWord(ipWord(2 + modrmDisplacementLength()));
         break;    
     default: 
         throw CpuError("Unexpected opcode for MOV: " + hexVal(opcode_));

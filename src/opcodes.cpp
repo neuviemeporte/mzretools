@@ -311,3 +311,29 @@ static const int OPCODE_PREFIX[256] = {
 bool opcodeIsSementPrefix(const Byte opcode) {
     return OPCODE_PREFIX[opcode] == 1;
 }
+
+// total length of instruction per opcode, not including the length of any displacements 
+// that are optionally encoded in the instruction bytes of ModR/M opcodes
+static const int OPCODE_INSTRLEN[256] = {
+//  0  1  2  3  4  5  6  7  8  9  A  B  C  D  E  F    
+    2, 2, 2, 2, 2, 3, 1, 1, 2, 2, 2, 2, 2, 3, 1, 0, // 0
+    2, 2, 2, 2, 2, 3, 1, 1, 2, 2, 2, 2, 2, 3, 1, 1, // 1
+    2, 2, 2, 2, 2, 3, 0, 0, 2, 2, 2, 2, 2, 3, 0, 0, // 2
+    2, 2, 2, 2, 2, 3, 0, 0, 2, 2, 2, 2, 2, 3, 0, 0, // 3
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 4
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 5
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 6
+    2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, // 7
+    3, 4, 3, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, // 8
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 5, 1, 1, 1, 1, 1, // 9
+    3, 3, 3, 3, 1, 1, 1, 1, 2, 3, 1, 1, 1, 1, 1, 1, // A
+    2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, // B
+    0, 0, 3, 1, 4, 4, 3, 4, 0, 0, 3, 1, 1, 2, 1, 1, // C
+    2, 2, 2, 2, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, // D
+    2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 5, 2, 1, 1, 1, 1, // E
+    1, 0, 1, 1, 1, 1, 2, 2, 1, 1, 1, 1, 1, 1, 2, 2, // F
+};
+
+int opcodeInstructionLength(const Byte opcode) {
+    return OPCODE_INSTRLEN[opcode];
+}
