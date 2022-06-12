@@ -48,6 +48,14 @@ MzImage::MzImage(const std::string &path) : path_(path), loadModuleData_(nullptr
         throw IoError(msg.str());
     }
 
+    // read in any bytes between end of header and beginning of relocation table: optional overlay information?
+    cout << "reloc @" << hexVal(header_.reloc_table_offset) << ", hdr size = " << hexVal(HEADER_SIZE) << endl;
+    if (header_.reloc_table_offset > HEADER_SIZE) {
+        const Size ovlInfoSize = header_.reloc_table_offset - HEADER_SIZE;
+        ovlinfo_ = vector<Byte>(ovlInfoSize);
+        fread(ovlinfo_.data(), 1, ovlInfoSize, mzFile);
+    }
+
     // read in relocation entries
     if (header_.num_relocs) {
         if (fseek(mzFile, header_.reloc_table_offset, SEEK_SET) != 0) {
@@ -114,21 +122,32 @@ std::string MzImage::dump() const {
         << "\t[0x" << hex << offsetof(Header, reloc_table_offset) << "] reloc_table_offset = " << std::hex << "0x" << header_.reloc_table_offset << endl
         << "\t[0x" << hex << offsetof(Header, overlay_number) << "] overlay_number = " << std::dec << header_.overlay_number;
 
-    if (relocs_.size()) {
+    if (ovlinfo_.size() != 0) {
+        msg << endl << "--- extra data (overlay info?)" << endl << "\t";
+        size_t i = 0;
+        for (auto &b : ovlinfo_) {
+            if (i != 0) msg << ", ";
+            msg << hexVal(b);
+            i++;
+        }
+    }
+
+    if (relocs_.size() != 0) {
         msg << endl << "--- relocations: " << endl;
         size_t i = 0;
         for (const auto &r : relocs_) {
             Address a(r.segment, r.offset);
             a.normalize();
+            if (i != 0) msg << endl;
             msg << "\t[" << std::dec << i << "]: " << std::hex << r.segment << ":" << r.offset 
                 << ", linear: 0x" << a.toLinear() 
                 << ", file offset: 0x" << a.toLinear() + loadModuleOffset_ 
-                << ", file value = 0x" << r.value << endl;
+                << ", file value = 0x" << r.value;
             i++;
         }
     }
 
-    msg << "--- load module @ " << hex << "0x" << loadModuleOffset_ 
+    msg << endl << "--- load module @ " << hex << "0x" << loadModuleOffset_ 
         << ", size = 0x" << loadModuleSize_ << " / " << dec << loadModuleSize_ << " bytes";
     return msg.str();
 }

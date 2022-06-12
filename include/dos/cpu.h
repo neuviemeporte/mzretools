@@ -2,6 +2,7 @@
 #define CPU_H
 
 #include <string>
+#include <queue>
 #include "dos/types.h"
 #include "dos/registers.h"
 #include "dos/memory.h"
@@ -64,6 +65,9 @@ private:
     Byte modrmGetByte();
     Word modrmGetWord();
     Word modrmDisplacementLength() const;
+    Address jumpDestination(const SWord amount) const { 
+        return Address{ regs_.bit16(REG_CS), static_cast<Word>(regs_.bit16(REG_IP) + instructionLength() + amount) }; 
+    }
 
     std::string disasm() const;
     void preProcessOpcode();
@@ -75,6 +79,7 @@ private:
     void dispatch();
     void unknown(const std::string &stage) const;
     void updateFlags();
+    void findReturn(std::queue<Address> &branches, std::queue<Address> &calls);
 
     // instructions 
     void instr_mov();

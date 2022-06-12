@@ -31,6 +31,7 @@ inline std::string operator+(const std::string &str, const Address &arg) { retur
 struct Block {
     Address begin, end;
     Block(const Address &begin, const Address &end) : begin(begin), end(end) {}
+    Block(const Address &begin) : Block(begin, begin) {}
     Block(const Offset begin, const Offset end) : Block(Address{begin}, Address{end}) {}
     Block() : Block(MEM_TOTAL - 1, 0) {}
 
@@ -38,8 +39,9 @@ struct Block {
 
     std::string toString() const;
     bool isValid() const { return begin <= end; }
-    bool intersects(const Block &other);
-    Block coalesce(const Block &other);
+    bool contains(const Address &addr) const { return addr.toLinear() >= begin.toLinear() && addr.toLinear() <= end.toLinear(); }
+    bool intersects(const Block &other) const;
+    Block coalesce(const Block &other) const;
 };
 std::ostream& operator<<(std::ostream &os, const Block &arg);
 inline std::string operator+(const std::string &str, const Block &arg) { return str + arg.toString(); }

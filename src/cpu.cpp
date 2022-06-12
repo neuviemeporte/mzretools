@@ -4,7 +4,6 @@
 #include <algorithm>
 #include <cassert>
 #include <vector>
-#include <queue>
 #include <map>
 
 #include "dos/cpu.h"
@@ -212,6 +211,7 @@ void Cpu_8086::preProcessOpcode() {
 void Cpu_8086::postProcessOpcode() {
     // set instruction pointer to next instruction, 
     // this needs to be done before clearing the segOverride_ value
+    // TODO: take care of jumps
     ipAdvance(instructionLength());
     // clear segment override for next instruction in case it was active,
     segOverride_ = REG_NONE;
@@ -265,21 +265,17 @@ string Cpu_8086::disasm() const {
     return ret + opcodeName(opcode_);
 }
 
-// explore the code without actually executing instructions, discover routine boundaries
-void Cpu_8086::analyze() {
-    done_ = false;
-    // iterate over opcodes in the current routine
-    Byte shortJump;
-    Word mediumJump;
-    Address farJump;
-    string routineName = "start";
-    bool routineEnd = false;
-    Block routineRange{regs_.csip(), regs_.csip()};
-    while (!routineEnd) {
+void Cpu_8086::findReturn(queue<Address> &branches, queue<Address> &calls) {
+    cpuMessage("Scanning opcodes starting at " + regs_.csip());
+    Address destination;
+    while (true) {
         opcode_ = ipByte();
         preProcessOpcode();
         //cpuMessage(disasm());
         switch (opcode_)
+        // TODO: process GRP5 jumps and calls
+        // TODO: ignore jumps and calls outside of load module boundaries?
+        // TODO: unconditional JMP is like a return, can't gloss over it
         {
         // conditional jumps
         case OP_JO_Jb :
@@ -298,12 +294,17 @@ void Cpu_8086::analyze() {
         case OP_JGE_Jb:
         case OP_JLE_Jb:
         case OP_JG_Jb :
-            shortJump = ipByte(1);
+        case OP_JMP_Jb:
+        case OP_JCXZ_Jb:
+            destination = jumpDestination(BYTE_SIGNED(ipByte(1)));
+            branches.push(destination);
+            cpuMessage("\t"s + regs_.csip() + ": found branch to "s + destination);
             break;
         // call
         case OP_CALL_Ap:
-            farJump.segment = ipWord(1);
-            farJump.segment = ipWord(3);
+            destination = { ipWord(1), ipWord(3) };
+            calls.push(destination);
+            cpuMessage("\t"s + regs_.csip() + ": found call to "s + destination);
             break;
         // return
         case OP_RET_Iw:
@@ -311,35 +312,66 @@ void Cpu_8086::analyze() {
         case OP_RETF_Iw:
         case OP_RETF   :
         case OP_IRET   :
-            routineRange.end = regs_.csip();
-            routineEnd = true;
-            break;
+            cpuMessage("\t"s + regs_.csip() + ": found return");
+            return;
         // loop
         case OP_LOOPNZ_Jb:
         case OP_LOOPZ_Jb :
         case OP_LOOP_Jb  :
-        case OP_JCXZ_Jb  :
-            shortJump = ipByte(1);
+            destination = jumpDestination(BYTE_SIGNED(ipByte(1)));
+            branches.push(destination);
+            cpuMessage("\t"s + regs_.csip() + ": found loop to "s + destination);
             break;
         // call
         case OP_CALL_Jv:
-            mediumJump = ipWord(1);
+            destination = jumpDestination(WORD_SIGNED(ipWord(1)));
+            calls.push(destination);
+            cpuMessage("\t"s + regs_.csip() + ": found call to "s + destination);
             break;
         // unconditional jump
         case OP_JMP_Jv:
-            mediumJump = ipWord(1);
+            destination = jumpDestination(WORD_SIGNED(ipWord(1)));
+            branches.push(destination);
+            cpuMessage("\t"s + regs_.csip() + ": found branch to "s + destination);
             break;
         case OP_JMP_Ap:
-            farJump.segment = ipWord(1);
-            farJump.segment = ipWord(3);
+            destination = { ipWord(1), ipWord(3) };
+            branches.push(destination);
+            cpuMessage("\t"s + regs_.csip() + ": found branch to "s + destination);
             break;        
-        case OP_JMP_Jb:
-            shortJump = ipByte(1);
-            break;
         } // switch on opcode
         postProcessOpcode();
     } // iterate over opcodes
-    cpuMessage("Found routine '" + routineName + ": " + routineRange);
+}
+
+// explore the code without actually executing instructions, discover routine boundaries
+void Cpu_8086::analyze() {
+    done_ = false;
+    // iterate over opcodes in the current routine
+    queue<Address> calls;
+    Address destination;
+    Routine routine{"start"};
+    routine.extents = Block{regs_.csip()};
+    queue<Address> branches;
+    // find end of routine extent, make note of any jumps and calls
+    findReturn(branches, calls);
+    routine.extents.end = regs_.csip();
+    // process all branches found while scanning routine
+    cpuMessage("Found routine '" + routine.name + ": " + routine.extents + ", " + to_string(branches.size()) + " branches, " + to_string(calls.size()) + " calls");
+    while (!branches.empty()) {
+        const Address branch = branches.front();
+        branches.pop();
+        if (routine.contains(branch)) {
+            cpuMessage("\t"s + branch + ": ignoring branch within routine");
+            continue;
+        }
+        // otherwise create a function chunk
+        Block chunkExtents = Block{branch};
+        ipJump(branch);
+        findReturn(branches, calls);
+        chunkExtents.end = regs_.csip();
+        routine.chunks.push_back(chunkExtents);
+    } 
 }
 
 // main loop for evaluating and executing instructions

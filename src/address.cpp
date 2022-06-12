@@ -34,14 +34,14 @@ std::string Block::toString() const {
     else return "[invalid]";
 }
 
-bool Block::intersects(const Block &other) {
+bool Block::intersects(const Block &other) const {
     const Offset 
         maxBegin = std::max(begin.toLinear(), other.begin.toLinear()),
         minEnd   = std::min(end.toLinear(), other.end.toLinear());
     return (maxBegin <= minEnd);
 }
 
-Block Block::coalesce(const Block &other) {
+Block Block::coalesce(const Block &other) const {
     if (!intersects(other)) return {};
     return { 
         std::min(begin.toLinear(), other.begin.toLinear()),

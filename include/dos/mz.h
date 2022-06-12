@@ -46,6 +46,7 @@ private:
     const std::string path_;
     Size filesize_, loadModuleSize_;
     std::vector<Relocation> relocs_;
+    std::vector<Byte> ovlinfo_;
     Offset loadModuleOffset_;
     Address entrypoint_;
     Byte *loadModuleData_;

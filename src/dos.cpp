@@ -56,7 +56,7 @@ LoadAddresses Dos::loadExe(MzImage &mz) {
     memory_->writeBuf(pspAddr.toLinear(), pspData, PSP_SIZE);
     // read load module data from exe file into memory
     const Offset loadModuleOffset = mz.loadModuleOffset();
-    dosMessage("Loading from offset "s + hexVal(loadModuleOffset) + ", size = " );
+    dosMessage("Loading from offset "s + hexVal(loadModuleOffset) + ", size = " + hexVal(mz.loadModuleSize()));
     mz.load(loadAddr.segment);
     const Byte *exeData = mz.loadModuleData();
     memory_->writeBuf(loadAddr.toLinear(), exeData, mz.loadModuleSize());
