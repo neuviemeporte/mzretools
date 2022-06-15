@@ -20,7 +20,7 @@ struct Address {
     bool operator==(const Address &arg) const { return toLinear() == arg.toLinear(); }
     bool operator<=(const Address &arg) const { return toLinear() <= arg.toLinear(); }
 
-    std::string toString() const;
+    std::string toString(const bool brief = false) const;
     inline Offset toLinear() const { return SEG_OFFSET(segment) + offset; }
     bool isNull() const { return segment == 0 && offset == 0; }
     void normalize();

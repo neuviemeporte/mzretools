@@ -4,7 +4,7 @@
 #include <algorithm>
 #include <cassert>
 #include <vector>
-#include <map>
+#include <stack>
 
 #include "dos/cpu.h"
 #include "dos/psp.h"
@@ -265,113 +265,129 @@ string Cpu_8086::disasm() const {
     return ret + opcodeName(opcode_);
 }
 
-void Cpu_8086::findReturn(queue<Address> &branches, queue<Address> &calls) {
-    cpuMessage("Scanning opcodes starting at " + regs_.csip());
-    Address destination;
-    while (true) {
-        opcode_ = ipByte();
-        preProcessOpcode();
-        //cpuMessage(disasm());
-        switch (opcode_)
-        // TODO: process GRP5 jumps and calls
-        // TODO: ignore jumps and calls outside of load module boundaries?
-        // TODO: unconditional JMP is like a return, can't gloss over it
-        {
-        // conditional jumps
-        case OP_JO_Jb :
-        case OP_JNO_Jb:
-        case OP_JB_Jb :
-        case OP_JNB_Jb:
-        case OP_JZ_Jb :
-        case OP_JNZ_Jb:
-        case OP_JBE_Jb:
-        case OP_JA_Jb :
-        case OP_JS_Jb :
-        case OP_JNS_Jb:
-        case OP_JPE_Jb:
-        case OP_JPO_Jb:
-        case OP_JL_Jb :
-        case OP_JGE_Jb:
-        case OP_JLE_Jb:
-        case OP_JG_Jb :
-        case OP_JMP_Jb:
-        case OP_JCXZ_Jb:
-            destination = jumpDestination(BYTE_SIGNED(ipByte(1)));
-            branches.push(destination);
-            cpuMessage("\t"s + regs_.csip() + ": found branch to "s + destination);
-            break;
-        // call
-        case OP_CALL_Ap:
-            destination = { ipWord(1), ipWord(3) };
-            calls.push(destination);
-            cpuMessage("\t"s + regs_.csip() + ": found call to "s + destination);
-            break;
-        // return
-        case OP_RET_Iw:
-        case OP_RET   :
-        case OP_RETF_Iw:
-        case OP_RETF   :
-        case OP_IRET   :
-            cpuMessage("\t"s + regs_.csip() + ": found return");
-            return;
-        // loop
-        case OP_LOOPNZ_Jb:
-        case OP_LOOPZ_Jb :
-        case OP_LOOP_Jb  :
-            destination = jumpDestination(BYTE_SIGNED(ipByte(1)));
-            branches.push(destination);
-            cpuMessage("\t"s + regs_.csip() + ": found loop to "s + destination);
-            break;
-        // call
-        case OP_CALL_Jv:
-            destination = jumpDestination(WORD_SIGNED(ipWord(1)));
-            calls.push(destination);
-            cpuMessage("\t"s + regs_.csip() + ": found call to "s + destination);
-            break;
-        // unconditional jump
-        case OP_JMP_Jv:
-            destination = jumpDestination(WORD_SIGNED(ipWord(1)));
-            branches.push(destination);
-            cpuMessage("\t"s + regs_.csip() + ": found branch to "s + destination);
-            break;
-        case OP_JMP_Ap:
-            destination = { ipWord(1), ipWord(3) };
-            branches.push(destination);
-            cpuMessage("\t"s + regs_.csip() + ": found branch to "s + destination);
-            break;        
-        } // switch on opcode
-        postProcessOpcode();
-    } // iterate over opcodes
-}
-
 // explore the code without actually executing instructions, discover routine boundaries
 void Cpu_8086::analyze() {
-    done_ = false;
-    // iterate over opcodes in the current routine
-    queue<Address> calls;
+    // memory map for marking which locations belong to which routines, value of 0 is undiscovered
+    const int UNDISCOVERED = 0;
+    vector<int> memoryMap(mem_->size(), UNDISCOVERED);
+    // store for all routines found
+    vector<Routine> routines;
+    // stack structure for DFS search
+    stack<Address> callstack;
+    // create default routine for entrypoint
+    routines.push_back(Routine("start", 1, regs_.csip()));
+    Routine *curRoutine = &(routines.back());
+
+    auto addRoutine = [&](const Address &entrypoint) {
+        const string name = "routine_" + entrypoint.toString(true);
+        const int id = routines.back().id + 1;
+        routines.push_back(Routine(name, id, entrypoint));
+        curRoutine = &(routines.back());
+    };
+
+    // temporary var for jump/call destination
     Address destination;
-    Routine routine{"start"};
-    routine.extents = Block{regs_.csip()};
-    queue<Address> branches;
-    // find end of routine extent, make note of any jumps and calls
-    findReturn(branches, calls);
-    routine.extents.end = regs_.csip();
-    // process all branches found while scanning routine
-    cpuMessage("Found routine '" + routine.name + ": " + routine.extents + ", " + to_string(branches.size()) + " branches, " + to_string(calls.size()) + " calls");
-    while (!branches.empty()) {
-        const Address branch = branches.front();
-        branches.pop();
-        if (routine.contains(branch)) {
-            cpuMessage("\t"s + branch + ": ignoring branch within routine");
-            continue;
-        }
-        // otherwise create a function chunk
-        Block chunkExtents = Block{branch};
-        ipJump(branch);
-        findReturn(branches, calls);
-        chunkExtents.end = regs_.csip();
-        routine.chunks.push_back(chunkExtents);
-    } 
+    done_ = false;
+    while (!callstack.empty()) {
+        // pop an address of the stack and jump to it
+        const Address stackAddr = callstack.top();
+        callstack.pop();
+        ipJump(stackAddr);
+        cpuMessage("Scanning opcodes starting at " + regs_.csip());
+        // TODO: update curRoutine
+        while (!done_) {
+            opcode_ = ipByte();
+            preProcessOpcode();
+            // mark memory map locations as belonging to the current routine
+            const Word instrLen = instructionLength();
+            const Offset instrOffs = regs_.csip().toLinear();
+            // make sure this location isn't discovered yet
+            if (memoryMap[instrOffs] != UNDISCOVERED) {
+                cpuMessage("Memory map location "s + hexVal(instrOffs) + " already belongs to routine "s + to_string(memoryMap[instrOffs]));
+                break;
+            }
+            std::fill(memoryMap.begin() + instrOffs, memoryMap.begin() + instrOffs + instrLen, curRoutine->id);
+            //cpuMessage(disasm());
+            switch (opcode_)
+            // TODO: process GRP5 jumps and calls
+            // TODO: ignore jumps and calls outside of load module boundaries?
+            // TODO: unconditional JMP is like a return, can't gloss over it
+            {
+            // unconditional jumps: don't store current location on stack, we aren't coming back
+            case OP_JMP_Jb:
+                destination = jumpDestination(BYTE_SIGNED(ipByte(1)));
+                cpuMessage("\t"s + regs_.csip() + ": found unconditional 8bit jump to "s + destination);
+                ipJump(destination);
+                continue;
+            case OP_JMP_Jv:
+                destination = jumpDestination(WORD_SIGNED(ipWord(1)));
+                cpuMessage("\t"s + regs_.csip() + ": found unconditional 16bit jump to "s + destination);
+                ipJump(destination);
+                continue;
+            case OP_JMP_Ap:
+                destination = { ipWord(1), ipWord(3) };
+                cpuMessage("\t"s + regs_.csip() + ": found unconditional far jump to "s + destination);
+                ipJump(destination);
+                continue;  
+            // conditional jumps
+            case OP_JO_Jb :
+            case OP_JNO_Jb:
+            case OP_JB_Jb :
+            case OP_JNB_Jb:
+            case OP_JZ_Jb :
+            case OP_JNZ_Jb:
+            case OP_JBE_Jb:
+            case OP_JA_Jb :
+            case OP_JS_Jb :
+            case OP_JNS_Jb:
+            case OP_JPE_Jb:
+            case OP_JPO_Jb:
+            case OP_JL_Jb :
+            case OP_JGE_Jb:
+            case OP_JLE_Jb:
+            case OP_JG_Jb :
+            case OP_JCXZ_Jb:
+            // loop, treat identically to conditional jump
+            case OP_LOOPNZ_Jb:
+            case OP_LOOPZ_Jb :
+            case OP_LOOP_Jb  :
+                // store  next instruction's address on callstack to come back to
+                callstack.push(Address(instrOffs + instrLen));
+                destination = jumpDestination(BYTE_SIGNED(ipByte(1)));
+                cpuMessage("\t"s + regs_.csip() + ": found loop to "s + destination);
+                // jump to conditional location
+                ipJump(destination);
+                continue;
+            // calls
+            case OP_CALL_Jv:
+                callstack.push(Address(instrOffs + instrLen));
+                destination = jumpDestination(WORD_SIGNED(ipWord(1)));
+                cpuMessage("\t"s + regs_.csip() + ": found call to "s + destination);
+                addRoutine(destination);
+                ipJump(destination);
+                continue;
+            case OP_CALL_Ap:
+                callstack.push(Address(instrOffs + instrLen));
+                destination = { ipWord(1), ipWord(3) };
+                cpuMessage("\t"s + regs_.csip() + ": found far call to "s + destination);
+                addRoutine(destination);
+                ipJump(destination);
+                continue;
+            // return
+            case OP_RET_Iw:
+            case OP_RET   :
+            case OP_RETF_Iw:
+            case OP_RETF   :
+            case OP_IRET   :
+                cpuMessage("\t"s + regs_.csip() + ": found return");
+                done_ = true;
+                break;
+            } // switch on opcode
+            // move to next opcode
+            if (!done_) postProcessOpcode();
+        } // iterate over opcodes
+    } // next address from stack
+
 }
 
 // main loop for evaluating and executing instructions

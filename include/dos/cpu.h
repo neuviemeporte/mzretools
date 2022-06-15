@@ -49,8 +49,9 @@ private:
     // instruction pointer access and manipulation
     inline Byte ipByte(const Word offset = 0) const { return code_[regs_.bit16(REG_IP) + offset]; }
     inline Word ipWord(const Word offset = 0) const { return *WORD_PTR(code_, regs_.bit16(REG_IP) + offset); }
-    inline void ipAdvance(const Word amount) { regs_.bit16(REG_IP) += amount; }
     inline void ipJump(const Address &target) { regs_.bit16(REG_CS) = target.segment; regs_.bit16(REG_IP) = target.offset; }
+    // TODO: handle offset overflow gracefully
+    inline void ipAdvance(const Word amount) { regs_.bit16(REG_IP) += amount; }
 
     inline Byte memByte(const Offset offset) const { return memBase_[offset]; }
     inline Word memWord(const Offset offset) const { return *WORD_PTR(memBase_, offset); }
@@ -66,7 +67,7 @@ private:
     Word modrmGetWord();
     Word modrmDisplacementLength() const;
     Address jumpDestination(const SWord amount) const { 
-        return Address{ regs_.bit16(REG_CS), static_cast<Word>(regs_.bit16(REG_IP) + instructionLength() + amount) }; 
+        return Address(regs_.csip().toLinear() + static_cast<Word>(instructionLength() + amount)); 
     }
 
     std::string disasm() const;
@@ -79,7 +80,6 @@ private:
     void dispatch();
     void unknown(const std::string &stage) const;
     void updateFlags();
-    void findReturn(std::queue<Address> &branches, std::queue<Address> &calls);
 
     // instructions 
     void instr_mov();

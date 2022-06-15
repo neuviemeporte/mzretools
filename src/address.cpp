@@ -13,9 +13,10 @@ Address::Address(const Offset linear) {
     offset = static_cast<Word>(linear & 0xf);
 }
 
-std::string Address::toString() const {
+std::string Address::toString(const bool brief) const {
     ostringstream str;
-    str << *this;
+    str << std::hex << std::setw(4) << std::setfill('0') << segment << ":" << std::setw(4) << std::setfill('0') << offset;
+    if (!brief) str << " / 0x" << toLinear();
     return str.str();
 }
 
@@ -25,8 +26,7 @@ void Address::normalize() {
 }
 
 std::ostream& operator<<(std::ostream &os, const Address &arg) {
-    return os << std::hex << std::setw(4) << std::setfill('0') << arg.segment 
-        << ":" << std::setw(4) << std::setfill('0') << arg.offset << " / 0x" << arg.toLinear();
+    return os << arg.toString();
 }
 
 std::string Block::toString() const {

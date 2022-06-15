@@ -8,9 +8,12 @@
 
 struct Routine {
     std::string name;
+    int id;
     Block extents;
     std::vector<Block> chunks;
-    Routine(const std::string &name) : name(name) {}
+    Routine(const std::string &name, const int id, const Address &entrypoint) : name(name), id(id) {
+        extents.begin = extents.end = entrypoint;
+    }
     bool contains(const Address &addr) const;
 };
 
