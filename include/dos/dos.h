@@ -9,8 +9,9 @@
 
 class Memory;
 
-struct LoadAddresses {
+struct LoadModule {
     Address code, stack;
+    Size size;
 };
 
 class Dos {
@@ -20,7 +21,7 @@ private:
 public:
     Dos(Memory *memory);
     std::string name() const { return "NinjaDOS 1.0"; };
-    LoadAddresses loadExe(MzImage &mz);
+    LoadModule loadExe(MzImage &mz);
     int version() const { return 2; }
 };
 

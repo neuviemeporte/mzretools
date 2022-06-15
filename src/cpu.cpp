@@ -346,32 +346,7 @@ void Cpu_8086::findReturn(queue<Address> &branches, queue<Address> &calls) {
 
 // explore the code without actually executing instructions, discover routine boundaries
 void Cpu_8086::analyze() {
-    done_ = false;
-    // iterate over opcodes in the current routine
-    queue<Address> calls;
-    Address destination;
-    Routine routine{"start"};
-    routine.extents = Block{regs_.csip()};
-    queue<Address> branches;
-    // find end of routine extent, make note of any jumps and calls
-    findReturn(branches, calls);
-    routine.extents.end = regs_.csip();
-    // process all branches found while scanning routine
-    cpuMessage("Found routine '" + routine.name + ": " + routine.extents + ", " + to_string(branches.size()) + " branches, " + to_string(calls.size()) + " calls");
-    while (!branches.empty()) {
-        const Address branch = branches.front();
-        branches.pop();
-        if (routine.contains(branch)) {
-            cpuMessage("\t"s + branch + ": ignoring branch within routine");
-            continue;
-        }
-        // otherwise create a function chunk
-        Block chunkExtents = Block{branch};
-        ipJump(branch);
-        findReturn(branches, calls);
-        chunkExtents.end = regs_.csip();
-        routine.chunks.push_back(chunkExtents);
-    } 
+    
 }
 
 // main loop for evaluating and executing instructions

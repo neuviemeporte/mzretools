@@ -21,7 +21,7 @@ void dosMessage(const string &msg) {
 Dos::Dos(Memory *memory) : memory_(memory) {
 }
 
-LoadAddresses Dos::loadExe(MzImage &mz) {
+LoadModule Dos::loadExe(MzImage &mz) {
     const Address freeStart{memory_->freeStart()};
     const Size memSize = memory_->availableBytes(),
                memBlock = memory_->availableBlock();
@@ -61,11 +61,12 @@ LoadAddresses Dos::loadExe(MzImage &mz) {
     const Byte *exeData = mz.loadModuleData();
     memory_->writeBuf(loadAddr.toLinear(), exeData, mz.loadModuleSize());
     // calculate relocated addresses for code and stack
-    LoadAddresses ret;
+    LoadModule ret;
     ret.code = mz.codeAddress();
     ret.stack = mz.stackAddress();
     ret.code.segment += loadAddr.segment;
     ret.stack.segment += loadAddr.segment;
+    ret.size = mz.loadModuleSize();
     return ret;
 }
 

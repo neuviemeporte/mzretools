@@ -20,7 +20,6 @@ private:
     std::unique_ptr<Memory> mem_;
     std::unique_ptr<Dos> os_;
     std::unique_ptr<InterruptInterface> int_;
-    LoadAddresses loadAddr_;
 
 public:
     System();
@@ -29,13 +28,14 @@ public:
     CmdStatus command(const std::string &cmd);
 
 private:
+    using Params = std::vector<std::string>;
     void printHelp();
     void output(const std::string &msg);
     void error(const std::string &verb, const std::string &message);
     CmdStatus commandLoad(const std::vector<std::string> &params);
-    CmdStatus commandRun();
+    CmdStatus commandRun(const Params &params);
     CmdStatus commandAnalyze();
-    CmdStatus commandDump(const std::vector<std::string> &params);
+    CmdStatus commandDump(const Params &params);
 };
 
 #endif // SYSTEM_H

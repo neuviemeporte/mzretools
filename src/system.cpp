@@ -6,6 +6,7 @@
 #include <fstream>
 #include <vector>
 #include <memory>
+#include <regex>
 
 #include "dos/system.h"
 #include "dos/cpu.h"
@@ -80,11 +81,11 @@ CmdStatus System::command(const string &cmd) {
         output(cpu_->info());
     }
     else if (verb == "run") {
-        if (paramCount != 0) {
+        if (paramCount > 1) {
             error(verb, "unexpected syntax");
             return CMD_FAIL;
         }
-        return commandRun();
+        return commandRun(params);
     }
     else if (verb == "analyze") {
         if (paramCount != 0) {
@@ -157,7 +158,8 @@ CmdStatus System::commandLoad(const vector<string> &params) {
             output("Load module size ("s + to_string(image.loadModuleSize()) + " of executable exceeds available memory: " + to_string(memFree));
             return CMD_FAIL;
         }
-        loadAddr_ = os_->loadExe(image);
+        const auto loadModule = os_->loadExe(image);
+        cpu_->init(loadModule.code, loadModule.stack);
     }
     // load as com
     else {
@@ -175,30 +177,37 @@ CmdStatus System::commandLoad(const vector<string> &params) {
     return CMD_OK;
 }
 
-CmdStatus System::commandRun() {
-    if (loadAddr_.code.isNull()) {
-        output("Code address is null, unable to execute, try loading a binary first");
-        return CMD_FAIL;
+static const regex FARADDR_RE{"([0-9a-fA-F]{1,4}):([0-9a-fA-F]{1,4})"};
+
+CmdStatus System::commandRun(const Params &params) {
+    if (params.size() == 1) {
+        const string entrypointStr = params.front();
+        smatch match;
+        if (regex_match(entrypointStr, match, FARADDR_RE)) {
+            const string segStr = match.str(1), offStr = match.str(2);
+            const Word 
+                segment = stoi(segStr, nullptr, 16),
+                offset  = stoi(offStr, nullptr, 16);
+            const Address entrypoint(segment, offset);
+            cpu_->init(entrypoint, Address{entrypoint.segment, 0xfffe});
+        }
+        else {
+            output("Invalid entrypoint argument: " + entrypointStr);
+            return CMD_FAIL;
+        }
     }
-    output("Starting execution at entrypoint "s + loadAddr_.code.toString());
-    cpu_->init(loadAddr_.code, loadAddr_.stack);
+
     cpu_->run();
     return CMD_OK;
 }
 
 CmdStatus System::commandAnalyze() {
-    if (loadAddr_.code.isNull()) {
-        output("Code address is null, unable to analyze, try loading a binary first");
-        return CMD_FAIL;
-    }    
-    output("Starting analysis at entrypoint "s + loadAddr_.code.toString());
-    cpu_->init(loadAddr_.code, loadAddr_.stack);
     cpu_->analyze();
     return CMD_OK;
 }
 
 // TODO: support address ranges for start and end
-CmdStatus System::commandDump(const vector<string> &params) {
+CmdStatus System::commandDump(const Params &params) {
     if (params.empty()) {
         output("dump command needs at least 1 parameter!");
         return CMD_FAIL;
