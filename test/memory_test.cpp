@@ -20,6 +20,28 @@ TEST_F(MemoryTest, Segmentation) {
     ASSERT_EQ(a.toLinear(), 0x8124);
 }
 
+TEST_F(MemoryTest, Advance) {
+    Address a(0xabcd, 0x10);
+    vector<SByte> disp8{ 10, 100, INT8_MAX, static_cast<SByte>(UINT16_MAX), -10, -100, INT8_MIN };
+    vector<Address> result8{ {0xabcd, 0x1a}, {0xabcd, 0x74}, {0xabcd, 0x8f}, {0xabcd, 0x0f}, {0xabcd, 0x06}, {0xabcd, 0xffac}, {0xabcd, 0xff90} };
+    size_t i = 0;
+    TRACELN("--- 8bit displacement");
+    for (SByte d : disp8) {
+        Address b = a + d;
+        TRACELN("Address " << a << " displaced by " << (int)d << " = " << b);
+        ASSERT_EQ(b, result8[i++]);
+    }
+    i = 0;
+    vector<SWord> disp16{ 10, 1000, INT16_MAX, static_cast<SWord>(UINT16_MAX), -10, -1000, INT16_MIN };
+    vector<Address> result16{ {0xabcd, 0x1a}, {0xabcd, 0x3f8}, {0xabcd, 0x800f}, {0xabcd, 0x0f}, {0xabcd, 0x06}, {0xabcd, 0xfc28}, {0xabcd, 0x8010} };
+    TRACELN("--- 16bit displacement");
+    for (SWord d : disp16) {
+        Address b = a + d;
+        TRACELN("Address " << a << " displaced by " << d << " = " << b);
+        ASSERT_EQ(b, result16[i++]);
+    }
+}
+
 TEST_F(MemoryTest, Block) {
     Block a{10, 20}, b{15,30}, c{30,40}, d{15,17}, e{20,50};
     ASSERT_TRUE(a.isValid());

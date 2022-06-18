@@ -266,10 +266,10 @@ std::string opcodeName(const Byte opcode) {
 
 static const int OPCODE_MODRM[256] = {
 //  0  1  2  3  4  5  6  7  8  9  A  B  C  D  E  F
-    1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, // 0
-    1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, // 1
-    1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, // 2
-    1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, // 3
+    1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, // 0
+    1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, // 1
+    1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, // 2
+    1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, // 3
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 4
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 5
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 6
@@ -286,6 +286,30 @@ static const int OPCODE_MODRM[256] = {
 
 bool opcodeIsModrm(const Byte opcode) {
     return OPCODE_MODRM[opcode] == 1;
+}
+
+static const int OPCODE_GROUP[256] = {
+//  0  1  2  3  4  5  6  7  8  9  A  B  C  D  E  F
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 0
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 1
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 2
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 3
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 4
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 5
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 6
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 7
+    1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 8
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 9
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // A
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // B
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // C
+    1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // D
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // E
+    0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1, // F
+};
+
+bool opcodeIsGroup(const Byte opcode) {
+    return OPCODE_GROUP[opcode] == 1;
 }
 
 static const int OPCODE_PREFIX[256] = {
@@ -314,7 +338,7 @@ bool opcodeIsSementPrefix(const Byte opcode) {
 
 // total length of instruction per opcode, not including the length of any displacements 
 // that are optionally encoded in the instruction bytes of ModR/M opcodes
-static const int OPCODE_INSTRLEN[256] = {
+static const size_t OPCODE_INSTRLEN[256] = {
 //  0  1  2  3  4  5  6  7  8  9  A  B  C  D  E  F    
     2, 2, 2, 2, 2, 3, 1, 1, 2, 2, 2, 2, 2, 3, 1, 0, // 0
     2, 2, 2, 2, 2, 3, 1, 1, 2, 2, 2, 2, 2, 3, 1, 1, // 1
@@ -334,6 +358,6 @@ static const int OPCODE_INSTRLEN[256] = {
     1, 0, 1, 1, 1, 1, 2, 2, 1, 1, 1, 1, 1, 1, 2, 2, // F
 };
 
-int opcodeInstructionLength(const Byte opcode) {
+size_t opcodeInstructionLength(const Byte opcode) {
     return OPCODE_INSTRLEN[opcode];
 }

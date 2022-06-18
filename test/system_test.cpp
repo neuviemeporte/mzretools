@@ -29,7 +29,5 @@ TEST_F(SystemTest, HelloWorld) {
 
 TEST_F(SystemTest, Analysis) {
     ASSERT_EQ(sys.command("load bin/hello.exe"), CMD_OK);
-    // EXPECT_THROW(sys.command("analyze"), CpuError);
-    // TODO: reenable when complete instruction set implemented
     ASSERT_EQ(sys.command("analyze"), CMD_OK);
 }

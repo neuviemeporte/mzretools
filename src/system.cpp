@@ -159,7 +159,7 @@ CmdStatus System::commandLoad(const vector<string> &params) {
             return CMD_FAIL;
         }
         const auto loadModule = os_->loadExe(image);
-        cpu_->init(loadModule.code, loadModule.stack);
+        cpu_->init(loadModule.code, loadModule.stack, loadModule.size);
     }
     // load as com
     else {
@@ -189,7 +189,7 @@ CmdStatus System::commandRun(const Params &params) {
                 segment = stoi(segStr, nullptr, 16),
                 offset  = stoi(offStr, nullptr, 16);
             const Address entrypoint(segment, offset);
-            cpu_->init(entrypoint, Address{entrypoint.segment, 0xfffe});
+            cpu_->init(entrypoint, Address{entrypoint.segment, 0xfffe}, 0);
         }
         else {
             output("Invalid entrypoint argument: " + entrypointStr);
@@ -202,8 +202,8 @@ CmdStatus System::commandRun(const Params &params) {
 }
 
 CmdStatus System::commandAnalyze() {
-    cpu_->analyze();
-    return CMD_OK;
+    if (cpu_->analyze()) return CMD_OK;
+    else return CMD_FAIL;
 }
 
 // TODO: support address ranges for start and end

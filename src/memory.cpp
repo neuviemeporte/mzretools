@@ -71,7 +71,7 @@ string Memory::info() const {
 void Memory::dump(const std::string &path) const {
     FILE *dumpFile = fopen(path.c_str(), "w");
     if (!dumpFile) throw IoError("Unable to open file for Memory dump: " + path);
-    cout << "Dumping Memory contents to " << path << endl;
+    cout << "Dumping memory contents to " << path << endl;
     auto MemoryPtr = pointer(0);
     Size totalSize = 0;
     while (totalSize < MEM_TOTAL) {

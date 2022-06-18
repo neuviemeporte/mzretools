@@ -48,7 +48,19 @@ std::string hexVal(const Byte val) {
     return str.str();
 }
 
+std::string hexVal(const SByte val) {
+    std::ostringstream str;
+    str << "0x" << std::hex << std::setw(2) << std::setfill('0') <<  (int)val;
+    return str.str();
+}
+
 std::string hexVal(const Word val) {
+    std::ostringstream str;
+    str << "0x" << std::hex << std::setw(4) << std::setfill('0') <<  val;
+    return str.str();    
+}
+
+std::string hexVal(const SWord val) {
     std::ostringstream str;
     str << "0x" << std::hex << std::setw(4) << std::setfill('0') <<  val;
     return str.str();    

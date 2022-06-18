@@ -1,10 +1,11 @@
 #include <sstream>
 #include <iostream>
+#include <fstream>
 #include <iomanip>
 #include <algorithm>
 #include <cassert>
 #include <vector>
-#include <map>
+#include <stack>
 
 #include "dos/cpu.h"
 #include "dos/psp.h"
@@ -31,7 +32,8 @@ Cpu_8086::Cpu_8086(Memory *memory, InterruptInterface *inthandler) :
     segOverride_(REG_NONE),
     byteOperand1_(0), byteOperand2_(0), byteResult_(0),
     wordOperand1_(0), wordOperand2_(0), wordResult_(0),
-    done_(false), step_(false) {
+    done_(false), step_(false)
+{
     memBase_ = mem_->base();
     regs_.reset();
 }
@@ -50,6 +52,13 @@ Register Cpu_8086::defaultSeg(const Register reg) const {
     case REG_DI: return REG_ES;
     default: return REG_DS;
     }
+}
+
+void Cpu_8086::setCodeSegment(const Word seg) {
+    const Offset codeLinearAddr = SEG_OFFSET(seg);
+    regs_.bit16(REG_CS) = seg;
+    // update pointer to current code segment data
+    code_ = memBase_ + codeLinearAddr;
 }
 
 // convert a ModR/M register value (from either the REG or the MEM field of the ModR/M byte) to our internal register identifier
@@ -170,7 +179,7 @@ Word Cpu_8086::modrmGetWord() {
 }
 
 // length of modrm data following a modrm byte
-Word Cpu_8086::modrmDisplacementLength() const {
+size_t Cpu_8086::modrmDisplacementLength() const {
     switch (modrm_mod(modrm_)) {
     case MODRM_MOD_NODISP:
         switch (modrm_mem(modrm_)) {
@@ -201,6 +210,11 @@ void Cpu_8086::preProcessOpcode() {
         segOverride_ = PREFIX_REGS[index]; 
         opcode_ = ipByte(1);
         ipOffset++;
+        // TODO: ip remains at override prefix, modrm read etc will be off?
+    }
+    else {
+        // clear segment override in case it was active
+        segOverride_ = REG_NONE;
     }
     // read modrm byte if opcode contains it
     if (opcodeIsModrm(opcode_)) {
@@ -208,19 +222,10 @@ void Cpu_8086::preProcessOpcode() {
     }
 }
 
-void Cpu_8086::postProcessOpcode() {
-    // set instruction pointer to next instruction, 
-    // this needs to be done before clearing the segOverride_ value
-    // TODO: take care of jumps
-    ipAdvance(instructionLength());
-    // clear segment override for next instruction in case it was active,
-    segOverride_ = REG_NONE;
-}
-
 // calculate total instruction length including optional prefix byte, the opcode, 
 // optional ModR/M byte, its (optional) displacement and any (also optional) immediate data
-Word Cpu_8086::instructionLength() const {
-    Word length = opcodeInstructionLength(opcode_);
+size_t Cpu_8086::instructionLength() const {
+    size_t length = opcodeInstructionLength(opcode_);
     // if opcode is followed by a modrm byte, that could in turn be followed by a displacement value
     if (opcodeIsModrm(opcode_)) length += modrmDisplacementLength();
     // one more byte for segment override prefix if active
@@ -228,20 +233,18 @@ Word Cpu_8086::instructionLength() const {
     return length;
 }
 
-void Cpu_8086::init(const Address &codeAddr, const Address &stackAddr) {
+void Cpu_8086::init(const Address &codeAddr, const Address &stackAddr, const Size codeSize) {
     // initialize registers
     regs_.reset();
-    regs_.bit16(REG_CS) = codeAddr.segment;
+    setCodeSegment(codeAddr.segment);
     regs_.bit16(REG_IP) = codeAddr.offset;
     regs_.bit16(REG_SS) = stackAddr.segment;
     regs_.bit16(REG_SP) = stackAddr.offset;
-    const Offset codeLinearAddr = SEG_OFFSET(regs_.bit16(REG_CS));
-    const Offset pspLinearAddr = codeLinearAddr - PSP_SIZE;
+    const Offset pspLinearAddr = SEG_OFFSET(codeAddr.segment) - PSP_SIZE;
     Address pspAddr(pspLinearAddr);
     assert(pspAddr.offset == 0);
     regs_.bit16(REG_DS) = regs_.bit16(REG_ES) = pspAddr.segment;
-    // obtain pointer to beginning of executable code
-    code_ = memBase_ + codeLinearAddr;
+    codeExtents_ = Block({codeAddr.segment, 0}, Address(SEG_OFFSET(codeAddr.segment) + codeSize));
 }
 
 void Cpu_8086::step() {
@@ -265,88 +268,216 @@ string Cpu_8086::disasm() const {
     return ret + opcodeName(opcode_);
 }
 
-void Cpu_8086::findReturn(queue<Address> &branches, queue<Address> &calls) {
-    cpuMessage("Scanning opcodes starting at " + regs_.csip());
-    Address destination;
-    while (true) {
-        opcode_ = ipByte();
-        preProcessOpcode();
-        //cpuMessage(disasm());
-        switch (opcode_)
-        // TODO: process GRP5 jumps and calls
-        // TODO: ignore jumps and calls outside of load module boundaries?
-        // TODO: unconditional JMP is like a return, can't gloss over it
-        {
-        // conditional jumps
-        case OP_JO_Jb :
-        case OP_JNO_Jb:
-        case OP_JB_Jb :
-        case OP_JNB_Jb:
-        case OP_JZ_Jb :
-        case OP_JNZ_Jb:
-        case OP_JBE_Jb:
-        case OP_JA_Jb :
-        case OP_JS_Jb :
-        case OP_JNS_Jb:
-        case OP_JPE_Jb:
-        case OP_JPO_Jb:
-        case OP_JL_Jb :
-        case OP_JGE_Jb:
-        case OP_JLE_Jb:
-        case OP_JG_Jb :
-        case OP_JMP_Jb:
-        case OP_JCXZ_Jb:
-            destination = jumpDestination(BYTE_SIGNED(ipByte(1)));
-            branches.push(destination);
-            cpuMessage("\t"s + regs_.csip() + ": found branch to "s + destination);
-            break;
-        // call
-        case OP_CALL_Ap:
-            destination = { ipWord(1), ipWord(3) };
-            calls.push(destination);
-            cpuMessage("\t"s + regs_.csip() + ": found call to "s + destination);
-            break;
-        // return
-        case OP_RET_Iw:
-        case OP_RET   :
-        case OP_RETF_Iw:
-        case OP_RETF   :
-        case OP_IRET   :
-            cpuMessage("\t"s + regs_.csip() + ": found return");
-            return;
-        // loop
-        case OP_LOOPNZ_Jb:
-        case OP_LOOPZ_Jb :
-        case OP_LOOP_Jb  :
-            destination = jumpDestination(BYTE_SIGNED(ipByte(1)));
-            branches.push(destination);
-            cpuMessage("\t"s + regs_.csip() + ": found loop to "s + destination);
-            break;
-        // call
-        case OP_CALL_Jv:
-            destination = jumpDestination(WORD_SIGNED(ipWord(1)));
-            calls.push(destination);
-            cpuMessage("\t"s + regs_.csip() + ": found call to "s + destination);
-            break;
-        // unconditional jump
-        case OP_JMP_Jv:
-            destination = jumpDestination(WORD_SIGNED(ipWord(1)));
-            branches.push(destination);
-            cpuMessage("\t"s + regs_.csip() + ": found branch to "s + destination);
-            break;
-        case OP_JMP_Ap:
-            destination = { ipWord(1), ipWord(3) };
-            branches.push(destination);
-            cpuMessage("\t"s + regs_.csip() + ": found branch to "s + destination);
-            break;        
-        } // switch on opcode
-        postProcessOpcode();
-    } // iterate over opcodes
-}
-
 // explore the code without actually executing instructions, discover routine boundaries
-void Cpu_8086::analyze() {
+bool Cpu_8086::analyze() {
+    // memory map for marking which locations belong to which routines, value of 0 is undiscovered
+    const int UNDISCOVERED = 0;
+    vector<int> memoryMap(mem_->size(), UNDISCOVERED);
+    // store for all routines found
+    vector<Routine> routines;
+    // stack structure for DFS search
+    stack<Frame> callstack;
+    // create default routine for entrypoint
+    routines.push_back(Routine("start", 1, regs_.csip()));
+    Routine *curRoutine = &(routines.back());
+    callstack.push(Frame(regs_.csip(), 1));
+
+    auto analysisMessage = [&](const string &str) {
+        cpuMessage("["s + to_string(callstack.size()) + "]: " + regs_.csip() + ": " + str);
+    };
+
+    // create new routine and switch to it, or switch to one that exists already
+    auto switchRoutine = [&](const Address &entrypoint) {
+        auto existingRoutine = std::find_if(routines.begin(), routines.end(), [&entrypoint](const Routine &r){
+            return r.entrypoint() == entrypoint;
+        });
+        if (existingRoutine == routines.end()) {
+            const int id = routines.back().id + 1;
+            const string name = "routine_" + to_string(id);
+            routines.push_back(Routine(name, id, entrypoint));
+            curRoutine = &(routines.back());
+            cpuMessage("\tcreated routine " + curRoutine->name + " at entrypoint " + curRoutine->entrypoint());
+        }
+        else {
+            curRoutine = &(*existingRoutine);
+            cpuMessage("\texisting routine " + curRoutine->name + " at entrypoint " + curRoutine->entrypoint());
+        }
+    };
+
+    // check if jump/call destination is within current code extents and jump to it, 
+    // optionally placing a return location on the callstack and switching to a different routine
+    auto checkAndJump = [&](const Address &destination, const string &type, const size_t instrLen = 0, const bool call = false) {
+        if (codeExtents_.contains(destination)) {
+            analysisMessage("taking " + type + " to " + destination);
+            if (instrLen) callstack.push(Frame(regs_.csip() + instrLen, curRoutine->id));
+            if (call) switchRoutine(destination);
+            ipJump(destination);
+            return true;
+        }
+        else {
+            analysisMessage(type + " to " + destination + " outside loaded code, ignoring");
+            return false;
+        }
+    };
     
+    auto dumpStack = [&]() {
+        cpuMessage("Current call stack:");
+        while (!callstack.empty()) {
+            const Frame f = callstack.top();
+            cpuMessage("["s + to_string(callstack.size()) + "]: id " + to_string(f.id) + ", address " + f.address);
+            callstack.pop();
+        }
+    };
+
+    // temporary var for jump/call destination
+    Address destination;
+    while (!callstack.empty()) {
+        // pop an address of the stack and jump to it
+        const Frame frame = callstack.top();
+        curRoutine = &(routines[frame.id - 1]);
+        callstack.pop();
+        ipJump(frame.address);
+        analysisMessage("now in routine '" + curRoutine->name + "', id: " + to_string(curRoutine->id));
+        done_ = false;
+        while (!done_) {
+            opcode_ = ipByte();
+            preProcessOpcode();
+            // mark memory map locations as belonging to the current routine
+            const size_t instrLen = instructionLength();
+            const Offset instrOffs = regs_.csip().toLinear();
+            const int curId = memoryMap[instrOffs];
+            // cpuMessage(regs_.csip().toString() +  ": opcode " + hexVal(opcode_) + ", instrLen = " + to_string(instrLen));
+            // make sure this location isn't discovered yet
+            if (curId != UNDISCOVERED) {
+                analysisMessage("location already belongs to routine " + to_string(curId));
+                break;
+            }
+            std::fill(memoryMap.begin() + instrOffs, memoryMap.begin() + instrOffs + instrLen, curRoutine->id);
+            //cpuMessage(disasm());
+            switch (opcode_)
+            // TODO: process GRP5 jumps and calls
+            // TODO: ignore jumps and calls outside of load module boundaries?
+            {
+            // unconditional jumps: don't store current location on stack, we aren't coming back
+            case OP_JMP_Jb:
+                destination = regs_.csip() + instrLen + BYTE_SIGNED(ipByte(1));
+                if (checkAndJump(destination, "unconditional 8bit jump")) continue;
+                else break;
+            case OP_JMP_Jv:
+                destination = regs_.csip() + instrLen + WORD_SIGNED(ipWord(1));
+                if (checkAndJump(destination, "unconditional 16bit jump")) continue;
+                else break;    
+            case OP_JMP_Ap:
+                destination = Address{ipWord(1), ipWord(3)};
+                if (checkAndJump(destination, "unconditional far jump")) continue;
+                else break;
+            // conditional jumps
+            case OP_JO_Jb :
+            case OP_JNO_Jb:
+            case OP_JB_Jb :
+            case OP_JNB_Jb:
+            case OP_JZ_Jb :
+            case OP_JNZ_Jb:
+            case OP_JBE_Jb:
+            case OP_JA_Jb :
+            case OP_JS_Jb :
+            case OP_JNS_Jb:
+            case OP_JPE_Jb:
+            case OP_JPO_Jb:
+            case OP_JL_Jb :
+            case OP_JGE_Jb:
+            case OP_JLE_Jb:
+            case OP_JG_Jb :
+            case OP_JCXZ_Jb:
+            // loop, treat identically to conditional jump
+            case OP_LOOPNZ_Jb:
+            case OP_LOOPZ_Jb :
+            case OP_LOOP_Jb  :
+                // store  next instruction's address on callstack to come back to
+                destination = regs_.csip() + instrLen + BYTE_SIGNED(ipByte(1));
+                if (checkAndJump(destination, "conditional 8bit jump", instrLen)) continue;
+                else break;
+            // calls
+            case OP_CALL_Jv:
+                destination = regs_.csip() + instrLen + WORD_SIGNED(ipWord(1));
+                if (checkAndJump(destination, "call", instrLen, true)) continue;
+                else break;
+            case OP_CALL_Ap:
+                destination = Address{ipWord(1), ipWord(3)};
+                if (checkAndJump(destination, "far call", instrLen, true)) continue;
+                else break;
+            // return
+            case OP_RET_Iw:
+            case OP_RET   :
+            case OP_RETF_Iw:
+            case OP_RETF   :
+            case OP_IRET   :
+                analysisMessage("returning from " + curRoutine->name);
+                done_ = true;
+                break;
+            // jumps and calls encoded with group opcode
+            case OP_GRP5_Ev:
+                switch (modrm_grp(modrm_)) {
+                case MODRM_GRP5_CALL:
+                    cpuMessage("-------- grp5 call at " + regs_.csip()); break;
+                case MODRM_GRP5_CALL_Mp:
+                    cpuMessage("-------- grp5_mp call at " + regs_.csip()); break;
+                case MODRM_GRP5_JMP:
+                    cpuMessage("-------- grp5 jmp at " + regs_.csip()); break;
+                case MODRM_GRP5_JMP_Mp:
+                    cpuMessage("-------- grp5 mp jump at " + regs_.csip()); break;
+                }
+                //break;
+            } // switch on opcode
+            // advance to next instruction
+            if (instrLen == 0) {
+                analysisMessage(" ERROR: calcualted instruction length is zero, opcode " + hexVal(opcode_));
+                dumpStack();
+                return false;
+            }
+            ipAdvance(WORD_SIGNED(instrLen));
+            // move to next opcode
+        } // iterate over opcodes
+    } // next address from callstack
+    // dump map to file for debugging, if >255 routines this will overflow
+    ofstream mapFile("analysis.map", ios::binary);
+    int prev = UNDISCOVERED;
+    Offset chunkStart = 0;
+    // iterate over memory map that we built up, identify contiguous chunks belonging to routines
+    for (size_t mapOffset = codeExtents_.begin.toLinear(); mapOffset < codeExtents_.end.toLinear(); ++mapOffset) {
+        const int m = memoryMap[mapOffset];
+        cpuMessage(hexVal(mapOffset) + ": " + to_string(m));
+        mapFile.put(static_cast<char>(m));
+        if (m != prev) { // new chunk begin
+            if (prev != UNDISCOVERED) { // attribute previous chunk to correct routine
+                Routine &r = routines[prev - 1];
+                Block chunk{Address(chunkStart), Address(mapOffset - 1)};
+                cpuMessage("\tclosing chunk " + chunk + " for routine " + r.name + " @ " + r.entrypoint());
+                // this is the main body of the routine, update the extents
+                if (chunk.contains(r.entrypoint())) { cpuMessage("\tmain body"); r.extents.end = chunk.end; }
+                // otherwise this is a head or tail chunk of the routine, add to chunks
+                else { cpuMessage("\tchunk");  r.chunks.push_back(chunk); }
+            }
+            // start new chunk
+            if (m != UNDISCOVERED) {
+                cpuMessage("\tstarting chunk");
+                chunkStart = mapOffset;
+            }
+        }
+        prev = m;
+    }
+    // sort routines by entrypoint
+    cpuMessage("Successfully analyzed code, found " + to_string(routines.size()) + " routines:");
+    std::sort(routines.begin(), routines.end(), [](const Routine &a, const Routine &b){
+        return a.entrypoint().toLinear() < b.entrypoint().toLinear();
+    });
+    // display routines
+    for (const auto &r : routines) {
+        cpuMessage(r.extents.toString() + ": " + r.name + " / " + to_string(r.id));
+        for (const auto &c : r.chunks)
+            cpuMessage("\tfunction chunk: "s + c.toString());
+    }
+    return true;
 }
 
 // main loop for evaluating and executing instructions
@@ -357,7 +488,7 @@ void Cpu_8086::pipeline() {
         preProcessOpcode();
         // evaluate instruction, apply side efects
         dispatch();
-        postProcessOpcode();
+        ipAdvance(WORD_SIGNED(instructionLength()));
         if (step_) break;
     }
 }

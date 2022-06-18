@@ -13,8 +13,8 @@ using Size   = size_t;
 // for representing linear addresses from the memory base, required because DOS addresses don't fit in a 16-bit word
 using Offset = size_t;
 
-inline SByte BYTE_SIGNED(const Byte val) { return static_cast<SByte>(val); }
-inline SWord WORD_SIGNED(const Word val) { return static_cast<SWord>(val); }
+template<typename T> SByte BYTE_SIGNED(const T val) { return static_cast<SByte>(val); }
+template<typename T> SWord WORD_SIGNED(const T val) { return static_cast<SWord>(val); }
 
 static constexpr Size PARAGRAPH_SIZE = 16;
 constexpr Size operator "" _par(unsigned long long para) { return static_cast<Size>(para) * PARAGRAPH_SIZE; }

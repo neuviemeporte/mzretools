@@ -51,7 +51,7 @@ protected:
             memStart(memStartLinear),
             memEnd(memEndLinear);
         mem_->writeBuf(memStartLinear, code, size);
-        cpu_->init(memStart, memEnd);
+        cpu_->init(memStart, memEnd, 0);
     }
 
     inline Byte& reg8(const Register reg) { return regs_->bit8(reg); }

@@ -19,11 +19,18 @@ struct Address {
 
     bool operator==(const Address &arg) const { return toLinear() == arg.toLinear(); }
     bool operator<=(const Address &arg) const { return toLinear() <= arg.toLinear(); }
+    Address operator+(const SByte arg) const { return {segment, static_cast<Word>(offset + arg)}; }
+    Address operator+(const SWord arg) const { return {segment, static_cast<Word>(offset + arg)}; }
+    Address operator+(const size_t arg) const { return {segment, static_cast<Word>(offset + arg)}; }
 
-    std::string toString() const;
+    void set(const Offset linear);
+    std::string toString(const bool brief = false) const;
     inline Offset toLinear() const { return SEG_OFFSET(segment) + offset; }
     bool isNull() const { return segment == 0 && offset == 0; }
     void normalize();
+
+private:
+
 };
 std::ostream& operator<<(std::ostream &os, const Address &arg);
 inline std::string operator+(const std::string &str, const Address &arg) { return str + arg.toString(); }
