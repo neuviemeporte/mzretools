@@ -1,5 +1,5 @@
-#ifndef ROUTINE_H
-#define ROUTINE_H
+#ifndef ANALYSIS_H
+#define ANALYSIS_H
 
 #include <string>
 #include <vector>
@@ -16,6 +16,7 @@ struct Routine {
     }
     Address entrypoint() const { return extents.begin; }
     bool contains(const Address &addr) const;
+    std::string toString() const;
 };
 
 struct Frame {
@@ -26,4 +27,11 @@ struct Frame {
     bool isNull() const { return address.isNull(); }
 };
 
-#endif // ROUTINE_H
+struct Analysis {
+    bool success;
+    std::vector<Routine> routines;
+    Analysis() : success(false) {}
+    void dump() const;
+};
+
+#endif // ANALYSIS_H

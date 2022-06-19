@@ -202,7 +202,8 @@ CmdStatus System::commandRun(const Params &params) {
 }
 
 CmdStatus System::commandAnalyze() {
-    if (cpu_->analyze()) return CMD_OK;
+    analysis_ = cpu_->analyze();
+    if (analysis_.success) return CMD_OK;
     else return CMD_FAIL;
 }
 

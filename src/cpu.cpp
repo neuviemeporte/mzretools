@@ -12,17 +12,18 @@
 #include "dos/opcodes.h"
 #include "dos/modrm.h"
 #include "dos/interrupt.h"
-#include "dos/routine.h"
 #include "dos/util.h"
 #include "dos/error.h"
+#include "dos/debug.h"
 
 using namespace std;
 
 #define UNKNOWN_DISPATCH unknown("dispatch")
 #define UNKNOWN_ILEN unknown("instr_length")
 
-static void cpuMessage(const string &msg) {
-    cout << msg << endl;
+static LogPriority cpuLogLevel = LOG_VERBOSE;
+static void cpuMessage(const string &msg, const LogPriority pri = LOG_DEBUG) {
+    if (pri >= cpuLogLevel) cout << msg << endl;
 }
 
 Cpu_8086::Cpu_8086(Memory *memory, InterruptInterface *inthandler) : 
@@ -269,12 +270,16 @@ string Cpu_8086::disasm() const {
 }
 
 // explore the code without actually executing instructions, discover routine boundaries
-bool Cpu_8086::analyze() {
+// TODO: trace modifications to CS, support multiple code segments
+// TODO: process GRP5 jumps and calls
+// TODO: trace other register values for discovering register-dependent calls?
+Analysis Cpu_8086::analyze() {
     // memory map for marking which locations belong to which routines, value of 0 is undiscovered
     const int UNDISCOVERED = 0;
     vector<int> memoryMap(mem_->size(), UNDISCOVERED);
     // store for all routines found
-    vector<Routine> routines;
+    Analysis ret;
+    vector<Routine> &routines = ret.routines;
     // stack structure for DFS search
     stack<Frame> callstack;
     // create default routine for entrypoint
@@ -282,8 +287,8 @@ bool Cpu_8086::analyze() {
     Routine *curRoutine = &(routines.back());
     callstack.push(Frame(regs_.csip(), 1));
 
-    auto analysisMessage = [&](const string &str) {
-        cpuMessage("["s + to_string(callstack.size()) + "]: " + regs_.csip() + ": " + str);
+    auto analysisMessage = [&](const string &str, const LogPriority pri = LOG_VERBOSE) {
+        cpuMessage("["s + to_string(callstack.size()) + "]: " + regs_.csip() + ": " + str, pri);
     };
 
     // create new routine and switch to it, or switch to one that exists already
@@ -296,11 +301,11 @@ bool Cpu_8086::analyze() {
             const string name = "routine_" + to_string(id);
             routines.push_back(Routine(name, id, entrypoint));
             curRoutine = &(routines.back());
-            cpuMessage("\tcreated routine " + curRoutine->name + " at entrypoint " + curRoutine->entrypoint());
+            cpuMessage("\tcreated routine " + curRoutine->name + " at entrypoint " + curRoutine->entrypoint(), LOG_VERBOSE);
         }
         else {
             curRoutine = &(*existingRoutine);
-            cpuMessage("\texisting routine " + curRoutine->name + " at entrypoint " + curRoutine->entrypoint());
+            cpuMessage("\texisting routine " + curRoutine->name + " at entrypoint " + curRoutine->entrypoint(), LOG_VERBOSE);
         }
     };
 
@@ -321,16 +326,15 @@ bool Cpu_8086::analyze() {
     };
     
     auto dumpStack = [&]() {
-        cpuMessage("Current call stack:");
+        cpuMessage("Current call stack:", LOG_INFO);
         while (!callstack.empty()) {
             const Frame f = callstack.top();
-            cpuMessage("["s + to_string(callstack.size()) + "]: id " + to_string(f.id) + ", address " + f.address);
+            cpuMessage("["s + to_string(callstack.size()) + "]: id " + to_string(f.id) + ", address " + f.address, LOG_INFO);
             callstack.pop();
         }
     };
 
-    // temporary var for jump/call destination
-    Address destination;
+    cpuMessage("Analyzing code in range " + codeExtents_, LOG_INFO);
     while (!callstack.empty()) {
         // pop an address of the stack and jump to it
         const Frame frame = callstack.top();
@@ -340,11 +344,16 @@ bool Cpu_8086::analyze() {
         analysisMessage("now in routine '" + curRoutine->name + "', id: " + to_string(curRoutine->id));
         done_ = false;
         while (!done_) {
+            if (!codeExtents_.contains(regs_.csip())) {
+                analysisMessage("ERROR: advanced past loaded code extents", LOG_ERROR);
+                return {};
+            }
             opcode_ = ipByte();
             preProcessOpcode();
             // mark memory map locations as belonging to the current routine
             const size_t instrLen = instructionLength();
             const Offset instrOffs = regs_.csip().toLinear();
+            auto instrIt = memoryMap.begin() + instrOffs;
             const int curId = memoryMap[instrOffs];
             // cpuMessage(regs_.csip().toString() +  ": opcode " + hexVal(opcode_) + ", instrLen = " + to_string(instrLen));
             // make sure this location isn't discovered yet
@@ -352,24 +361,19 @@ bool Cpu_8086::analyze() {
                 analysisMessage("location already belongs to routine " + to_string(curId));
                 break;
             }
-            std::fill(memoryMap.begin() + instrOffs, memoryMap.begin() + instrOffs + instrLen, curRoutine->id);
+            std::fill(instrIt, instrIt + instrLen, curRoutine->id);
             //cpuMessage(disasm());
             switch (opcode_)
-            // TODO: process GRP5 jumps and calls
-            // TODO: ignore jumps and calls outside of load module boundaries?
             {
             // unconditional jumps: don't store current location on stack, we aren't coming back
             case OP_JMP_Jb:
-                destination = regs_.csip() + instrLen + BYTE_SIGNED(ipByte(1));
-                if (checkAndJump(destination, "unconditional 8bit jump")) continue;
+                if (checkAndJump(regs_.csip() + instrLen + BYTE_SIGNED(ipByte(1)), "unconditional 8bit jump")) continue;
                 else break;
             case OP_JMP_Jv:
-                destination = regs_.csip() + instrLen + WORD_SIGNED(ipWord(1));
-                if (checkAndJump(destination, "unconditional 16bit jump")) continue;
+                if (checkAndJump(regs_.csip() + instrLen + WORD_SIGNED(ipWord(1)), "unconditional 16bit jump")) continue;
                 else break;    
             case OP_JMP_Ap:
-                destination = Address{ipWord(1), ipWord(3)};
-                if (checkAndJump(destination, "unconditional far jump")) continue;
+                if (checkAndJump(Address{ipWord(1), ipWord(3)}, "unconditional far jump")) continue;
                 else break;
             // conditional jumps
             case OP_JO_Jb :
@@ -394,17 +398,14 @@ bool Cpu_8086::analyze() {
             case OP_LOOPZ_Jb :
             case OP_LOOP_Jb  :
                 // store  next instruction's address on callstack to come back to
-                destination = regs_.csip() + instrLen + BYTE_SIGNED(ipByte(1));
-                if (checkAndJump(destination, "conditional 8bit jump", instrLen)) continue;
+                if (checkAndJump(regs_.csip() + instrLen + BYTE_SIGNED(ipByte(1)), "conditional 8bit jump", instrLen)) continue;
                 else break;
             // calls
             case OP_CALL_Jv:
-                destination = regs_.csip() + instrLen + WORD_SIGNED(ipWord(1));
-                if (checkAndJump(destination, "call", instrLen, true)) continue;
+                if (checkAndJump(regs_.csip() + instrLen + WORD_SIGNED(ipWord(1)), "call", instrLen, true)) continue;
                 else break;
             case OP_CALL_Ap:
-                destination = Address{ipWord(1), ipWord(3)};
-                if (checkAndJump(destination, "far call", instrLen, true)) continue;
+                if (checkAndJump(Address{ipWord(1), ipWord(3)}, "far call", instrLen, true)) continue;
                 else break;
             // return
             case OP_RET_Iw:
@@ -419,21 +420,21 @@ bool Cpu_8086::analyze() {
             case OP_GRP5_Ev:
                 switch (modrm_grp(modrm_)) {
                 case MODRM_GRP5_CALL:
-                    cpuMessage("-------- grp5 call at " + regs_.csip()); break;
+                    analysisMessage("-------- grp5 call"); break;
                 case MODRM_GRP5_CALL_Mp:
-                    cpuMessage("-------- grp5_mp call at " + regs_.csip()); break;
+                    analysisMessage("-------- grp5_mp call"); break;
                 case MODRM_GRP5_JMP:
-                    cpuMessage("-------- grp5 jmp at " + regs_.csip()); break;
+                    analysisMessage("-------- grp5 jmp"); break;
                 case MODRM_GRP5_JMP_Mp:
-                    cpuMessage("-------- grp5 mp jump at " + regs_.csip()); break;
+                    analysisMessage("-------- grp5 mp jump"); break;
                 }
                 //break;
             } // switch on opcode
             // advance to next instruction
             if (instrLen == 0) {
-                analysisMessage(" ERROR: calcualted instruction length is zero, opcode " + hexVal(opcode_));
+                analysisMessage(" ERROR: calcualted instruction length is zero, opcode " + hexVal(opcode_), LOG_ERROR);
                 dumpStack();
-                return false;
+                return {};
             }
             ipAdvance(WORD_SIGNED(instrLen));
             // move to next opcode
@@ -454,9 +455,18 @@ bool Cpu_8086::analyze() {
                 Block chunk{Address(chunkStart), Address(mapOffset - 1)};
                 cpuMessage("\tclosing chunk " + chunk + " for routine " + r.name + " @ " + r.entrypoint());
                 // this is the main body of the routine, update the extents
-                if (chunk.contains(r.entrypoint())) { cpuMessage("\tmain body"); r.extents.end = chunk.end; }
+                if (chunk.contains(r.entrypoint())) { 
+                    cpuMessage("\tmain body"); 
+                    r.extents.end = chunk.end;
+                    // rebase extents to the beginning of code so its address is relative to the start of the load module
+                    r.extents.rebase(codeExtents_.begin.segment);
+                }
                 // otherwise this is a head or tail chunk of the routine, add to chunks
-                else { cpuMessage("\tchunk");  r.chunks.push_back(chunk); }
+                else { 
+                    cpuMessage("\tchunk"); 
+                    chunk.rebase(codeExtents_.begin.segment);
+                    r.chunks.push_back(chunk); 
+                }
             }
             // start new chunk
             if (m != UNDISCOVERED) {
@@ -467,17 +477,13 @@ bool Cpu_8086::analyze() {
         prev = m;
     }
     // sort routines by entrypoint
-    cpuMessage("Successfully analyzed code, found " + to_string(routines.size()) + " routines:");
+    cpuMessage("Successfully analyzed code, found " + to_string(routines.size()) + " routines", LOG_INFO);
     std::sort(routines.begin(), routines.end(), [](const Routine &a, const Routine &b){
         return a.entrypoint().toLinear() < b.entrypoint().toLinear();
     });
-    // display routines
-    for (const auto &r : routines) {
-        cpuMessage(r.extents.toString() + ": " + r.name + " / " + to_string(r.id));
-        for (const auto &c : r.chunks)
-            cpuMessage("\tfunction chunk: "s + c.toString());
-    }
-    return true;
+
+    ret.success = true;
+    return ret;
 }
 
 // main loop for evaluating and executing instructions

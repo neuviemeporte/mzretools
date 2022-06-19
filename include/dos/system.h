@@ -15,11 +15,14 @@ enum CmdStatus {
 };
 
 class System {
+    friend class SystemTest;
+
 private:
     std::unique_ptr<Cpu> cpu_;
     std::unique_ptr<Memory> mem_;
     std::unique_ptr<Dos> os_;
     std::unique_ptr<InterruptInterface> int_;
+    Analysis analysis_;
 
 public:
     System();
