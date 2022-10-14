@@ -52,7 +52,7 @@ CmdStatus System::command(const string &cmd) {
     assert(!verb.empty() && tokenCount > 0);
     const size_t paramCount = tokenCount - 1;
     // todo: table of commands with arg counts and handlers
-    if (verb == "exit") {
+    if (verb == "exit" || verb == "quit") {
         if (paramCount != 0) {
             error(verb, "trailing arugments");
             return CMD_FAIL;
@@ -79,6 +79,7 @@ CmdStatus System::command(const string &cmd) {
             return CMD_FAIL;
         }
         output(cpu_->info());
+        return CMD_OK;
     }
     else if (verb == "run") {
         if (paramCount > 1) {
@@ -108,7 +109,8 @@ void System::printHelp() {
         << "load <executable_path> - load DOS executable at start of available memory" << endl
         << "dump <file_path> - dump contents of emulated memory to file" << endl
         << "cpu - print CPU info" << endl
-        << "exec - start executing code at current cpu instruction pointer" << endl
+        << "run - start executing code at current cpu instruction pointer" << endl
+        << "analyze - analyze executable, try to find subroutines," << endl
         << "exit - finish session" << endl;
 }
 

@@ -62,11 +62,15 @@ LoadModule Dos::loadExe(MzImage &mz) {
     memory_->writeBuf(loadAddr.toLinear(), exeData, mz.loadModuleSize());
     // calculate relocated addresses for code and stack
     LoadModule ret;
-    ret.code = mz.codeAddress();
-    ret.stack = mz.stackAddress();
+    const Address
+        codeAddress  = mz.codeAddress(),
+        stackAddress = mz.stackAddress();
+    ret.code = codeAddress;
+    ret.stack = stackAddress;
     ret.code.segment += loadAddr.segment;
     ret.stack.segment += loadAddr.segment;
-    ret.size = mz.loadModuleSize();
+    ret.size = loadModuleSize;
+    dosMessage("Code entrypoint at "s + codeAddress + " (relocated " + ret.code + ")\nStack at " + stackAddress + " (relocated " + ret.stack + ")");
     return ret;
 }
 

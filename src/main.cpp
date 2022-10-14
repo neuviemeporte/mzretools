@@ -34,8 +34,10 @@ int main(int argc, char* argv[])
         }
         catch (Error &e) {
             cout << "Error: " << e.what() << endl;
-            status = 1;
-            break;
+            if (e.fatal()) {
+                status = 1;
+                break;
+            } 
         }
     }
 

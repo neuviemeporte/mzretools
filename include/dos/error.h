@@ -6,11 +6,13 @@
 
 class Error : public std::exception {
 private:
-    std::string why_;
+    const std::string why_;
+    const bool fatal_;
 
 public:
-    Error(const std::string &why) : std::exception(), why_{why} {}
+    Error(const std::string &why, const bool fatal = false) : std::exception(), why_{why}, fatal_{fatal} {}
     virtual const char* what() const noexcept override { return why_.c_str(); }
+    bool fatal() const { return fatal_; }
 };
 
 class ArgError : public Error {

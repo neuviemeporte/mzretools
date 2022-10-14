@@ -14,7 +14,7 @@ int main(int argc, char* argv[]) {
     const char* mzfile = argv[1];
     try {
         MzImage mz{string(mzfile)};
-        cout << mz.dump();
+        cout << mz.dump() << endl;
     }
     catch (Error &e) {
         cout << "Exception: " << e.what() << endl;
