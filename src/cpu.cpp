@@ -537,13 +537,13 @@ void Cpu_8086::dispatch() {
     case OP_AND_Gb_Eb :
     case OP_AND_Gv_Ev :
     case OP_AND_AL_Ib :
-    case OP_AND_AX_Iv :
+    case OP_AND_AX_Iv : UNKNOWN_DISPATCH;
     case OP_SUB_Eb_Gb :
     case OP_SUB_Ev_Gv :
     case OP_SUB_Gb_Eb :
     case OP_SUB_Gv_Ev :
     case OP_SUB_AL_Ib :
-    case OP_SUB_AX_Iv :
+    case OP_SUB_AX_Iv : instr_sub(); break;
     case OP_XOR_Eb_Gb :
     case OP_XOR_Ev_Gv :
     case OP_XOR_Gb_Eb :
@@ -587,7 +587,7 @@ void Cpu_8086::dispatch() {
     case OP_POP_SP    :
     case OP_POP_BP    :
     case OP_POP_SI    :
-    case OP_POP_DI    :
+    case OP_POP_DI    : UNKNOWN_DISPATCH;
     case OP_JO_Jb     :
     case OP_JNO_Jb    :
     case OP_JB_Jb     :
@@ -603,7 +603,7 @@ void Cpu_8086::dispatch() {
     case OP_JL_Jb     :
     case OP_JGE_Jb    :
     case OP_JLE_Jb    :
-    case OP_JG_Jb     :
+    case OP_JG_Jb     : instr_jmp_short(); break;
     case OP_TEST_Gb_Eb:
     case OP_TEST_Gv_Ev:
     case OP_XCHG_Gb_Eb:
@@ -744,6 +744,8 @@ void Cpu_8086::updateFlags() {
         regs_.setFlag(FLAG_CARRY, byteResult_ < byteOperand1_);
         regs_.setFlag(FLAG_OVER, ((byteOperand1_ ^ byteOperand2_ ^ BYTE_SIGN) & (byteResult_ ^ byteOperand2_)) & BYTE_SIGN);
         break;
+    case OP_SUB_Eb_Gb:
+    case OP_SUB_Gb_Eb:
     case OP_SUB_AL_Ib:
     case OP_CMP_Eb_Gb:
     case OP_CMP_Gb_Eb:
@@ -752,12 +754,16 @@ void Cpu_8086::updateFlags() {
         regs_.setFlag(FLAG_CARRY, byteOperand1_ < byteOperand2_);
         regs_.setFlag(FLAG_OVER, ((byteOperand1_ ^ byteOperand2_) & (byteOperand1_ ^ byteResult_)) & BYTE_SIGN);
         break;
+    case OP_SUB_Ev_Gv:
+    case OP_SUB_Gv_Ev:
+    case OP_SUB_AX_Iv:
     case OP_CMP_Ev_Gv:
     case OP_CMP_Gv_Ev:
     case OP_CMP_AX_Iv:    
         // word sub
         regs_.setFlag(FLAG_CARRY, wordOperand1_ < wordOperand2_);
         regs_.setFlag(FLAG_OVER, ((wordOperand1_ ^ wordOperand2_) & (wordOperand1_ ^ wordResult_)) & WORD_SIGN);
+        break;
     default:
         throw CpuError("Unexpected opcode in flag update stage 1: "s + hexVal(opcode_));
     }
@@ -765,6 +771,8 @@ void Cpu_8086::updateFlags() {
     switch (opcode_)
     {
     case OP_ADD_AL_Ib: 
+    case OP_SUB_Eb_Gb:
+    case OP_SUB_Gb_Eb:
     case OP_SUB_AL_Ib:
     case OP_CMP_Eb_Gb:
     case OP_CMP_Gb_Eb:    
@@ -775,6 +783,9 @@ void Cpu_8086::updateFlags() {
         regs_.setFlag(FLAG_AUXC, ((byteOperand1_ ^ byteOperand2_) ^ byteResult_) & NIBBLE_CARRY);
         regs_.setFlag(FLAG_PARITY, parity_lookup[byteResult_]);
         break;
+    case OP_SUB_Ev_Gv:
+    case OP_SUB_Gv_Ev:
+    case OP_SUB_AX_Iv:        
     case OP_CMP_Ev_Gv:
     case OP_CMP_Gv_Ev:
     case OP_CMP_AX_Iv:
@@ -782,7 +793,8 @@ void Cpu_8086::updateFlags() {
         regs_.setFlag(FLAG_ZERO, wordResult_ == 0);
         regs_.setFlag(FLAG_SIGN, wordResult_ & WORD_SIGN);
         regs_.setFlag(FLAG_AUXC, ((wordOperand1_ ^ wordOperand2_) ^ wordResult_) & NIBBLE_CARRY);
-        regs_.setFlag(FLAG_PARITY, parity_lookup[wordResult_ & 0xff]);    
+        regs_.setFlag(FLAG_PARITY, parity_lookup[wordResult_ & 0xff]);
+        break;
     default:
         throw CpuError("Unexpected opcode in flag update stage 2: "s + hexVal(opcode_));
     }
@@ -897,45 +909,84 @@ void Cpu_8086::instr_int() {
     }
 }
 
+// TODO: do we need to do signed arithmetic?
 void Cpu_8086::instr_cmp() {
     switch (opcode_) {
     case OP_CMP_Eb_Gb:
         byteOperand1_ = modrmGetByte();
         byteOperand2_ = regs_.bit8(modrmRegRegister(REG_GP8));
         byteResult_ = byteOperand1_ - byteOperand2_;
-        updateFlags();
         break;
     case OP_CMP_Ev_Gv:
         wordOperand1_ = modrmGetWord();
         wordOperand2_ = regs_.bit16(modrmRegRegister(REG_GP16));
         wordResult_ = wordOperand1_ - wordOperand2_;
-        updateFlags();
         break;    
     case OP_CMP_Gb_Eb:
         byteOperand1_ = regs_.bit8(modrmRegRegister(REG_GP8));
         byteOperand2_ = modrmGetByte();
         byteResult_ = byteOperand1_ - byteOperand2_;
-        updateFlags();
         break;    
     case OP_CMP_Gv_Ev:
         wordOperand1_ = regs_.bit16(modrmRegRegister(REG_GP16));
         wordOperand2_ = modrmGetWord();
         wordResult_ = wordOperand1_ - wordOperand2_;
-        updateFlags();
         break;        
     case OP_CMP_AL_Ib:
         byteOperand1_ = regs_.bit8(REG_AL);
         byteOperand2_ = ipByte(1);
         byteResult_ = byteOperand1_ - byteOperand2_;
-        updateFlags();
         break;
     case OP_CMP_AX_Iv:
         wordOperand1_ = regs_.bit16(REG_AX);
         wordOperand2_ = ipWord(1);
         wordResult_ = wordOperand1_ - wordOperand2_;
-        updateFlags();
         break;    
     default: 
-        throw CpuError("Unexpected opcode for CMP: " + hexVal(opcode_));    
+        throw CpuError("Unexpected opcode for CMP: " + hexVal(opcode_));
     }
+    updateFlags();
+}
+
+void Cpu_8086::instr_sub() {
+    // reuse CMP implementation for data load, result calculation and flag update
+    const Byte origOpcode = opcode_;
+    switch (opcode_)
+    {
+    case OP_SUB_Eb_Gb: opcode_ = OP_CMP_Eb_Gb; instr_cmp(); modrmStoreByte(byteResult_); break;
+    case OP_SUB_Ev_Gv: opcode_ = OP_CMP_Ev_Gv; instr_cmp(); modrmStoreWord(wordResult_); break;
+    case OP_SUB_Gb_Eb: opcode_ = OP_CMP_Gb_Eb; instr_cmp(); regs_.bit8(modrmRegRegister(REG_GP8)) = byteResult_; break;
+    case OP_SUB_Gv_Ev: opcode_ = OP_CMP_Gv_Ev; instr_cmp(); regs_.bit8(modrmRegRegister(REG_GP16)) = wordResult_; break;
+    case OP_SUB_AL_Ib: opcode_ = OP_CMP_AL_Ib; instr_cmp(); regs_.bit8(REG_AL) = byteResult_; break;
+    case OP_SUB_AX_Iv: opcode_ = OP_CMP_AX_Iv; instr_cmp(); regs_.bit16(REG_AX) = wordResult_; break;
+    default: 
+        throw CpuError("Unexpected opcode for SUB: " + hexVal(opcode_));        
+    }
+    opcode_ = origOpcode;
+}
+
+void Cpu_8086::instr_jmp_short() {
+    byteOperand1_ = BYTE_SIGNED(ipByte(1));
+    bool jump = false;
+    switch (opcode_) {
+    case OP_JO_Jb : jump = regs_.getFlag(FLAG_OVER); break;
+    case OP_JNO_Jb: jump = !regs_.getFlag(FLAG_OVER); break;
+    case OP_JB_Jb : jump = regs_.getFlag(FLAG_CARRY); break;
+    case OP_JNB_Jb: jump = !regs_.getFlag(FLAG_CARRY); break;
+    case OP_JZ_Jb : jump = regs_.getFlag(FLAG_ZERO); break;
+    case OP_JNZ_Jb: jump = !regs_.getFlag(FLAG_ZERO); break;
+    case OP_JBE_Jb: jump = regs_.getFlag(FLAG_CARRY) || regs_.getFlag(FLAG_ZERO); break;
+    case OP_JA_Jb : jump = !(regs_.getFlag(FLAG_CARRY) || regs_.getFlag(FLAG_ZERO)); break;
+    case OP_JS_Jb : jump = regs_.getFlag(FLAG_SIGN); break;
+    case OP_JNS_Jb: jump = !regs_.getFlag(FLAG_SIGN); break;
+    case OP_JPE_Jb: jump = regs_.getFlag(FLAG_PARITY); break;
+    case OP_JPO_Jb: jump = !regs_.getFlag(FLAG_PARITY); break;
+    case OP_JL_Jb : jump = (regs_.getFlag(FLAG_SIGN) != regs_.getFlag(FLAG_OVER)); break;
+    case OP_JGE_Jb: jump = (regs_.getFlag(FLAG_SIGN) == regs_.getFlag(FLAG_OVER)); break;
+    case OP_JLE_Jb: jump = (regs_.getFlag(FLAG_SIGN) != regs_.getFlag(FLAG_OVER)) || regs_.getFlag(FLAG_ZERO); break;
+    case OP_JG_Jb : jump = (regs_.getFlag(FLAG_SIGN) == regs_.getFlag(FLAG_OVER)) && !regs_.getFlag(FLAG_ZERO); break;
+    default: 
+        throw CpuError("Unexpected opcode for short JMP: " + hexVal(opcode_));    
+    }
+    if (jump) ipAdvance(BYTE_SIGNED(byteOperand1_));
 }

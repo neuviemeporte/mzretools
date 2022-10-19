@@ -1,3 +1,6 @@
+- scripted input mode
+- tests for SUB, check behaviour of signed operands in dosbox
+
 1. implement mz file load to arena and unit test (Dos::loadExe())
 2. implement text output with sdl and vga font
 3. make hello.exe run

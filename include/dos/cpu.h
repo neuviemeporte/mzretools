@@ -84,6 +84,8 @@ private:
     void instr_mov();
     void instr_int();
     void instr_cmp();
+    void instr_sub();
+    void instr_jmp_short();
 };
 
 #endif // CPU_H
