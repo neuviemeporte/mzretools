@@ -332,7 +332,7 @@ static const int OPCODE_PREFIX[256] = {
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // F
 };
 
-bool opcodeIsSementPrefix(const Byte opcode) {
+bool opcodeIsSegmentPrefix(const Byte opcode) {
     return OPCODE_PREFIX[opcode] == 1;
 }
 

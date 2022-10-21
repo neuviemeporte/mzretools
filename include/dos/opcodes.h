@@ -265,7 +265,7 @@ enum Opcode : Byte {
 std::string opcodeName(const Byte opcode);
 bool opcodeIsModrm(const Byte opcode);
 bool opcodeIsGroup(const Byte opcode);
-bool opcodeIsSementPrefix(const Byte opcode);
+bool opcodeIsSegmentPrefix(const Byte opcode);
 size_t opcodeInstructionLength(const Byte opcode);
 
 #endif // OPCODES_H

@@ -3,7 +3,7 @@
 
 #include "dos/types.h"
 
-// ModR/M byte semantics: it follows some instructions and has the following bits: AABBBCCC
+// ModR/M byte semantics: it follows some instruction opcodes and has the following bits: AABBBCCC
 // AA: MOD field:
 //    00: interpret CCC as Table1 to calculate address of memory operand
 //    01: interpret CCC as Table2 with 8bit signed displacement to calculate address of memory operand
@@ -28,7 +28,7 @@
 // Table2 (when MOD = 01 or 10):
 //    000: [BX+SI+Offset]     001: [BX+DI+Offset]     010: [BP+SI+Offset]     011: [BP+DI+Offset]
 //    100: [SI+Offset]        101: [DI+Offset]        110: [BP+Offset]        111: [BX+Offset]
-// CCC can also be another reg if MOD = 11, in which case its contents are interpreded same as BBB
+// CCC can also be another reg if MOD = 11, in which case its contents are interpreded same as BBB for the REG field case
 enum ModRM : Byte {
     // MOD
     MODRM_MOD_NODISP = 0b00000000, 

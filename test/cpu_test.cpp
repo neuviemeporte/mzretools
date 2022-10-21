@@ -56,6 +56,7 @@ protected:
 
     inline Byte& reg8(const Register reg) { return regs_->bit8(reg); }
     inline Word& reg16(const Register reg) { return regs_->bit16(reg); }
+    inline bool flag(const Flag flag) { return regs_->getFlag(flag); }
     inline Word instructionLength() const { return cpu_->instructionLength(); }
 };
 
@@ -323,16 +324,66 @@ TEST_F(Cpu_8086_Test, Int) {
     cpu_->step(); // into    
 }
 
-TEST_F(Cpu_8086_Test, Cmp) {
-    const Byte code[] = {
-        OP_CMP_Eb_Gb, MODRM_MOD_NODISP | MODRM_REG_CX | MODRM_MEM_BX_DI, 0x12,
-        OP_CMP_Ev_Gv, MODRM_MOD_NODISP | MODRM_REG_AX | MODRM_MEM_BX_DI, 0x34, 0x12,
-        OP_CMP_Gb_Eb, 
-        OP_CMP_Gv_Ev, 
-        OP_CMP_AL_Ib, 
-        OP_CMP_AX_Iv,
+TEST_F(Cpu_8086_Test, CmpSub) {
+    Byte code[] = {
+        OP_SUB_Gv_Ev, MODRM_MOD_REG | MODRM_REG_AX | MODRM_REG_BX >> MODRM_REG_SHIFT,  // sub, ax,bx
     };
+    SWord result[] = { 123-3, 123+3, -123-3, -123+3, 123, 123,-123,-123 };
+
+    for (int i = 0; i < 2; ++i) {
+        setupCode(code, sizeof(code));
+        reg16(REG_AX) = 123;
+        reg16(REG_BX) = 3;
+        cpu_->step();
+        ASSERT_EQ(reg16(REG_AX), result[0+i*4]);
+        ASSERT_FALSE(flag(FLAG_CARRY));
+        ASSERT_FALSE(flag(FLAG_ZERO));
+        ASSERT_FALSE(flag(FLAG_SIGN));
+        ASSERT_FALSE(flag(FLAG_OVER));
+        ASSERT_FALSE(flag(FLAG_AUXC));
+        ASSERT_TRUE(flag(FLAG_PARITY));
+
+        setupCode(code, sizeof(code));
+        reg16(REG_AX) = 123;
+        reg16(REG_BX) = WORD_SIGNED(-3);
+        cpu_->step();
+        ASSERT_EQ(reg16(REG_AX), result[1+i*4]);
+        ASSERT_TRUE(flag(FLAG_CARRY));
+        ASSERT_FALSE(flag(FLAG_ZERO));
+        ASSERT_FALSE(flag(FLAG_SIGN));
+        ASSERT_FALSE(flag(FLAG_OVER));
+        ASSERT_TRUE(flag(FLAG_AUXC));
+        ASSERT_TRUE(flag(FLAG_PARITY));
+
+        setupCode(code, sizeof(code));
+        reg16(REG_AX) = WORD_SIGNED(-123);
+        reg16(REG_BX) = 3;
+        cpu_->step();
+        ASSERT_EQ(WORD_SIGNED(reg16(REG_AX)), result[2+i*4]);
+        ASSERT_FALSE(flag(FLAG_CARRY));
+        ASSERT_FALSE(flag(FLAG_ZERO));
+        ASSERT_TRUE(flag(FLAG_SIGN));
+        ASSERT_FALSE(flag(FLAG_OVER));
+        ASSERT_FALSE(flag(FLAG_AUXC));
+        ASSERT_TRUE(flag(FLAG_PARITY));
+
+        setupCode(code, sizeof(code));
+        reg16(REG_AX) = WORD_SIGNED(-123);
+        reg16(REG_BX) = WORD_SIGNED(-3);
+        cpu_->step();
+        ASSERT_EQ(WORD_SIGNED(reg16(REG_AX)), result[3+i*4]);
+        ASSERT_TRUE(flag(FLAG_CARRY));
+        ASSERT_FALSE(flag(FLAG_ZERO));
+        ASSERT_TRUE(flag(FLAG_SIGN));
+        ASSERT_FALSE(flag(FLAG_OVER));
+        ASSERT_TRUE(flag(FLAG_AUXC));
+        ASSERT_TRUE(flag(FLAG_PARITY));
+
+        code[0] = OP_CMP_Gv_Ev;
+    }
+
 }
+
 
 TEST_F(Cpu_8086_Test, Word) {
     Word x = 0x165;

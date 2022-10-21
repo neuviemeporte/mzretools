@@ -205,17 +205,17 @@ size_t Cpu_8086::modrmDisplacementLength() const {
 void Cpu_8086::preProcessOpcode() {
     static const Register PREFIX_REGS[4] = { REG_ES, REG_CS, REG_SS, REG_DS };
     Word ipOffset = 0;
+    // clear segment override in case it was active
+    segOverride_ = REG_NONE;
+    modrm_ = 0;
     // in case the current opcode is actually a segment override prefix, set a flag and fetch the actual opcode from the next byte
-    if (opcodeIsSementPrefix(opcode_)) {
+    if (opcodeIsSegmentPrefix(opcode_)) {
         const size_t index = (opcode_ - OP_PREFIX_ES) / 8; // first prefix opcodes is for ES and subsequent ones are multiples of 8
         segOverride_ = PREFIX_REGS[index]; 
         opcode_ = ipByte(1);
         ipOffset++;
+        // fall through, need to process updated opcode
         // TODO: ip remains at override prefix, modrm read etc will be off?
-    }
-    else {
-        // clear segment override in case it was active
-        segOverride_ = REG_NONE;
     }
     // read modrm byte if opcode contains it
     if (opcodeIsModrm(opcode_)) {
@@ -709,7 +709,9 @@ void Cpu_8086::dispatch() {
 }
 
 void Cpu_8086::unknown(const string &stage) const {
-    throw CpuError("Unknown opcode during "s + stage + " stage @ "s + regs_.csip().toString() + ": " + hexVal(opcode_));
+    string msg = "Unknown opcode during "s + stage + " stage @ "s + regs_.csip().toString() + ": " + hexVal(opcode_);
+    if (opcodeIsModrm(opcode_)) msg += ", modrm = " + hexVal(modrm_);
+    throw CpuError(msg);
 }
 
 void Cpu_8086::updateFlags() {
@@ -956,7 +958,7 @@ void Cpu_8086::instr_sub() {
     case OP_SUB_Eb_Gb: opcode_ = OP_CMP_Eb_Gb; instr_cmp(); modrmStoreByte(byteResult_); break;
     case OP_SUB_Ev_Gv: opcode_ = OP_CMP_Ev_Gv; instr_cmp(); modrmStoreWord(wordResult_); break;
     case OP_SUB_Gb_Eb: opcode_ = OP_CMP_Gb_Eb; instr_cmp(); regs_.bit8(modrmRegRegister(REG_GP8)) = byteResult_; break;
-    case OP_SUB_Gv_Ev: opcode_ = OP_CMP_Gv_Ev; instr_cmp(); regs_.bit8(modrmRegRegister(REG_GP16)) = wordResult_; break;
+    case OP_SUB_Gv_Ev: opcode_ = OP_CMP_Gv_Ev; instr_cmp(); regs_.bit16(modrmRegRegister(REG_GP16)) = wordResult_; break;
     case OP_SUB_AL_Ib: opcode_ = OP_CMP_AL_Ib; instr_cmp(); regs_.bit8(REG_AL) = byteResult_; break;
     case OP_SUB_AX_Iv: opcode_ = OP_CMP_AX_Iv; instr_cmp(); regs_.bit16(REG_AX) = wordResult_; break;
     default: 
