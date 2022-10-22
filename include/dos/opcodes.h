@@ -263,6 +263,7 @@ enum Opcode : Byte {
 };
 
 std::string opcodeName(const Byte opcode);
+std::string opcodeString(const Byte opcode);
 bool opcodeIsModrm(const Byte opcode);
 bool opcodeIsGroup(const Byte opcode);
 bool opcodeIsSegmentPrefix(const Byte opcode);

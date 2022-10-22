@@ -500,7 +500,7 @@ void Cpu_8086::pipeline() {
 }
 
 void Cpu_8086::dispatch() {
-    switch (opcode_) {
+    if (!opcodeIsGroup(opcode_)) switch (opcode_) {
     case OP_ADD_Eb_Gb :
     case OP_ADD_Ev_Gv :
     case OP_ADD_Gb_Eb :
@@ -603,7 +603,7 @@ void Cpu_8086::dispatch() {
     case OP_JL_Jb     :
     case OP_JGE_Jb    :
     case OP_JLE_Jb    :
-    case OP_JG_Jb     : instr_jmp_short(); break;
+    case OP_JG_Jb     : instr_jmp(); break;
     case OP_TEST_Gb_Eb:
     case OP_TEST_Gv_Ev:
     case OP_XCHG_Gb_Eb:
@@ -675,7 +675,9 @@ void Cpu_8086::dispatch() {
     case OP_INT_3     : 
     case OP_INT_Ib    :
     case OP_INTO      : instr_int(); break;
-    case OP_IRET      :
+    case OP_IRET      : UNKNOWN_DISPATCH; 
+    case OP_AAM_I0    : 
+    case OP_AAD_I0    : 
     case OP_XLAT      :
     case OP_LOOPNZ_Jb :
     case OP_LOOPZ_Jb  :
@@ -697,14 +699,93 @@ void Cpu_8086::dispatch() {
     case OP_REPNZ     : // REPNE
     case OP_REPZ      : // REP, REPE
     case OP_HLT       :
-    case OP_CMC       :
+    case OP_CMC       : UNKNOWN_DISPATCH;
     case OP_CLC       :
     case OP_STC       :
     case OP_CLI       :
     case OP_STI       :
     case OP_CLD       :
-    case OP_STD       :
+    case OP_STD       : UNKNOWN_DISPATCH;
     default: UNKNOWN_DISPATCH;
+    }
+    else groupDispatch();
+}
+
+void Cpu_8086::groupDispatch() {
+    // after a group opcode, the modrm byte's REG bits take the alternative meaning of a 'group'
+    // which denotes the type of the operation to be performed
+    const Byte group_op = modrm_reg(modrm_);
+    switch (opcode_) {
+    case OP_GRP1_Eb_Ib : 
+    case OP_GRP1_Ev_Iv :
+    case OP_GRP1_Eb_Ib2: 
+    case OP_GRP1_Ev_Ib : 
+        switch (group_op) {
+        case MODRM_GRP1_ADD: instr_add(); break;
+        case MODRM_GRP1_OR : instr_or();  break;
+        case MODRM_GRP1_ADC: instr_adc(); break;
+        case MODRM_GRP1_SBB: instr_sbb(); break;
+        case MODRM_GRP1_AND: instr_and(); break;
+        case MODRM_GRP1_SUB: instr_sub(); break;
+        case MODRM_GRP1_XOR: instr_xor(); break;
+        case MODRM_GRP1_CMP: instr_cmp(); break;
+        default: 
+            throw CpuError("Unexpected group operation for opcode " + opcodeString(opcode_) + ": " + hexVal(group_op));
+        }
+        break;
+    case OP_GRP2_Eb_1: 
+    case OP_GRP2_Ev_1: 
+    case OP_GRP2_Eb_CL: 
+    case OP_GRP2_Ev_CL: 
+        switch (group_op) {
+        case MODRM_GRP2_ROL: instr_rol(); break;
+        case MODRM_GRP2_ROR: instr_ror(); break;
+        case MODRM_GRP2_RCL: instr_rcl(); break;
+        case MODRM_GRP2_RCR: instr_rcr(); break;
+        case MODRM_GRP2_SHL: instr_shl(); break;
+        case MODRM_GRP2_SHR: instr_shr(); break;
+        case MODRM_GRP2_SAR: instr_sar(); break;
+        default: 
+            throw CpuError("Unexpected group operation for opcode " + opcodeString(opcode_) + ": " + hexVal(group_op));
+        }
+        break;
+    case OP_GRP3a_Eb: 
+    case OP_GRP3b_Ev: 
+        switch (group_op) {
+        case MODRM_GRP3_TEST: instr_test(); break;
+        case MODRM_GRP3_NOT : instr_not(); break;
+        case MODRM_GRP3_NEG : instr_neg(); break;
+        case MODRM_GRP3_MUL : instr_mul(); break;
+        case MODRM_GRP3_IMUL: instr_imul(); break;
+        case MODRM_GRP3_DIV : instr_div(); break;
+        case MODRM_GRP3_IDIV: instr_idiv(); break;
+        default: 
+            throw CpuError("Unexpected group operation for opcode " + opcodeString(opcode_) + ": " + hexVal(group_op));
+        }
+        break;
+    case OP_GRP4_Eb: 
+        switch (group_op) {
+        case MODRM_GRP4_INC: instr_inc(); break;
+        case MODRM_GRP4_DEC: instr_dec(); break;
+        default: 
+            throw CpuError("Unexpected group operation for opcode " + opcodeString(opcode_) + ": " + hexVal(group_op));            
+        }
+        break;
+    case OP_GRP5_Ev:
+        switch (group_op) {
+        case MODRM_GRP5_INC:     instr_inc();  break;
+        case MODRM_GRP5_DEC:     instr_dec();  break;
+        case MODRM_GRP5_CALL:    instr_call(); break;
+        case MODRM_GRP5_CALL_Mp: instr_call(); break; 
+        case MODRM_GRP5_JMP:     instr_jmp();  break;
+        case MODRM_GRP5_JMP_Mp:  instr_jmp();  break;
+        case MODRM_GRP5_PUSH:    instr_push(); break; 
+        default: 
+            throw CpuError("Unexpected group operation for opcode " + opcodeString(opcode_) + ": " + hexVal(group_op));
+        }
+        break;
+    default: 
+        throw CpuError("Unexpected opcode for group instruction: " + opcodeString(opcode_));
     }
 }
 
@@ -943,7 +1024,22 @@ void Cpu_8086::instr_cmp() {
         wordOperand1_ = regs_.bit16(REG_AX);
         wordOperand2_ = ipWord(1);
         wordResult_ = wordOperand1_ - wordOperand2_;
-        break;    
+        break;
+    case OP_GRP1_Eb_Ib :
+    case OP_GRP1_Eb_Ib2: 
+        byteOperand1_ = modrmGetByte();
+        byteOperand2_ = ipByte(2);
+        byteResult_ = byteOperand1_ - byteOperand2_;
+        break;
+    case OP_GRP1_Ev_Iv:
+        wordOperand1_ = modrmGetWord();
+        wordOperand2_ = ipWord(2);
+        wordResult_ = wordOperand1_ - wordOperand2_;
+        break;
+    case OP_GRP1_Ev_Ib:
+        wordOperand1_ = modrmGetWord();
+        wordOperand2_ = ipByte(2);
+        wordResult_ = wordOperand1_ - wordOperand2_;    
     default: 
         throw CpuError("Unexpected opcode for CMP: " + hexVal(opcode_));
     }
@@ -967,7 +1063,93 @@ void Cpu_8086::instr_sub() {
     opcode_ = origOpcode;
 }
 
-void Cpu_8086::instr_jmp_short() {
+void Cpu_8086::instr_add() {
+    throw CpuError("Opcode not implemented: ADD");
+}
+
+void Cpu_8086::instr_or() {
+    throw CpuError("Opcode not implemented: OR");
+}
+
+void Cpu_8086::instr_adc() {
+    throw CpuError("Opcode not implemented: ADC");
+}
+
+void Cpu_8086::instr_sbb() {
+    throw CpuError("Opcode not implemented: SBB");
+}
+
+void Cpu_8086::instr_and() {
+    throw CpuError("Opcode not implemented: AND");
+}
+
+void Cpu_8086::instr_xor() {
+    throw CpuError("Opcode not implemented: XOR");
+}
+
+void Cpu_8086::instr_rol() {
+    throw CpuError("Opcode not implemented: ROL");
+}
+void Cpu_8086::instr_ror() {
+    throw CpuError("Opcode not implemented: ROR");
+}
+void Cpu_8086::instr_rcl() {
+    throw CpuError("Opcode not implemented: RCL");
+}
+void Cpu_8086::instr_rcr() {
+    throw CpuError("Opcode not implemented: RCR");
+}
+void Cpu_8086::instr_shl() {
+    throw CpuError("Opcode not implemented: SHL");
+}
+void Cpu_8086::instr_shr() {
+    throw CpuError("Opcode not implemented: SHR");
+}
+void Cpu_8086::instr_sar() {
+    throw CpuError("Opcode not implemented: SAR");
+}
+
+void Cpu_8086::instr_test() {
+    throw CpuError("Opcode not implemented: TEST");
+}
+
+void Cpu_8086::instr_not() {
+    throw CpuError("Opcode not implemented: NOT");
+}
+
+void Cpu_8086::instr_neg() {
+    throw CpuError("Opcode not implemented: NEG");
+}
+
+void Cpu_8086::instr_mul() {
+    throw CpuError("Opcode not implemented: MUL");
+}
+
+void Cpu_8086::instr_imul() {
+    throw CpuError("Opcode not implemented: IMUL");
+}
+
+void Cpu_8086::instr_div() {
+    throw CpuError("Opcode not implemented: DIV");
+}
+
+void Cpu_8086::instr_idiv()  {
+    throw CpuError("Opcode not implemented: IDIV");
+}
+
+void Cpu_8086::instr_inc() {
+    throw CpuError("Opcode not implemented: INC");
+}
+
+void Cpu_8086::instr_dec() {
+    throw CpuError("Opcode not implemented: DEC");
+}
+
+void Cpu_8086::instr_call() {
+    throw CpuError("Opcode not implemented: CALL");
+}
+
+void Cpu_8086::instr_jmp() {
     byteOperand1_ = BYTE_SIGNED(ipByte(1));
     bool jump = false;
     switch (opcode_) {
@@ -991,4 +1173,8 @@ void Cpu_8086::instr_jmp_short() {
         throw CpuError("Unexpected opcode for short JMP: " + hexVal(opcode_));    
     }
     if (jump) ipAdvance(BYTE_SIGNED(byteOperand1_));
+}
+
+void Cpu_8086::instr_push() {
+    throw CpuError("Opcode not implemented: PUSH");
 }

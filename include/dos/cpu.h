@@ -77,6 +77,7 @@ private:
     // instruction execution pipeline
     void pipeline();
     void dispatch();
+    void groupDispatch();
     void unknown(const std::string &stage) const;
     void updateFlags();
 
@@ -85,7 +86,31 @@ private:
     void instr_int();
     void instr_cmp();
     void instr_sub();
-    void instr_jmp_short();
+    void instr_add();
+    void instr_or();
+    void instr_adc();
+    void instr_sbb();
+    void instr_and();
+    void instr_xor();
+    void instr_rol();
+    void instr_ror();
+    void instr_rcl();
+    void instr_rcr();
+    void instr_shl();
+    void instr_shr();
+    void instr_sar();
+    void instr_test();
+    void instr_not(); 
+    void instr_neg(); 
+    void instr_mul(); 
+    void instr_imul();
+    void instr_div(); 
+    void instr_idiv();    
+    void instr_inc();
+    void instr_dec();
+    void instr_call();
+    void instr_jmp();
+    void instr_push();
 };
 
 #endif // CPU_H

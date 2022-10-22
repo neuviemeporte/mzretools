@@ -1,5 +1,6 @@
 #include <string>
 #include "dos/types.h"
+#include "dos/util.h"
 
 static const char* OPCODE_NAMES[256] = {
     "ADD_Eb_Gb",
@@ -262,6 +263,10 @@ static const char* OPCODE_NAMES[256] = {
 
 std::string opcodeName(const Byte opcode) {
     return OPCODE_NAMES[opcode];
+}
+
+std::string opcodeString(const Byte opcode) {
+    return hexVal(opcode) + " (" + opcodeName(opcode) + ")";
 }
 
 static const int OPCODE_MODRM[256] = {
