@@ -11,7 +11,8 @@ struct Routine {
     int id;
     Block extents;
     std::vector<Block> chunks;
-    Routine(const std::string &name, const int id, const Address &entrypoint) : name(name), id(id) {
+    size_t stackSize;
+    Routine(const std::string &name, const int id, const Address &entrypoint) : name(name), id(id), stackSize(0) {
         extents.begin = extents.end = entrypoint;
     }
     Address entrypoint() const { return extents.begin; }

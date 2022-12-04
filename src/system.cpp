@@ -67,10 +67,6 @@ CmdStatus System::command(const string &cmd) {
         return commandLoad(params);
     }
     else if (verb == "dump") {
-        if (paramCount != 1) {
-            error(verb, "unexpected syntax");
-            return CMD_FAIL;
-        }
         return commandDump(params);
     }
     else if (verb == "cpu") {
@@ -110,7 +106,7 @@ void System::printHelp() {
         << "dump <file_path> - dump contents of emulated memory to file" << endl
         << "cpu - print CPU info" << endl
         << "run - start executing code at current cpu instruction pointer" << endl
-        << "analyze - analyze executable, try to find subroutines," << endl
+        << "analyze - analyze executable, try to find subroutines" << endl
         << "exit - finish session" << endl;
 }
 
@@ -179,27 +175,27 @@ CmdStatus System::commandLoad(const vector<string> &params) {
     return CMD_OK;
 }
 
-static const regex FARADDR_RE{"([0-9a-fA-F]{1,4}):([0-9a-fA-F]{1,4})"};
-
+// TODO: optinally specify offset to run from
 CmdStatus System::commandRun(const Params &params) {
-    if (params.size() == 1) {
-        const string entrypointStr = params.front();
-        smatch match;
-        if (regex_match(entrypointStr, match, FARADDR_RE)) {
-            const string segStr = match.str(1), offStr = match.str(2);
-            const Word 
-                segment = stoi(segStr, nullptr, 16),
-                offset  = stoi(offStr, nullptr, 16);
-            const Address entrypoint(segment, offset);
+    const size_t paramCount = params.size();
+    if (paramCount > 1) {
+        output("Invalid argument count");
+        return CMD_FAIL;
+    }
+        
+    try {
+        if (paramCount == 1) { // optional entrypoint argument
+            const string &entrypointStr = params.front();
+            const Address entrypoint(entrypointStr);
             cpu_->init(entrypoint, Address{entrypoint.segment, 0xfffe}, 0);
-        }
-        else {
-            output("Invalid entrypoint argument: " + entrypointStr);
-            return CMD_FAIL;
-        }
+        } 
+        cpu_->run();
+    }
+    catch (ArgError &e) {
+        output(e.why());
+        return CMD_FAIL;
     }
 
-    cpu_->run();
     return CMD_OK;
 }
 
@@ -211,19 +207,41 @@ CmdStatus System::commandAnalyze() {
 
 // TODO: support address ranges for start and end
 CmdStatus System::commandDump(const Params &params) {
-    if (params.empty()) {
-        output("dump command needs at least 1 parameter!");
+    const size_t paramCount = params.size();
+    Block range{0, mem_->size() - 1}; // full range by default
+    std::string path;
+
+    try {
+        if (paramCount == 1) { // dump entire memory to file
+            path = params[0];
+        }
+        else if (paramCount == 2) { // dump range to screen
+        }
+        else if (paramCount == 3) { // dump range to file
+            path = params[2];
+        }
+        else if (paramCount != 0) { // dump entire memory to screen
+            error("dump", "Too many arguments");
+            return CMD_FAIL;
+        }
+    }
+    catch (ArgError &e) {
+        error("dump", e.why());
         return CMD_FAIL;
     }
-    const string &path = params[0];
-    const Offset start = 0;
-    // check if file exists
-    const auto file = checkFile(path);
-    if (file.exists) {
-        // TODO: ask for overwrite
-        output("Dump file '"s + path + "' already exists, overwriting!");
-        //return CMD_FAIL;
-    }    
-    mem_->dump(path);
+
+    if (paramCount == 1 || paramCount == 3) { // file output
+        // check if file exists
+        const auto file = checkFile(path);
+        if (file.exists) {
+            // TODO: ask for overwrite
+            output("Dump file '"s + path + "' already exists, overwriting!");
+        }                
+        mem_->dump(range, path);
+    }
+    else { // screen output
+    }
+
+
     return CMD_OK;
 }

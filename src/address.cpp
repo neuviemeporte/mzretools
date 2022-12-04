@@ -1,18 +1,42 @@
 #include <iostream>
 #include <iomanip>
 #include <sstream>
+#include <regex>
 #include "dos/address.h"
 #include "dos/error.h"
 #include "dos/util.h"
 
 using namespace std;
 
+static const regex 
+    FARADDR_RE{"([0-9a-fA-F]{1,4}):([0-9a-fA-F]{1,4})"},
+    HEXOFFSET_RE{"0x([0-9a-fA-F]{1,5})"},
+    DECOFFSET_RE{"([0-9]{1,7})"},
+    HEXSIZE_RE{"\\+0x([0-9a-fA-F]{1,5})"},
+    DECSIZE_RE{"\\+([0-9]{1,7})"};
+
 Address::Address(const Offset linear) {
-    if (linear >= MEM_TOTAL) throw MemoryError("Linear address too big while converting to segmented representation: "s + hexVal(linear));
     set(linear);
 }
 
+Address::Address(const std::string &str) {
+    smatch match;
+    if (regex_match(str, match, FARADDR_RE)) {
+        segment = stoi(match.str(1), nullptr, 16),
+        offset  = stoi(match.str(2), nullptr, 16);
+    }
+    else if (regex_match(str, match, HEXOFFSET_RE)) {
+        set(stoi(match.str(1), nullptr, 16));
+    }
+    else if (regex_match(str, match, DECOFFSET_RE)) {
+        set(stoi(match.str(1), nullptr, 10));
+    }
+    else
+        throw ArgError("Invalid address string: "s + str);
+}
+
 void Address::set(const Offset linear) {
+    if (linear >= MEM_TOTAL) throw MemoryError("Linear address too big while converting to segmented representation: "s + hexVal(linear));
     segment = static_cast<Word>(linear >> SEGMENT_SHIFT);
     offset = static_cast<Word>(linear & OFFSET_MASK);
 }
@@ -39,6 +63,22 @@ void Address::rebase(const Word base) {
 
 std::ostream& operator<<(std::ostream &os, const Address &arg) {
     return os << arg.toString();
+}
+
+Block::Block(const std::string &from, const std::string &to) {
+    begin = Address{from};
+    smatch match;
+    if (regex_match(to, match, HEXSIZE_RE)) {
+        size_t size = stoi(match.str(1), nullptr, 16);
+        end = begin + size;
+    }
+    else if (regex_match(to, match, DECSIZE_RE)) {
+        size_t size = stoi(match.str(1), nullptr, 10);
+        end = begin + size;
+    }
+    else {
+        end = Address(to);
+    }
 }
 
 std::string Block::toString(const bool linear) const {

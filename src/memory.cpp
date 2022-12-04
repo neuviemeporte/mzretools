@@ -68,16 +68,15 @@ string Memory::info() const {
     return infoStr.str();
 }
 
-void Memory::dump(const std::string &path) const {
-    FILE *dumpFile = fopen(path.c_str(), "w");
-    if (!dumpFile) throw IoError("Unable to open file for Memory dump: " + path);
-    cout << "Dumping memory contents to " << path << endl;
-    auto MemoryPtr = pointer(0);
-    Size totalSize = 0;
-    while (totalSize < MEM_TOTAL) {
-        auto amount = fwrite(MemoryPtr, 1, PAGE_SIZE, dumpFile);
-        MemoryPtr += amount;
-        totalSize += amount;
+void Memory::dump(const Block &range, const std::string &path) const {
+    auto memoryPtr = pointer(range.begin.toLinear());
+    if (path.empty()) { // dump to screen
+        hexDump(memoryPtr, range.size(), 0, false);
     }
-    fclose(dumpFile);
+    else { // dump to file
+        ofstream dumpFile{path, ios::binary};
+        if (!dumpFile) 
+            throw IoError("Unable to open file for Memory dump: " + path);
+        dumpFile.write(reinterpret_cast<const char*>(memoryPtr), range.size());
+    }
 }

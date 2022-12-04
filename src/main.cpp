@@ -2,6 +2,12 @@
 #include "dos/system.h"
 #include "dos/error.h"
 
+// TODO:
+// - reset command
+// - view memory command
+// - load raw binary data at offset
+// - backtrace
+
 using namespace std;
 
 static const string VERSION = "0.1";

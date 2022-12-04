@@ -6,6 +6,9 @@
 #include "dos/types.h"
 #include "dos/address.h"
 
+// TODO: 
+// - implement MCBs
+
 /*Real mode memory map:
 --- 640 KiB RAM ("Low memory") 
 0x00000 - 0x003FF: (1 KiB): Real Mode IVT (Interrupt Vector Table)
@@ -55,7 +58,7 @@ public:
     const Byte* base() const { return pointer(0); }
 
     std::string info() const;
-    void dump(const std::string &path) const;
+    void dump(const Block &range, const std::string &path) const;
 };
 
 #endif // MEMORY_H

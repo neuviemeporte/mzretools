@@ -21,7 +21,7 @@ using namespace std;
 #define UNKNOWN_DISPATCH unknown("dispatch")
 #define UNKNOWN_ILEN unknown("instr_length")
 
-static LogPriority cpuLogLevel = LOG_VERBOSE;
+static LogPriority cpuLogLevel = LOG_INFO;
 static void cpuMessage(const string &msg, const LogPriority pri = LOG_DEBUG) {
     if (pri >= cpuLogLevel) cout << msg << endl;
 }
