@@ -50,7 +50,7 @@ MzImage::MzImage(const std::string &path) : path_(path), loadModuleData_(nullptr
     }
 
     // read in any bytes between end of header and beginning of relocation table: optional overlay information?
-    output("reloc @"s + hexVal(header_.reloc_table_offset) + ", hdr size = " + hexVal(HEADER_SIZE), LOG_OS);
+    output("Relocation table at offset "s + hexVal(header_.reloc_table_offset) + ", header size = " + hexVal(HEADER_SIZE), LOG_OS);
     if (header_.reloc_table_offset > HEADER_SIZE) {
         const Size ovlInfoSize = header_.reloc_table_offset - HEADER_SIZE;
         ovlinfo_ = vector<Byte>(ovlInfoSize);
@@ -99,6 +99,10 @@ MzImage::MzImage(const std::string &path) : path_(path), loadModuleData_(nullptr
         reloc.value = relocVal;
     }
     fclose(mzFile);
+}
+
+MzImage::~MzImage() {
+    delete loadModuleData_;
 }
 
 std::string MzImage::dump() const {

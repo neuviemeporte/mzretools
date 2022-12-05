@@ -79,6 +79,8 @@ Block::Block(const std::string &from, const std::string &to) {
     else {
         end = Address(to);
     }
+    if (!isValid())
+        throw ArgError("Invalid memory block range");
 }
 
 std::string Block::toString(const bool linear) const {

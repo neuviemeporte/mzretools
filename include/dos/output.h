@@ -22,7 +22,7 @@ enum LogPriority {
     LOG_SILENT,
 };
 
-void output(const std::string &msg, const LogModule mod, const LogPriority pri = LOG_INFO);
+void output(const std::string &msg, const LogModule mod, const LogPriority pri = LOG_INFO, const bool suppressNewline = false);
 void setOutputLevel(const LogPriority minPriority);
 void setModuleLevel(const LogModule mod, const LogPriority minPriority);
 

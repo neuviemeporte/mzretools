@@ -217,8 +217,10 @@ CmdStatus System::commandDump(const Params &params) {
             path = params[0];
         }
         else if (paramCount == 2) { // dump range to screen
+            range = Block{params[0], params[1]};
         }
         else if (paramCount == 3) { // dump range to file
+            range = Block{params[0], params[1]};
             path = params[2];
         }
         else if (paramCount != 0) { // dump entire memory to screen
@@ -231,7 +233,9 @@ CmdStatus System::commandDump(const Params &params) {
         return CMD_FAIL;
     }
 
+
     if (paramCount == 1 || paramCount == 3) { // file output
+        info("Dumping memory in range "s + range.toString() + " to file: " + path);
         // check if file exists
         const auto file = checkFile(path);
         if (file.exists) {
@@ -241,8 +245,9 @@ CmdStatus System::commandDump(const Params &params) {
         mem_->dump(range, path);
     }
     else { // screen output
+        info("Dumping memory in range "s + range.toString());
+        hexDump(mem_->pointer(range.begin), range.size(), range.begin.toLinear(), false);
     }
-
 
     return CMD_OK;
 }

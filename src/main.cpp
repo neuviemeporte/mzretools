@@ -4,8 +4,9 @@
 
 // TODO:
 // - reset command
-// - view memory command
 // - load raw binary data at offset
+// - stack frame size from analysis
+// - command history, libreadline
 // - backtrace
 
 using namespace std;

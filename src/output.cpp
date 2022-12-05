@@ -5,7 +5,6 @@
 
 using namespace std;
 
-
 static LogPriority globalPriority = LOG_INFO;
 static map<LogModule, LogPriority> modulePriority = {
     { LOG_SYSTEM,    LOG_INFO },
@@ -17,9 +16,10 @@ static map<LogModule, LogPriority> modulePriority = {
     { LOG_OTHER,  LOG_INFO },
 };
 
-void output(const std::string &msg, const LogModule mod, const LogPriority pri) {
+void output(const std::string &msg, const LogModule mod, const LogPriority pri, const bool suppressNewline) {
     if (pri < globalPriority || pri < modulePriority[mod]) return;
-    cout << msg << endl;
+    cout << msg;
+    if (!suppressNewline) cout << endl;
 }
 
 void setOutputLevel(const LogPriority minPriority) {

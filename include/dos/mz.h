@@ -49,10 +49,11 @@ private:
     std::vector<Byte> ovlinfo_;
     Offset loadModuleOffset_;
     Address entrypoint_;
-    Byte *loadModuleData_;
+    Byte *loadModuleData_; // TODO: vector
 
 public:
     MzImage(const std::string &path);
+    ~MzImage();
     const std::string& path() const { return path_; }
     std::string dump() const;
     Size loadModuleSize() const { return loadModuleSize_; }

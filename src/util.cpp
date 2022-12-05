@@ -11,39 +11,42 @@
 
 using namespace std;
 
-void hexDump(const Byte *buf, const Size size, const Size off, const bool header)
-{
+void hexDump(const Byte *buf, const Size size, const Size off, const bool header) {
     ostringstream str;
     if (header) str << std::hex << std::setfill('0') << "buf[0x" << size
          << "] @ 0x" << reinterpret_cast<size_t>(buf)
          << " + 0x" << off << ": " << endl;
-    if (!buf || !size || off >= size) return;
+    if (!buf) {
+        output("(null buffer)", LOG_OTHER, LOG_ERROR);
+        return;
+    }
+    if (!size) return;
     const size_t bpl = 16; // display bytes per line
-    const size_t limit = 50 * bpl;
-    if (size - off > 2 * limit) {
+    const size_t limit = 50 * bpl; 
+    if (size > 2 * limit) {
         hexDump(buf, limit, 0, false);
-        str << "[...]" << endl;
+        output("[...]", LOG_OTHER, LOG_INFO);
         hexDump(buf, size, size - limit, false);
         return;
     }
-    for (size_t i = 0; i + off < size; ++i) {
+    for (size_t i = 0; i < size; ++i) {
         const size_t pos = i % bpl;
         if (pos == 0) { // header at line start
-            str << "0x" << std::setw(8) << i + off << ": ";
+            str << "0x" << std::hex << std::setfill('0') << std::setw(8) << i + off << ": ";
         }
         // hex byte
-        str << std::setw(2) << static_cast<int>(buf[i + off]) << " ";
+        str << std::hex << std::setfill('0') << std::setw(2) << static_cast<int>(buf[i]) << " ";
         if (pos + 1 == bpl || i + 1 == size) { // ascii dump at line or buffer end
             for (size_t j = 1; j <= bpl; ++j) {
                 if (pos + j < bpl) { str << "   "; continue; }
-                const unsigned char c = buf[i + off - bpl + j];
+                const unsigned char c = buf[i - bpl + j];
                 if (c >= 0x20 && c <= 0x7e) str << c;
                 else str << ".";
             }
             str << endl;
         }
     }
-    output(str.str(), LOG_OTHER, LOG_INFO);
+    output(str.str(), LOG_OTHER, LOG_INFO, true);
 }
 
 std::string hexVal(const Byte val) {
