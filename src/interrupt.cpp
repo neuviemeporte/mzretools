@@ -7,7 +7,7 @@
 #include "dos/dos.h"
 #include "dos/error.h"
 #include "dos/util.h"
-
+#include "dos/output.h"
 
 using namespace std;
 
@@ -17,7 +17,7 @@ enum Interrupt : Byte {
 };
 
 void intMessage(const string &msg) {
-    cout << msg << endl;
+    output(msg, LOG_INTERRUPT, LOG_INFO);
 }
 
 IntStatus InterruptHandler::interrupt(const Byte num, Registers &regs) {

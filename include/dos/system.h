@@ -26,14 +26,14 @@ private:
 
 public:
     System();
-    std::string info() const;
+    std::string systemInfo() const;
     std::string cpuInfo() const { return cpu_->info(); }
     CmdStatus command(const std::string &cmd);
 
 private:
     using Params = std::vector<std::string>;
     void printHelp();
-    void output(const std::string &msg);
+    void info(const std::string &msg);
     void error(const std::string &verb, const std::string &message);
     CmdStatus commandLoad(const std::vector<std::string> &params);
     CmdStatus commandRun(const Params &params);

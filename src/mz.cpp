@@ -12,6 +12,7 @@
 #include "dos/mz.h"
 #include "dos/error.h"
 #include "dos/util.h"
+#include "dos/output.h"
 
 using namespace std;
 
@@ -49,7 +50,7 @@ MzImage::MzImage(const std::string &path) : path_(path), loadModuleData_(nullptr
     }
 
     // read in any bytes between end of header and beginning of relocation table: optional overlay information?
-    cout << "reloc @" << hexVal(header_.reloc_table_offset) << ", hdr size = " << hexVal(HEADER_SIZE) << endl;
+    output("reloc @"s + hexVal(header_.reloc_table_offset) + ", hdr size = " + hexVal(HEADER_SIZE), LOG_OS);
     if (header_.reloc_table_offset > HEADER_SIZE) {
         const Size ovlInfoSize = header_.reloc_table_offset - HEADER_SIZE;
         ovlinfo_ = vector<Byte>(ovlInfoSize);

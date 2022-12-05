@@ -8,4 +8,5 @@ release/
 *.til
 bin/*.asm
 bin/*.map
+bin/*.exe
 .vscode/

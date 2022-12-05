@@ -1,17 +1,20 @@
 #include <iostream>
 #include <fstream>
+#include <sstream>
 #include <iomanip>
 #include <bitset>
 #include <unistd.h>
 #include <sys/stat.h>
 
 #include "dos/util.h"
+#include "dos/output.h"
 
 using namespace std;
 
 void hexDump(const Byte *buf, const Size size, const Size off, const bool header)
 {
-    if (header) cout << std::hex << std::setfill('0') << "buf[0x" << size
+    ostringstream str;
+    if (header) str << std::hex << std::setfill('0') << "buf[0x" << size
          << "] @ 0x" << reinterpret_cast<size_t>(buf)
          << " + 0x" << off << ": " << endl;
     if (!buf || !size || off >= size) return;
@@ -19,27 +22,28 @@ void hexDump(const Byte *buf, const Size size, const Size off, const bool header
     const size_t limit = 50 * bpl;
     if (size - off > 2 * limit) {
         hexDump(buf, limit, 0, false);
-        cout << "[...]" << endl;
+        str << "[...]" << endl;
         hexDump(buf, size, size - limit, false);
         return;
     }
     for (size_t i = 0; i + off < size; ++i) {
         const size_t pos = i % bpl;
         if (pos == 0) { // header at line start
-            cout << "0x" << std::setw(8) << i + off << ": ";
+            str << "0x" << std::setw(8) << i + off << ": ";
         }
         // hex byte
-        cout << std::setw(2) << static_cast<int>(buf[i + off]) << " ";
+        str << std::setw(2) << static_cast<int>(buf[i + off]) << " ";
         if (pos + 1 == bpl || i + 1 == size) { // ascii dump at line or buffer end
             for (size_t j = 1; j <= bpl; ++j) {
-                if (pos + j < bpl) { cout << "   "; continue; }
+                if (pos + j < bpl) { str << "   "; continue; }
                 const unsigned char c = buf[i + off - bpl + j];
-                if (c >= 0x20 && c <= 0x7e) cout << c;
-                else cout << ".";
+                if (c >= 0x20 && c <= 0x7e) str << c;
+                else str << ".";
             }
-            cout << endl;
+            str << endl;
         }
     }
+    output(str.str(), LOG_OTHER, LOG_INFO);
 }
 
 std::string hexVal(const Byte val) {
@@ -124,11 +128,11 @@ bool deleteFile(const std::string &path) {
 bool readBinaryFile(const std::string &path, Byte *buf, const Size size) {
     auto status = checkFile(path);
     if (!status.exists || status.size == 0) {
-        cout << "File " << path << " does not exist or has size zero!";
+        output("File "s + path + " does not exist or has size zero!", LOG_OTHER);
         return false;
     }
     if (size && status.size < size) {
-        cout << "File " << path << " has too small size (" << status.size << ") to read " << size << " bytes!";
+        output("File "s + path + " has too small size (" + to_string(status.size) + ") to read " + to_string(size) + " bytes!", LOG_OTHER);
         return false;
     }
 
@@ -142,7 +146,8 @@ bool readBinaryFile(const std::string &path, Byte *buf, const Size size) {
     for (Size i = 1; i <= block_count; ++i) {
         const Size read_size = remainder == 0 || i != block_count ? block_size : remainder;
         if (!file.read(reinterpret_cast<char*>(buf), read_size)) {
-            cout << "Unable to read " << read_size << " bytes, block " << i << ", block count = " << block_count << ", remainder = " << remainder << endl;
+            output("Unable to read "s + to_string(read_size) + " bytes, block " + to_string(i) + ", block count = " + to_string(block_count) 
+                + ", remainder = " + to_string(remainder), LOG_OTHER);
             return false;
         }
     }

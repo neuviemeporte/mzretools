@@ -14,16 +14,15 @@
 #include "dos/interrupt.h"
 #include "dos/util.h"
 #include "dos/error.h"
-#include "dos/debug.h"
+#include "dos/output.h"
 
 using namespace std;
 
 #define UNKNOWN_DISPATCH unknown("dispatch")
 #define UNKNOWN_ILEN unknown("instr_length")
 
-static LogPriority cpuLogLevel = LOG_INFO;
-static void cpuMessage(const string &msg, const LogPriority pri = LOG_DEBUG) {
-    if (pri >= cpuLogLevel) cout << msg << endl;
+static void cpuMessage(const string &msg, const LogPriority pri = LOG_INFO) {
+    output(msg, LOG_CPU, pri);
 }
 
 Cpu_8086::Cpu_8086(Memory *memory, InterruptInterface *inthandler) : 
@@ -288,7 +287,7 @@ Analysis Cpu_8086::analyze() {
     callstack.push(Frame(regs_.csip(), 1));
 
     auto analysisMessage = [&](const string &str, const LogPriority pri = LOG_VERBOSE) {
-        cpuMessage("["s + to_string(callstack.size()) + "]: " + regs_.csip() + ": " + str, pri);
+        output("["s + to_string(callstack.size()) + "]: " + regs_.csip() + ": " + str, LOG_ANALYSIS, pri);
     };
 
     // create new routine and switch to it, or switch to one that exists already
@@ -326,10 +325,10 @@ Analysis Cpu_8086::analyze() {
     };
     
     auto dumpStack = [&]() {
-        cpuMessage("Current call stack:", LOG_INFO);
+        cpuMessage("Current call stack:", LOG_VERBOSE);
         while (!callstack.empty()) {
             const Frame f = callstack.top();
-            cpuMessage("["s + to_string(callstack.size()) + "]: id " + to_string(f.id) + ", address " + f.address, LOG_INFO);
+            cpuMessage("["s + to_string(callstack.size()) + "]: id " + to_string(f.id) + ", address " + f.address, LOG_VERBOSE);
             callstack.pop();
         }
     };
@@ -447,30 +446,30 @@ Analysis Cpu_8086::analyze() {
     // iterate over memory map that we built up, identify contiguous chunks belonging to routines
     for (size_t mapOffset = codeExtents_.begin.toLinear(); mapOffset < codeExtents_.end.toLinear(); ++mapOffset) {
         const int m = memoryMap[mapOffset];
-        cpuMessage(hexVal(mapOffset) + ": " + to_string(m));
+        cpuMessage(hexVal(mapOffset) + ": " + to_string(m), LOG_VERBOSE);
         mapFile.put(static_cast<char>(m));
         if (m != prev) { // new chunk begin
             if (prev != UNDISCOVERED) { // attribute previous chunk to correct routine
                 Routine &r = routines[prev - 1];
                 Block chunk{Address(chunkStart), Address(mapOffset - 1)};
-                cpuMessage("\tclosing chunk " + chunk + " for routine " + r.name + " @ " + r.entrypoint());
+                cpuMessage("\tclosing chunk " + chunk + " for routine " + r.name + " @ " + r.entrypoint(), LOG_VERBOSE);
                 // this is the main body of the routine, update the extents
                 if (chunk.contains(r.entrypoint())) { 
-                    cpuMessage("\tmain body"); 
+                    cpuMessage("\tmain body", LOG_VERBOSE); 
                     r.extents.end = chunk.end;
                     // rebase extents to the beginning of code so its address is relative to the start of the load module
                     r.extents.rebase(codeExtents_.begin.segment);
                 }
                 // otherwise this is a head or tail chunk of the routine, add to chunks
                 else { 
-                    cpuMessage("\tchunk"); 
+                    cpuMessage("\tchunk", LOG_VERBOSE); 
                     chunk.rebase(codeExtents_.begin.segment);
                     r.chunks.push_back(chunk); 
                 }
             }
             // start new chunk
             if (m != UNDISCOVERED) {
-                cpuMessage("\tstarting chunk");
+                cpuMessage("\tstarting chunk", LOG_VERBOSE);
                 chunkStart = mapOffset;
             }
         }

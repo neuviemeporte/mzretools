@@ -37,7 +37,7 @@ TEST_F(SystemTest, Analysis) {
     const auto &routines = a.routines;
     // verify discovered extents for first routine
     auto firstExtents = Block{ 0x10, 0x1f };
-    TRACE(routines.front().toString());
+    TRACELN("first routine: " << routines.front().toString());
     ASSERT_EQ(routines.front().extents, firstExtents);
     // find the 'start' routine, verify discovered extents
     auto startRoutineIt = std::find_if(routines.begin(), routines.end(), [](const Routine &r){
@@ -45,11 +45,11 @@ TEST_F(SystemTest, Analysis) {
     });
     ASSERT_NE(startRoutineIt, routines.end());
     const auto &startRoutine = *startRoutineIt;
-    TRACE(startRoutine.toString());
+    TRACELN("start routine: " << startRoutine.toString());
     auto startExtents = Block{ 0x20, 0xc2 };
     ASSERT_EQ(startRoutine.extents, startExtents);
     // verify discovered extents for last routine
     auto lastExtents = Block{ 0x165e, 0x1680 };
-    TRACE(routines.back().toString());
+    TRACELN("last routine: " << routines.back().toString());
     ASSERT_EQ(routines.back().extents, lastExtents);
 }

@@ -1,6 +1,7 @@
 #include <iostream>
 #include <sstream>
 #include "dos/analysis.h"
+#include "dos/output.h"
 
 using namespace std;
 
@@ -14,15 +15,16 @@ bool Routine::contains(const Address &addr) const {
 
 string Routine::toString() const {
     ostringstream str;
-    str << extents.toString(true) << ": " << name << " / " << to_string(id) << endl;
-    for (const auto &c : chunks)
-        str << "\tfunction chunk: " << c.toString(true) << endl;
+    str << extents.toString(true) << ": " << name << " / " << to_string(id);
+    for (const auto &c : chunks) {
+        str << endl << "\tfunction chunk: " << c.toString(true);
+    }
     return str.str();
 }
 
 void Analysis::dump() const {
     // display routines
     for (const auto &r : routines) {
-        cout << r.toString();
+        output(r.toString(), LOG_ANALYSIS, LOG_INFO);
     }
 }

@@ -35,7 +35,7 @@ protected:
 
     void TearDown() override {
         if (HasFailure()) {
-            cout << cpu_->info() << endl;
+            TRACELN(cpu_->info());
         }
         delete cpu_;
         delete int_;
@@ -389,7 +389,7 @@ TEST_F(Cpu_8086_Test, Word) {
     Word x = 0x165;
     SByte b = 0xf7;
     x += b;
-    cout << "x = " << hexVal(x) << endl;
+    TRACELN("x = " << hexVal(x));
 }
 
 // TODO: implement tests for group opcodes

@@ -10,12 +10,12 @@
 #include "dos/mz.h"
 #include "dos/util.h"
 #include "dos/error.h"
+#include "dos/output.h"
 
 using namespace std;
 
-static bool print_message = true;
 void dosMessage(const string &msg) {
-    if (print_message) cout << msg << endl;
+    output(msg, LOG_OS);
 }
 
 Dos::Dos(Memory *memory) : memory_(memory) {

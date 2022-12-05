@@ -18,13 +18,14 @@ set(LIBDOS_SRC
     src/dos.cpp
     src/mz.cpp
     src/util.cpp
-    src/opcodes.cpp)
+    src/opcodes.cpp
+    src/output.cpp)
 
 set(LIBDOS_HDR 
     include/dos/system.h
     include/dos/types.h
     include/dos/error.h
-    include/dos/debug.h
+    include/dos/output.h
     include/dos/util.h
     include/dos/opcodes.h
     include/dos/registers.h
