@@ -68,7 +68,7 @@ enum ModRM : Byte {
     MODRM_MEM_MASK   = 0b111
 };
 
-static const Byte MODRM_REG_SHIFT = 3;
+static constexpr Byte MODRM_REG_SHIFT = 3;
 
 // extract mod/reg/mem field from a ModR/M byte value
 inline Byte modrm_mod(const Byte modrm) { return modrm & MODRM_MOD_MASK; }

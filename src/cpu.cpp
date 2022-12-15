@@ -201,6 +201,7 @@ size_t Cpu_8086::modrmDisplacementLength() const {
     throw CpuError("Invalid ModR/M MOD value while calculating instruction length: "s + hexVal(modrm_mod(modrm_)));
 }
 
+// TODO: merge this with getInstruction in the future?
 void Cpu_8086::preProcessOpcode() {
     static const Register PREFIX_REGS[4] = { REG_ES, REG_CS, REG_SS, REG_DS };
     Word ipOffset = 0;
@@ -257,7 +258,7 @@ void Cpu_8086::run() {
     pipeline();
 }
 
-string Cpu_8086::disasm() const {
+string Cpu_8086::opcodeStr() const {
     string ret = regs_.csip().toString() + "  " + hexVal(opcode_) + "  ";
     switch(segOverride_) {
     case REG_ES: ret += "ES:"; break;
@@ -266,6 +267,31 @@ string Cpu_8086::disasm() const {
     case REG_DS: ret += "DS:"; break;
     }
     return ret + opcodeName(opcode_);
+}
+
+vector<Instruction> Cpu_8086::disassemble(const Address &addr, Size count) {
+    vector<Instruction> ret;
+    regs_.reset();
+    setCodeSegment(addr.segment);
+    regs_.bit16(REG_IP) = addr.offset;    
+    while (count) {
+        opcode_ = ipByte();
+        preProcessOpcode();
+        getInstruction();
+        ipAdvance(WORD_SIGNED(instructionLength()));
+        count--;
+    }
+    return ret;
+}
+
+Instruction Cpu_8086::getInstruction() const {
+    Instruction ret;
+    // ret.addr = csip();
+    // if opcodeIsModrm(opcode_) {
+
+    // }
+
+    return ret;
 }
 
 // explore the code without actually executing instructions, discover routine boundaries
@@ -499,213 +525,84 @@ void Cpu_8086::pipeline() {
 }
 
 void Cpu_8086::dispatch() {
-    if (!opcodeIsGroup(opcode_)) switch (opcode_) {
-    case OP_ADD_Eb_Gb :
-    case OP_ADD_Ev_Gv :
-    case OP_ADD_Gb_Eb :
-    case OP_ADD_Gv_Ev :
-    case OP_ADD_AL_Ib :
-    case OP_ADD_AX_Iv :
-    case OP_PUSH_ES   :
-    case OP_POP_ES    :
-    case OP_OR_Eb_Gb  :
-    case OP_OR_Ev_Gv  :
-    case OP_OR_Gb_Eb  :
-    case OP_OR_Gv_Ev  :
-    case OP_OR_AL_Ib  :
-    case OP_OR_AX_Iv  :
-    case OP_PUSH_CS   :
-    case OP_ADC_Eb_Gb :
-    case OP_ADC_Ev_Gv :
-    case OP_ADC_Gb_Eb :
-    case OP_ADC_Gv_Ev :
-    case OP_ADC_AL_Ib :
-    case OP_ADC_AX_Iv :
-    case OP_PUSH_SS   :
-    case OP_POP_SS    :
-    case OP_SBB_Eb_Gb :
-    case OP_SBB_Ev_Gv :
-    case OP_SBB_Gb_Eb :
-    case OP_SBB_Gv_Ev :
-    case OP_SBB_AL_Ib :
-    case OP_SBB_AX_Iv :
-    case OP_PUSH_DS   :
-    case OP_POP_DS    :
-    case OP_AND_Eb_Gb :
-    case OP_AND_Ev_Gv :
-    case OP_AND_Gb_Eb :
-    case OP_AND_Gv_Ev :
-    case OP_AND_AL_Ib :
-    case OP_AND_AX_Iv : UNKNOWN_DISPATCH;
-    case OP_SUB_Eb_Gb :
-    case OP_SUB_Ev_Gv :
-    case OP_SUB_Gb_Eb :
-    case OP_SUB_Gv_Ev :
-    case OP_SUB_AL_Ib :
-    case OP_SUB_AX_Iv : instr_sub(); break;
-    case OP_XOR_Eb_Gb :
-    case OP_XOR_Ev_Gv :
-    case OP_XOR_Gb_Eb :
-    case OP_XOR_Gv_Ev :
-    case OP_XOR_AL_Ib :
-    case OP_XOR_AX_Iv : UNKNOWN_DISPATCH;
-    case OP_CMP_Eb_Gb : 
-    case OP_CMP_Ev_Gv :
-    case OP_CMP_Gb_Eb :
-    case OP_CMP_Gv_Ev :
-    case OP_CMP_AL_Ib :
-    case OP_CMP_AX_Iv : instr_cmp(); break;
-    case OP_INC_AX    :
-    case OP_INC_CX    :
-    case OP_INC_DX    :
-    case OP_INC_BX    :
-    case OP_INC_SP    :
-    case OP_INC_BP    :
-    case OP_INC_SI    :
-    case OP_INC_DI    :
-    case OP_DEC_AX    :
-    case OP_DEC_CX    :
-    case OP_DEC_DX    :
-    case OP_DEC_BX    :
-    case OP_DEC_SP    :
-    case OP_DEC_BP    :
-    case OP_DEC_SI    :
-    case OP_DEC_DI    :
-    case OP_PUSH_AX   :
-    case OP_PUSH_CX   :
-    case OP_PUSH_DX   :
-    case OP_PUSH_BX   :
-    case OP_PUSH_SP   :
-    case OP_PUSH_BP   :
-    case OP_PUSH_SI   :
-    case OP_PUSH_DI   :
-    case OP_POP_AX    :
-    case OP_POP_CX    :
-    case OP_POP_DX    :
-    case OP_POP_BX    :
-    case OP_POP_SP    :
-    case OP_POP_BP    :
-    case OP_POP_SI    :
-    case OP_POP_DI    : UNKNOWN_DISPATCH;
-    case OP_JO_Jb     :
-    case OP_JNO_Jb    :
-    case OP_JB_Jb     :
-    case OP_JNB_Jb    :
-    case OP_JZ_Jb     :
-    case OP_JNZ_Jb    :
-    case OP_JBE_Jb    :
-    case OP_JA_Jb     :
-    case OP_JS_Jb     :
-    case OP_JNS_Jb    :
-    case OP_JPE_Jb    :
-    case OP_JPO_Jb    :
-    case OP_JL_Jb     :
-    case OP_JGE_Jb    :
-    case OP_JLE_Jb    :
-    case OP_JG_Jb     : instr_jmp(); break;
-    case OP_TEST_Gb_Eb:
-    case OP_TEST_Gv_Ev:
-    case OP_XCHG_Gb_Eb:
-    case OP_XCHG_Gv_Ev: UNKNOWN_DISPATCH;
-    case OP_MOV_Eb_Gb :
-    case OP_MOV_Ev_Gv :
-    case OP_MOV_Gb_Eb :
-    case OP_MOV_Gv_Ev :
-    case OP_MOV_Ew_Sw : instr_mov(); break;
-    case OP_LEA_Gv_M  : UNKNOWN_DISPATCH;
-    case OP_MOV_Sw_Ew : instr_mov(); break;
-    case OP_POP_Ev    :
-    case OP_NOP       :
-    case OP_XCHG_CX_AX:
-    case OP_XCHG_DX_AX:
-    case OP_XCHG_BX_AX:
-    case OP_XCHG_SP_AX:
-    case OP_XCHG_BP_AX:
-    case OP_XCHG_SI_AX:
-    case OP_XCHG_DI_AX:
-    case OP_CBW       :
-    case OP_CWD       :
-    case OP_CALL_Ap   :
-    case OP_WAIT      :
-    case OP_PUSHF     :
-    case OP_POPF      :
-    case OP_SAHF      :
-    case OP_LAHF      : UNKNOWN_DISPATCH;
-    case OP_MOV_AL_Ob :
-    case OP_MOV_AX_Ov :
-    case OP_MOV_Ob_AL :
-    case OP_MOV_Ov_AX : instr_mov(); break;
-    case OP_MOVSB     :
-    case OP_MOVSW     :
-    case OP_CMPSB     :
-    case OP_CMPSW     :
-    case OP_TEST_AL_Ib:
-    case OP_TEST_AX_Iv:
-    case OP_STOSB     :
-    case OP_STOSW     :
-    case OP_LODSB     :
-    case OP_LODSW     :
-    case OP_SCASB     :
-    case OP_SCASW     : UNKNOWN_DISPATCH;
-    case OP_MOV_AL_Ib :
-    case OP_MOV_CL_Ib :
-    case OP_MOV_DL_Ib :
-    case OP_MOV_BL_Ib :
-    case OP_MOV_AH_Ib :
-    case OP_MOV_CH_Ib :
-    case OP_MOV_DH_Ib :
-    case OP_MOV_BH_Ib :
-    case OP_MOV_AX_Iv :
-    case OP_MOV_CX_Iv :
-    case OP_MOV_DX_Iv :
-    case OP_MOV_BX_Iv :
-    case OP_MOV_SP_Iv :
-    case OP_MOV_BP_Iv :
-    case OP_MOV_SI_Iv :
-    case OP_MOV_DI_Iv : instr_mov(); break;
-    case OP_RET_Iw    : 
-    case OP_RET       :
-    case OP_LES_Gv_Mp :
-    case OP_LDS_Gv_Mp : UNKNOWN_DISPATCH;
-    case OP_MOV_Eb_Ib : 
-    case OP_MOV_Ev_Iv : instr_mov(); break;
-    case OP_RETF_Iw   :
-    case OP_RETF      : UNKNOWN_DISPATCH;
-    case OP_INT_3     : 
-    case OP_INT_Ib    :
-    case OP_INTO      : instr_int(); break;
-    case OP_IRET      : UNKNOWN_DISPATCH; 
-    case OP_AAM_I0    : 
-    case OP_AAD_I0    : 
-    case OP_XLAT      :
-    case OP_LOOPNZ_Jb :
-    case OP_LOOPZ_Jb  :
-    case OP_LOOP_Jb   :
-    case OP_JCXZ_Jb   :
-    case OP_IN_AL_Ib  :
-    case OP_IN_AX_Ib  :
-    case OP_OUT_Ib_AL :
-    case OP_OUT_Ib_AX :
-    case OP_CALL_Jv   :
-    case OP_JMP_Jv    :
-    case OP_JMP_Ap    :
-    case OP_JMP_Jb    :
-    case OP_IN_AL_DX  :
-    case OP_IN_AX_DX  :
-    case OP_OUT_DX_AL :
-    case OP_OUT_DX_AX :
-    case OP_LOCK      :
-    case OP_REPNZ     : // REPNE
-    case OP_REPZ      : // REP, REPE
-    case OP_HLT       :
-    case OP_CMC       : UNKNOWN_DISPATCH;
-    case OP_CLC       :
-    case OP_STC       :
-    case OP_CLI       :
-    case OP_STI       :
-    case OP_CLD       :
-    case OP_STD       : UNKNOWN_DISPATCH;
-    default: UNKNOWN_DISPATCH;
+    if (!opcodeIsGroup(opcode_)) switch (instr_class(opcode_)) {
+    case INS_NONE: 
+        UNKNOWN_DISPATCH; 
+        break;
+    case INS_ADD: instr_add(); break;
+    case INS_PUSH: instr_push(); break;
+    case INS_POP: instr_pop(); break;
+    case INS_OR: instr_or(); break;
+    case INS_ADC: instr_adc(); break;
+    case INS_SBB: instr_sbb(); break;
+    case INS_AND: instr_and(); break;
+    case INS_DAA: instr_daa(); break;
+    case INS_SUB: instr_sub(); break;
+    case INS_DAS: instr_das(); break;
+    case INS_XOR: instr_xor(); break;
+    case INS_AAA: instr_aaa(); break;
+    case INS_CMP: instr_cmp(); break;
+    case INS_AAS: instr_aas(); break;
+    case INS_INC: instr_inc(); break;
+    case INS_DEC: instr_dec(); break;
+    case INS_JMP: instr_jmp(); break; // all unconditional jumps:
+    case INS_TEST: instr_test(); break;
+    case INS_XCHG: instr_xchg(); break;
+    case INS_MOV: instr_mov(); break;
+    case INS_LEA: instr_lea(); break;
+    case INS_NOP: instr_nop(); break;
+    case INS_CBW: instr_cbw(); break;
+    case INS_CWD: instr_cwd(); break;
+    case INS_CALL: instr_call(); break;
+    case INS_WAIT: instr_wait(); break;
+    case INS_PUSHF: instr_pushf(); break;
+    case INS_POPF: instr_popf(); break;
+    case INS_SAHF: instr_sahf(); break;
+    case INS_LAHF: instr_lahf(); break;
+    case INS_MOVSB: instr_movsb(); break;
+    case INS_MOVSW: instr_movsw(); break;
+    case INS_CMPSB: instr_cmpsb(); break;
+    case INS_CMPSW: instr_cmpsw(); break;
+    case INS_STOSB: instr_stosb(); break;
+    case INS_STOSW: instr_stosw(); break;
+    case INS_LODSB: instr_lodsb(); break;
+    case INS_LODSW: instr_lodsw(); break;
+    case INS_SCASB: instr_scasb(); break;
+    case INS_SCASW: instr_scasw(); break;
+    case INS_RET: instr_ret(); break;
+    case INS_LES: instr_les(); break;
+    case INS_LDS: instr_lds(); break;
+    case INS_RETF: instr_retf(); break;
+    case INS_INT: instr_int(); break;
+    case INS_INTO: instr_int(); break;
+    case INS_IRET: instr_iret(); break;
+    case INS_AAM: instr_aam(); break;
+    case INS_AAD: instr_aad(); break;
+    case INS_XLAT: instr_xlat(); break;
+    case INS_LOOPNZ: instr_loopnz(); break;
+    case INS_LOOPZ: instr_loopz(); break;
+    case INS_LOOP: instr_loop(); break; 
+    case INS_JCXZ: instr_jcxz(); break;
+    case INS_IN: instr_in(); break;
+    case INS_OUT: instr_out(); break;
+    case INS_LOCK: instr_lock(); break;
+    case INS_REPNZ: instr_repnz(); break;
+    case INS_REPZ: instr_repz(); break;
+    case INS_HLT: instr_hlt(); break;
+    case INS_CMC: instr_cmc(); break;
+    case INS_CLC: instr_clc(); break;
+    case INS_STC: instr_stc(); break;
+    case INS_CLI: instr_cli(); break;
+    case INS_STI: instr_sti(); break;
+    case INS_CLD: instr_cld(); break;
+    case INS_STD:  instr_std(); break;
+
+
+
+
+    default:
+        UNKNOWN_DISPATCH;
+        break;
     }
     else groupDispatch();
 }
@@ -1176,4 +1073,170 @@ void Cpu_8086::instr_jmp() {
 
 void Cpu_8086::instr_push() {
     throw CpuError("Opcode not implemented: PUSH");
+}
+
+void Cpu_8086::instr_pop() {
+    throw CpuError("Opcode not implemented: POP");
+}
+
+void Cpu_8086::instr_daa() {
+    throw CpuError("Opcode not implemented: DAA");
+}
+
+void Cpu_8086::instr_das() {
+    throw CpuError("Opcode not implemented: DAS");
+}
+
+void Cpu_8086::instr_aaa() {
+    throw CpuError("Opcode not implemented: AAA");
+}
+
+void Cpu_8086::instr_aas() {
+    throw CpuError("Opcode not implemented: AAS");
+}
+
+void Cpu_8086::instr_xchg() {
+    throw CpuError("Opcode not implemented: AAS");
+}
+
+void Cpu_8086::instr_lea() {
+    throw CpuError("Opcode not implemented: AAS");
+}
+
+void Cpu_8086::instr_nop() {
+    throw CpuError("Opcode not implemented: NOP");
+}
+
+void Cpu_8086::instr_cbw() {
+    throw CpuError("Opcode not implemented: CBW");
+}
+
+void Cpu_8086::instr_cwd() {
+    throw CpuError("Opcode not implemented: CWD");
+}
+
+void Cpu_8086::instr_wait() {
+    throw CpuError("Opcode not implemented: WAIT");
+}
+
+void Cpu_8086::instr_pushf() {
+    throw CpuError("Opcode not implemented: PUSHF");
+}
+
+void Cpu_8086::instr_popf() {
+    throw CpuError("Opcode not implemented: POPF");
+}
+
+void Cpu_8086::instr_sahf() {
+    throw CpuError("Opcode not implemented: SAHF");
+}
+
+void Cpu_8086::instr_lahf() {
+    throw CpuError("Opcode not implemented: LAHF");
+}
+
+void Cpu_8086::instr_movsb() {
+throw CpuError("Opcode not implemented: MOVSB");    
+}
+void Cpu_8086::instr_movsw() {
+throw CpuError("Opcode not implemented: MOVSW");
+}
+void Cpu_8086::instr_cmpsb() {
+throw CpuError("Opcode not implemented: CMPSB");
+}
+void Cpu_8086::instr_cmpsw() {
+throw CpuError("Opcode not implemented: CMPSW");
+}
+void Cpu_8086::instr_stosb() {
+throw CpuError("Opcode not implemented: STOSB");
+}
+void Cpu_8086::instr_stosw() {
+throw CpuError("Opcode not implemented: STOSW");
+}
+void Cpu_8086::instr_lodsb() {
+throw CpuError("Opcode not implemented: LODSB");
+}
+void Cpu_8086::instr_lodsw() {
+throw CpuError("Opcode not implemented: LODSW");
+}
+void Cpu_8086::instr_scasb() {
+throw CpuError("Opcode not implemented: SCASB");
+}
+void Cpu_8086::instr_scasw() {
+throw CpuError("Opcode not implemented: SCASW");
+}
+void Cpu_8086::instr_ret() {
+throw CpuError("Opcode not implemented: RET");
+}
+void Cpu_8086::instr_les() {
+throw CpuError("Opcode not implemented: LES");
+}
+void Cpu_8086::instr_lds() {
+throw CpuError("Opcode not implemented: LDS");
+}
+void Cpu_8086::instr_retf() {
+throw CpuError("Opcode not implemented: RETF");
+}
+void Cpu_8086::instr_iret() {
+throw CpuError("Opcode not implemented: IRET");    
+}
+void Cpu_8086::instr_aam() {
+throw CpuError("Opcode not implemented: AAM");
+}
+void Cpu_8086::instr_aad() {
+throw CpuError("Opcode not implemented: AAD");
+}
+void Cpu_8086::instr_xlat() {
+throw CpuError("Opcode not implemented: XLAT");
+}
+void Cpu_8086::instr_loopnz() {
+throw CpuError("Opcode not implemented: LOOPNZ");
+}
+void Cpu_8086::instr_loopz() {
+throw CpuError("Opcode not implemented: LOOPZ");
+}
+void Cpu_8086::instr_loop() {
+throw CpuError("Opcode not implemented: LOOP");
+}
+void Cpu_8086::instr_jcxz() {
+throw CpuError("Opcode not implemented: JCXZ");
+}
+void Cpu_8086::instr_in() {
+throw CpuError("Opcode not implemented: IN");
+}
+void Cpu_8086::instr_out() {
+throw CpuError("Opcode not implemented: OUT");
+}
+void Cpu_8086::instr_lock() {
+throw CpuError("Opcode not implemented: LOCK");
+}
+void Cpu_8086::instr_repnz() {
+throw CpuError("Opcode not implemented: REPNZ");
+}
+void Cpu_8086::instr_repz() {
+throw CpuError("Opcode not implemented: REPZ");
+}
+void Cpu_8086::instr_hlt() {
+throw CpuError("Opcode not implemented: HLT");
+}
+void Cpu_8086::instr_cmc() {
+throw CpuError("Opcode not implemented: CMC");
+}
+void Cpu_8086::instr_clc() {
+throw CpuError("Opcode not implemented: CLC");
+}
+void Cpu_8086::instr_stc() {
+throw CpuError("Opcode not implemented: STC");
+}
+void Cpu_8086::instr_cli() {
+throw CpuError("Opcode not implemented: CLI");
+}
+void Cpu_8086::instr_sti() {
+throw CpuError("Opcode not implemented: STI");
+}
+void Cpu_8086::instr_cld() {
+throw CpuError("Opcode not implemented: CLD");
+}
+void Cpu_8086::instr_std() {
+throw CpuError("Opcode not implemented: STD");
 }

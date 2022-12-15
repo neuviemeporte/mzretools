@@ -19,7 +19,8 @@ set(LIBDOS_SRC
     src/mz.cpp
     src/util.cpp
     src/opcodes.cpp
-    src/output.cpp)
+    src/output.cpp
+    src/instruction.cpp)
 
 set(LIBDOS_HDR 
     include/dos/system.h
@@ -37,7 +38,8 @@ set(LIBDOS_HDR
     include/dos/memory.h
     include/dos/psp.h
     include/dos/dos.h
-    include/dos/mz.h)
+    include/dos/mz.h
+    include/dos/instruction.h)
 
 # the DOS emulation library
 add_library(libdos STATIC ${LIBDOS_SRC} ${LIBDOS_HDR})

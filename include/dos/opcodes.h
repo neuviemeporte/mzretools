@@ -36,6 +36,7 @@ enum Opcode : Byte {
     OP_SBB_AX_Iv  = 0x1d,
     OP_PUSH_DS    = 0x1e,
     OP_POP_DS     = 0x1f,
+
     OP_AND_Eb_Gb  = 0x20,
     OP_AND_Ev_Gv  = 0x21,
     OP_AND_Gb_Eb  = 0x22,
@@ -52,6 +53,7 @@ enum Opcode : Byte {
     OP_SUB_AX_Iv  = 0x2d,
     OP_PREFIX_CS  = 0x2e,
     OP_DAS        = 0x2f,
+
     OP_XOR_Eb_Gb  = 0x30,
     OP_XOR_Ev_Gv  = 0x31,
     OP_XOR_Gb_Eb  = 0x32,
@@ -68,6 +70,7 @@ enum Opcode : Byte {
     OP_CMP_AX_Iv  = 0x3d,
     OP_PREFIX_DS  = 0x3e,
     OP_AAS        = 0x3f,
+
     OP_INC_AX     = 0x40,
     OP_INC_CX     = 0x41,
     OP_INC_DX     = 0x42,
@@ -84,6 +87,7 @@ enum Opcode : Byte {
     OP_DEC_BP     = 0x4d,
     OP_DEC_SI     = 0x4e,
     OP_DEC_DI     = 0x4f,
+
     OP_PUSH_AX    = 0x50,
     OP_PUSH_CX    = 0x51,
     OP_PUSH_DX    = 0x52,
@@ -132,6 +136,7 @@ enum Opcode : Byte {
     OP_JGE_Jb     = 0x7d,
     OP_JLE_Jb     = 0x7e,
     OP_JG_Jb      = 0x7f,
+
     OP_GRP1_Eb_Ib = 0x80,
     OP_GRP1_Ev_Iv = 0x81,
     OP_GRP1_Eb_Ib2= 0x82, // this is a synonym for 0x80?
@@ -148,6 +153,7 @@ enum Opcode : Byte {
     OP_LEA_Gv_M   = 0x8d,
     OP_MOV_Sw_Ew  = 0x8e,
     OP_POP_Ev     = 0x8f,
+
     OP_NOP        = 0x90,
     OP_XCHG_CX_AX = 0x91,
     OP_XCHG_DX_AX = 0x92,
@@ -164,6 +170,7 @@ enum Opcode : Byte {
     OP_POPF       = 0x9d,
     OP_SAHF       = 0x9e,
     OP_LAHF       = 0x9f,
+
     OP_MOV_AL_Ob  = 0xa0,
     OP_MOV_AX_Ov  = 0xa1,
     OP_MOV_Ob_AL  = 0xa2,
@@ -180,6 +187,7 @@ enum Opcode : Byte {
     OP_LODSW      = 0xad,
     OP_SCASB      = 0xae,
     OP_SCASW      = 0xaf,
+
     OP_MOV_AL_Ib  = 0xb0,
     OP_MOV_CL_Ib  = 0xb1,
     OP_MOV_DL_Ib  = 0xb2,
@@ -196,6 +204,7 @@ enum Opcode : Byte {
     OP_MOV_BP_Iv  = 0xbd,
     OP_MOV_SI_Iv  = 0xbe,
     OP_MOV_DI_Iv  = 0xbf,
+
     // 0xc0
     // 0xc1
     OP_RET_Iw     = 0xc2,
@@ -212,6 +221,7 @@ enum Opcode : Byte {
     OP_INT_Ib     = 0xcd,
     OP_INTO       = 0xce,
     OP_IRET       = 0xcf,
+
     OP_GRP2_Eb_1  = 0xd0,
     OP_GRP2_Ev_1  = 0xd1,
     OP_GRP2_Eb_CL = 0xd2,
@@ -228,6 +238,7 @@ enum Opcode : Byte {
     // 0xdd
     // 0xde
     // 0xdf
+
     OP_LOOPNZ_Jb  = 0xe0,
     OP_LOOPZ_Jb   = 0xe1,
     OP_LOOP_Jb    = 0xe2,
@@ -244,6 +255,7 @@ enum Opcode : Byte {
     OP_IN_AX_DX   = 0xed,
     OP_OUT_DX_AL  = 0xee,
     OP_OUT_DX_AX  = 0xef,
+    
     OP_LOCK       = 0xf0,
     // 0xf1
     OP_REPNZ      = 0xf2, // REPNE

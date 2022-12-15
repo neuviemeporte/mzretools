@@ -3,11 +3,13 @@
 #include "dos/error.h"
 
 // TODO:
-// - reset command
 // - load raw binary data at offset
 // - stack frame size from analysis
 // - command history, libreadline
-// - backtrace
+// - backtrace, stack unwind from stack dumped in emulator
+// - reset vm
+// - meminfo
+// - disasm @
 
 using namespace std;
 

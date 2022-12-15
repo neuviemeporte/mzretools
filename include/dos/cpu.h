@@ -7,6 +7,7 @@
 #include "dos/registers.h"
 #include "dos/memory.h"
 #include "dos/analysis.h"
+#include "dos/instruction.h"
 
 class Cpu {
 public:
@@ -70,9 +71,11 @@ private:
     Word modrmGetWord();
     size_t modrmDisplacementLength() const;
 
-    std::string disasm() const;
+    std::string opcodeStr() const;
+    std::vector<Instruction> disassemble(const Address &addr, Size count);
     void preProcessOpcode();
     size_t instructionLength() const;
+    Instruction getInstruction() const;
 
     // instruction execution pipeline
     void pipeline();
@@ -111,6 +114,57 @@ private:
     void instr_call();
     void instr_jmp();
     void instr_push();
+    void instr_pop();
+    void instr_daa();
+    void instr_das();
+    void instr_aaa();
+    void instr_aas();
+    void instr_xchg();
+    void instr_lea();
+    void instr_nop();
+    void instr_cbw();
+    void instr_cwd();
+    void instr_wait();
+    void instr_pushf();
+    void instr_popf();
+    void instr_sahf();
+    void instr_lahf();
+    void instr_movsb();
+    void instr_movsw();
+    void instr_cmpsb();
+    void instr_cmpsw();
+    void instr_stosb();
+    void instr_stosw();
+    void instr_lodsb();
+    void instr_lodsw();
+    void instr_scasb();
+    void instr_scasw();
+    void instr_ret();
+    void instr_les();
+    void instr_lds();
+    void instr_retf();
+    void instr_iret();
+    void instr_aam();
+    void instr_aad();
+    void instr_xlat();
+    void instr_loopnz();
+    void instr_loopz();
+    void instr_loop(); 
+    void instr_jcxz();
+    void instr_in();
+    void instr_out();
+    void instr_lock();
+    void instr_repnz();
+    void instr_repz();
+    void instr_hlt();
+    void instr_cmc();
+    void instr_clc();
+    void instr_stc();
+    void instr_cli();
+    void instr_sti();
+    void instr_cld();
+    void instr_std();
+
 };
 
 #endif // CPU_H
