@@ -8,7 +8,7 @@
 #include <string>
 
 enum InstructionClass {
-    INS_NONE,
+    INS_ERR, // invalid instruction class
     INS_ADD,
     INS_PUSH,
     INS_POP,
@@ -25,7 +25,7 @@ enum InstructionClass {
     INS_AAS,
     INS_INC,
     INS_DEC,
-    INS_JMP, // all unconditional jumps
+    INS_JMP, // all jumps, including conditional
     INS_TEST,
     INS_XCHG,
     INS_MOV,
@@ -75,40 +75,108 @@ enum InstructionClass {
     INS_CLI, 
     INS_STI,
     INS_CLD, 
-    INS_STD
+    INS_STD,
+    // from group opcodes only
+    INS_ROL,
+    INS_ROR,
+    INS_RCL,
+    INS_RCR,
+    INS_SHL,
+    INS_SHR,
+    INS_SAR,
+    INS_NOT,
+    INS_NEG,
+    INS_MUL,
+    INS_IMUL,
+    INS_DIV,
+    INS_IDIV,
 };
 
-enum OperandType {
-    OPR_NONE, OPR_REG, OPR_MEM, OPR_IMM
+enum InstructionPrefix {
+    PRF_NONE,
+    PRF_SEG_ES,
+    PRF_SEG_CS,
+    PRF_SEG_SS,
+    PRF_SEG_DS,
+    PRF_CHAIN_REPNZ,
+    PRF_CHAIN_REPZ,
+}
+
+enum OperandType : Byte {
+    OPR_ERR,  // operand error
+    OPR_NONE, // instruction has no operand
+    OPR_REG_AX,
+    OPR_REG_AL,
+    OPR_REG_AH,
+    OPR_REG_BX,
+    OPR_REG_BL,
+    OPR_REG_BH,
+    OPR_REG_CX,
+    OPR_REG_CL,
+    OPR_REG_CH,
+    OPR_REG_DX,
+    OPR_REG_DL,
+    OPR_REG_DH,
+    OPR_REG_SI,
+    OPR_REG_DI,
+    OPR_REG_BP,
+    OPR_REG_SP,
+    OPR_REG_CS,
+    OPR_REG_DS,
+    OPR_REG_ES,
+    OPR_REG_SS,
+    OPR_MEM_BX_SI,
+    OPR_MEM_BX_DI,
+    OPR_MEM_BP_SI,
+    OPR_MEM_BP_DI,
+    OPR_MEM_SI,
+    OPR_MEM_DI,
+    OPR_MEM_BX,
+    OPR_MEM_OFF8,
+    OPR_MEM_BX_SI_OFF8,
+    OPR_MEM_BX_DI_OFF8,
+    OPR_MEM_BP_SI_OFF8,
+    OPR_MEM_BP_DI_OFF8,
+    OPR_MEM_SI_OFF8,
+    OPR_MEM_DI_OFF8,
+    OPR_MEM_BP_OFF8,
+    OPR_MEM_BX_OFF8,
+    OPR_MEM_OFF16,
+    OPR_MEM_BX_SI_OFF16,
+    OPR_MEM_BX_DI_OFF16,
+    OPR_MEM_BP_SI_OFF16,
+    OPR_MEM_BP_DI_OFF16,
+    OPR_MEM_SI_OFF16,
+    OPR_MEM_DI_OFF16,
+    OPR_MEM_BP_OFF16,
+    OPR_MEM_BX_OFF16,
+    OPR_IMM0,
+    OPR_IMM1,
+    OPR_IMM8,
+    OPR_IMM16,
+    OPR_IMM32,
 };
 
-enum MemoryType {
-    MEM_BX_SI,
-    MEM_BX_DI,
-    MEM_BP_SI,
-    MEM_BP_DI,
-    MEM_SI,
-    MEM_DI,
-    MEM_DIRECT,
-    MEM_BX,
-//    000: [BX+SI]      001: [BX+DI]     010: [BP+SI]           011: [BP+DI]
-//    100: [SI]         101: [DI]        110: direct address    111: [BX] 
-// Table2 (when MOD = 01 or 10):
-//    000: [BX+SI+Offset]     001: [BX+DI+Offset]     010: [BP+SI+Offset]     011: [BP+DI+Offset]
-//    100: [SI+Offset]        101: [DI+Offset]        110: [BP+Offset]        111: [BX+Offset]
-};
-
-struct Instruction {
+class Instruction {
+public:
+    const Byte *data;
     Address addr;
-    InstructionClass clss;
-    OperandType srcType, dstType;
-    union Operand {
-        Register regId;
-        MemoryType memType;
-        Byte imm8;
-        Word imm16;
+    InstructionPrefix prefix;
+    Byte opcode;
+    InstructionClass iclass;
+    Size length;
+    struct Operand {
+        OperandType type;
+        SWord offset;
+        UDWord immval;
     } op1, op2;
+
+    Instruction(const Byte *idata);
     std::string toString() const;
+
+private:
+    OperandType getModrmOperand(const Byte modrm, const ModrmOperand op);
+    void loadOperand(Operand &op);
 };
 
 InstructionClass instr_class(const Byte opcode);

@@ -20,14 +20,14 @@
 //    GRP3b: 000: TEST*  001: ---    010: NOT    011: NEG    100: MUL    101: IMUL   110: DIV    111: IDIV
 //    GRP4:  000: INC    001: DEC    010: ---    011: ---    100: ---    101: ---    110: ---    111: ---
 //    GRP5:  000: INC    001: DEC    010: CALL   011: CALL*  100: JMP    101: JMP*   110: PUSH   111: ---
-// *) GRP3a TEST has 8bit operands, GRP3b TEST has 16bit, GRP5 CALL and JMP far variants
+// *) GRP3a TEST has 8bit operands, GRP3b TEST has 16bit, GRP5 CALL* and JMP* are far variants
 // CCC: MEM field:
 // Table1 (when MOD = 00)
 //    000: [BX+SI]      001: [BX+DI]     010: [BP+SI]           011: [BP+DI]
-//    100: [SI]         101: [DI]        110: direct address    111: [BX] 
+//    100: [SI]         101: [DI]        110: Offset16          111: [BX] 
 // Table2 (when MOD = 01 or 10):
-//    000: [BX+SI+Offset]     001: [BX+DI+Offset]     010: [BP+SI+Offset]     011: [BP+DI+Offset]
-//    100: [SI+Offset]        101: [DI+Offset]        110: [BP+Offset]        111: [BX+Offset]
+//    000: [BX+SI+Offset8/16]     001: [BX+DI+Offset8/16]     010: [BP+SI+Offset8/16]     011: [BP+DI+Offset8/16]
+//    100: [SI+Offset8/16]        101: [DI+Offset8/16]        110: [BP+Offset8/16]        111: [BX+Offset8/16]
 // CCC can also be another reg if MOD = 11, in which case its contents are interpreded same as BBB for the REG field case
 enum ModRM : Byte {
     // MOD
@@ -70,10 +70,27 @@ enum ModRM : Byte {
 
 static constexpr Byte MODRM_REG_SHIFT = 3;
 
+enum ModrmOperand {
+    MODRM_NONE, 
+    MODRM_Eb, 
+    MODRM_Gb, 
+    MODRM_Ib, 
+    MODRM_Ev, 
+    MODRM_Gv, 
+    MODRM_Iv, 
+    MODRM_Sw, 
+    MODRM_M, 
+    MODRM_Mp, 
+    MODRM_1, 
+    MODRM_CL,
+};
+
 // extract mod/reg/mem field from a ModR/M byte value
 inline Byte modrm_mod(const Byte modrm) { return modrm & MODRM_MOD_MASK; }
 inline Byte modrm_reg(const Byte modrm) { return modrm & MODRM_REG_MASK; }
 inline Byte modrm_grp(const Byte modrm) { return modrm & MODRM_GRP_MASK; }
 inline Byte modrm_mem(const Byte modrm) { return modrm & MODRM_MEM_MASK; }
+inline ModrmOperand modrm_op1type(const Byte modrm);
+inline ModrmOperand modrm_op2type(const Byte modrm);
 
 #endif // MODRM_H

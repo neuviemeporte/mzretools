@@ -3,6 +3,16 @@
 
 #include "dos/types.h"
 
+// Legend for abbreviations used in opcode names:
+// 'v' and not 'w' is used for word-sized operands because the opcode map I used to do this employed this letter, supposedly 'w' and 'v' have some distinction for later (than 8086) x86 instruction opcodes
+// Gb/Gv: byte or word-sized operand, can only refer to a general purpose register, based on the REG value in the modrm byte following the opcode
+// Eb/Ev: byte or word-sized operand, can refer to either memory, or a register, based on the MOD and MEM values in the modrm byte following the opcode
+// M/Mp: word, or dword-sized operand, can only refer to memory, based on the MEM value in the modrm byte following the opcode
+// Ap: direct 32-bit far pointer, opcode has no modrm-byte, the pointer data follows the opcode directly
+// Ib/Iv: byte, or word-sized immediate value
+// Jb/Jv: byte, or word-sized jump offset
+// Ob/Ov: byte, or word-sized offset directly following the opcode (no modrm byte)
+// Sw: segment register operand, based on the REG value in the modrm byte following the opcode
 enum Opcode : Byte {
     OP_ADD_Eb_Gb  = 0x00,
     OP_ADD_Ev_Gv  = 0x01,
@@ -19,7 +29,8 @@ enum Opcode : Byte {
     OP_OR_AL_Ib   = 0x0c,
     OP_OR_AX_Iv   = 0x0d,
     OP_PUSH_CS    = 0x0e,
-    // 0x0f
+    OP_INVALID    = 0x0f,
+
     OP_ADC_Eb_Gb  = 0x10,
     OP_ADC_Ev_Gv  = 0x11,
     OP_ADC_Gb_Eb  = 0x12,
@@ -104,6 +115,7 @@ enum Opcode : Byte {
     OP_POP_BP     = 0x5d,
     OP_POP_SI     = 0x5e,
     OP_POP_DI     = 0x5f,
+
     // 0x60
     // 0x61
     // 0x62
@@ -120,6 +132,7 @@ enum Opcode : Byte {
     // 0x6d
     // 0x6e
     // 0x6f
+    
     OP_JO_Jb      = 0x70,
     OP_JNO_Jb     = 0x71,
     OP_JB_Jb      = 0x72,
@@ -273,6 +286,8 @@ enum Opcode : Byte {
     OP_GRP4_Eb    = 0xfe,
     OP_GRP5_Ev    = 0xff,
 };
+
+
 
 std::string opcodeName(const Byte opcode);
 std::string opcodeString(const Byte opcode);

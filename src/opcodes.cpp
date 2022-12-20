@@ -1,6 +1,7 @@
-#include <string>
 #include "dos/types.h"
 #include "dos/util.h"
+
+#include <string>
 
 static const char* OPCODE_NAMES[256] = {
     "ADD_Eb_Gb",

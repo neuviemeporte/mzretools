@@ -384,7 +384,6 @@ TEST_F(Cpu_8086_Test, CmpSub) {
 
 }
 
-
 TEST_F(Cpu_8086_Test, Word) {
     Word x = 0x165;
     SByte b = 0xf7;

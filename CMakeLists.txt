@@ -20,7 +20,8 @@ set(LIBDOS_SRC
     src/util.cpp
     src/opcodes.cpp
     src/output.cpp
-    src/instruction.cpp)
+    src/instruction.cpp
+    src/modrm.cpp)
 
 set(LIBDOS_HDR 
     include/dos/system.h

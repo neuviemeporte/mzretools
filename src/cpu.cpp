@@ -286,10 +286,19 @@ vector<Instruction> Cpu_8086::disassemble(const Address &addr, Size count) {
 
 Instruction Cpu_8086::getInstruction() const {
     Instruction ret;
-    // ret.addr = csip();
-    // if opcodeIsModrm(opcode_) {
+    ret.addr = regs_.csip();
+    ret.opcode = opcode_;
+    ret.iclass = instr_class(opcode_);
+    if (!opcodeIsModrm(opcode_)) { // normal opcode
+        assert(ret.iclass != INS_NONE);
 
-    // }
+    }
+    else if (!opcodeIsGroup(opcode_)) { // modrm opcode
+
+    }
+    else { // group opcode
+        assert(opcodeIsGroup(opcode_));
+    }
 
     return ret;
 }

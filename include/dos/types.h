@@ -8,7 +8,7 @@ using Byte   = uint8_t;
 using SByte  = int8_t;
 using Word   = uint16_t;
 using SWord  = int16_t;
-using Dword  = uint32_t;
+using UDWord  = uint32_t;
 using Size   = size_t;
 // for representing linear addresses from the memory base, required because DOS addresses don't fit in a 16-bit word
 using Offset = size_t;
