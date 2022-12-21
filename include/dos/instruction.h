@@ -8,154 +8,165 @@
 
 #include <string>
 
+#define INSTRUCTION_CLASS \
+    X(INS_ERR) \
+    X(INS_ADD) \
+    X(INS_PUSH) \
+    X(INS_POP) \
+    X(INS_OR) \
+    X(INS_ADC) \
+    X(INS_SBB) \
+    X(INS_AND) \
+    X(INS_DAA) \
+    X(INS_SUB) \
+    X(INS_DAS) \
+    X(INS_XOR) \
+    X(INS_AAA) \
+    X(INS_CMP) \
+    X(INS_AAS) \
+    X(INS_INC) \
+    X(INS_DEC) \
+    X(INS_JMP) \
+    X(INS_TEST) \
+    X(INS_XCHG) \
+    X(INS_MOV) \
+    X(INS_LEA) \
+    X(INS_NOP) \
+    X(INS_CBW) \
+    X(INS_CWD) \
+    X(INS_CALL) \
+    X(INS_WAIT) \
+    X(INS_PUSHF) \
+    X(INS_POPF) \
+    X(INS_SAHF) \
+    X(INS_LAHF) \
+    X(INS_MOVSB) \
+    X(INS_MOVSW) \
+    X(INS_CMPSB) \
+    X(INS_CMPSW) \
+    X(INS_STOSB) \
+    X(INS_STOSW) \
+    X(INS_LODSB) \
+    X(INS_LODSW) \
+    X(INS_SCASB) \
+    X(INS_SCASW) \
+    X(INS_RET) \
+    X(INS_LES) \
+    X(INS_LDS) \
+    X(INS_RETF) \
+    X(INS_INT) \
+    X(INS_INTO) \
+    X(INS_IRET) \
+    X(INS_AAM) \
+    X(INS_AAD) \
+    X(INS_XLAT) \
+    X(INS_LOOPNZ) \
+    X(INS_LOOPZ) \
+    X(INS_LOOP) \
+    X(INS_JCXZ) \
+    X(INS_IN) \
+    X(INS_OUT) \
+    X(INS_LOCK) \
+    X(INS_REPNZ) \
+    X(INS_REPZ) \
+    X(INS_HLT) \
+    X(INS_CMC) \
+    X(INS_CLC) \
+    X(INS_STC) \
+    X(INS_CLI) \
+    X(INS_STI) \
+    X(INS_CLD) \
+    X(INS_STD) \
+    X(INS_ROL) \
+    X(INS_ROR) \
+    X(INS_RCL) \
+    X(INS_RCR) \
+    X(INS_SHL) \
+    X(INS_SHR) \
+    X(INS_SAR) \
+    X(INS_NOT) \
+    X(INS_NEG) \
+    X(INS_MUL) \
+    X(INS_IMUL) \
+    X(INS_DIV) \
+    X(INS_IDIV)
 enum InstructionClass {
-    INS_ERR, // invalid instruction class
-    INS_ADD,
-    INS_PUSH,
-    INS_POP,
-    INS_OR,
-    INS_ADC,
-    INS_SBB,
-    INS_AND,
-    INS_DAA,
-    INS_SUB,
-    INS_DAS,
-    INS_XOR,
-    INS_AAA,
-    INS_CMP,
-    INS_AAS,
-    INS_INC,
-    INS_DEC,
-    INS_JMP, // all jumps, including conditional
-    INS_TEST,
-    INS_XCHG,
-    INS_MOV,
-    INS_LEA,
-    INS_NOP,
-    INS_CBW, 
-    INS_CWD,
-    INS_CALL,
-    INS_WAIT,
-    INS_PUSHF, 
-    INS_POPF,
-    INS_SAHF, 
-    INS_LAHF,
-    INS_MOVSB, 
-    INS_MOVSW,
-    INS_CMPSB, 
-    INS_CMPSW,
-    INS_STOSB, 
-    INS_STOSW,
-    INS_LODSB, 
-    INS_LODSW,
-    INS_SCASB, 
-    INS_SCASW,
-    INS_RET,
-    INS_LES, 
-    INS_LDS,
-    INS_RETF,
-    INS_INT,
-    INS_INTO,
-    INS_IRET,
-    INS_AAM,
-    INS_AAD,
-    INS_XLAT,
-    INS_LOOPNZ, 
-    INS_LOOPZ, 
-    INS_LOOP, 
-    INS_JCXZ, 
-    INS_IN, 
-    INS_OUT,
-    INS_LOCK,
-    INS_REPNZ, 
-    INS_REPZ,
-    INS_HLT,
-    INS_CMC,
-    INS_CLC, 
-    INS_STC,
-    INS_CLI, 
-    INS_STI,
-    INS_CLD, 
-    INS_STD,
-    // from group opcodes only
-    INS_ROL,
-    INS_ROR,
-    INS_RCL,
-    INS_RCR,
-    INS_SHL,
-    INS_SHR,
-    INS_SAR,
-    INS_NOT,
-    INS_NEG,
-    INS_MUL,
-    INS_IMUL,
-    INS_DIV,
-    INS_IDIV,
+#define X(x) x,
+INSTRUCTION_CLASS
+#undef X
 };
 
+#define INSTRUCTION_PREFIX \
+    X(PRF_NONE) \
+    X(PRF_SEG_ES) \
+    X(PRF_SEG_CS) \
+    X(PRF_SEG_SS) \
+    X(PRF_SEG_DS) \
+    X(PRF_CHAIN_REPNZ) \
+    X(PRF_CHAIN_REPZ)
 enum InstructionPrefix {
-    PRF_NONE,
-    PRF_SEG_ES,
-    PRF_SEG_CS,
-    PRF_SEG_SS,
-    PRF_SEG_DS,
-    PRF_CHAIN_REPNZ,
-    PRF_CHAIN_REPZ,
+#define X(x) x,
+INSTRUCTION_PREFIX
+#undef X
 };
 
+#define OPERAND_TYPE \
+    X(OPR_ERR) \
+    X(OPR_NONE) \
+    X(OPR_REG_AX) \
+    X(OPR_REG_AL) \
+    X(OPR_REG_AH) \
+    X(OPR_REG_BX) \
+    X(OPR_REG_BL) \
+    X(OPR_REG_BH) \
+    X(OPR_REG_CX) \
+    X(OPR_REG_CL) \
+    X(OPR_REG_CH) \
+    X(OPR_REG_DX) \
+    X(OPR_REG_DL) \
+    X(OPR_REG_DH) \
+    X(OPR_REG_SI) \
+    X(OPR_REG_DI) \
+    X(OPR_REG_BP) \
+    X(OPR_REG_SP) \
+    X(OPR_REG_CS) \
+    X(OPR_REG_DS) \
+    X(OPR_REG_ES) \
+    X(OPR_REG_SS) \
+    X(OPR_MEM_BX_SI) \
+    X(OPR_MEM_BX_DI) \
+    X(OPR_MEM_BP_SI) \
+    X(OPR_MEM_BP_DI) \
+    X(OPR_MEM_SI) \
+    X(OPR_MEM_DI) \
+    X(OPR_MEM_BX) \
+    X(OPR_MEM_OFF8) \
+    X(OPR_MEM_BX_SI_OFF8) \
+    X(OPR_MEM_BX_DI_OFF8) \
+    X(OPR_MEM_BP_SI_OFF8) \
+    X(OPR_MEM_BP_DI_OFF8) \
+    X(OPR_MEM_SI_OFF8) \
+    X(OPR_MEM_DI_OFF8) \
+    X(OPR_MEM_BP_OFF8) \
+    X(OPR_MEM_BX_OFF8) \
+    X(OPR_MEM_OFF16) \
+    X(OPR_MEM_BX_SI_OFF16) \
+    X(OPR_MEM_BX_DI_OFF16) \
+    X(OPR_MEM_BP_SI_OFF16) \
+    X(OPR_MEM_BP_DI_OFF16) \
+    X(OPR_MEM_SI_OFF16) \
+    X(OPR_MEM_DI_OFF16) \
+    X(OPR_MEM_BP_OFF16) \
+    X(OPR_MEM_BX_OFF16) \
+    X(OPR_IMM0) \
+    X(OPR_IMM1) \
+    X(OPR_IMM8) \
+    X(OPR_IMM16) \
+    X(OPR_IMM32)
 enum OperandType : Byte {
-    OPR_ERR,  // operand error
-    OPR_NONE, // instruction has no operand
-    OPR_REG_AX,
-    OPR_REG_AL,
-    OPR_REG_AH,
-    OPR_REG_BX,
-    OPR_REG_BL,
-    OPR_REG_BH,
-    OPR_REG_CX,
-    OPR_REG_CL,
-    OPR_REG_CH,
-    OPR_REG_DX,
-    OPR_REG_DL,
-    OPR_REG_DH,
-    OPR_REG_SI,
-    OPR_REG_DI,
-    OPR_REG_BP,
-    OPR_REG_SP,
-    OPR_REG_CS,
-    OPR_REG_DS,
-    OPR_REG_ES,
-    OPR_REG_SS,
-    OPR_MEM_BX_SI,
-    OPR_MEM_BX_DI,
-    OPR_MEM_BP_SI,
-    OPR_MEM_BP_DI,
-    OPR_MEM_SI,
-    OPR_MEM_DI,
-    OPR_MEM_BX,
-    OPR_MEM_OFF8,
-    OPR_MEM_BX_SI_OFF8,
-    OPR_MEM_BX_DI_OFF8,
-    OPR_MEM_BP_SI_OFF8,
-    OPR_MEM_BP_DI_OFF8,
-    OPR_MEM_SI_OFF8,
-    OPR_MEM_DI_OFF8,
-    OPR_MEM_BP_OFF8,
-    OPR_MEM_BX_OFF8,
-    OPR_MEM_OFF16,
-    OPR_MEM_BX_SI_OFF16,
-    OPR_MEM_BX_DI_OFF16,
-    OPR_MEM_BP_SI_OFF16,
-    OPR_MEM_BP_DI_OFF16,
-    OPR_MEM_SI_OFF16,
-    OPR_MEM_DI_OFF16,
-    OPR_MEM_BP_OFF16,
-    OPR_MEM_BX_OFF16,
-    OPR_IMM0,
-    OPR_IMM1,
-    OPR_IMM8,
-    OPR_IMM16,
-    OPR_IMM32,
+#define X(x) x,
+OPERAND_TYPE
+#undef X
 };
 
 class Instruction {

@@ -3,6 +3,8 @@
 
 #include <string>
 
+using namespace std;
+
 static const char* OPCODE_NAMES[256] = {
     "ADD_Eb_Gb",
     "ADD_Ev_Gv",
@@ -263,7 +265,7 @@ static const char* OPCODE_NAMES[256] = {
 };
 
 std::string opcodeName(const Byte opcode) {
-    return OPCODE_NAMES[opcode];
+    return string(OPCODE_NAMES[opcode]) + "/" + hexVal(opcode);
 }
 
 std::string opcodeString(const Byte opcode) {

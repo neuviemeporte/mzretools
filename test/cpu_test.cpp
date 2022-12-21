@@ -8,6 +8,7 @@
 #include "dos/modrm.h"
 #include "dos/util.h"
 #include "dos/interrupt.h"
+#include "dos/instruction.h"
 
 using namespace std;
 using ::testing::_;
@@ -389,6 +390,42 @@ TEST_F(Cpu_8086_Test, Word) {
     SByte b = 0xf7;
     x += b;
     TRACELN("x = " << hexVal(x));
+}
+
+TEST_F(Cpu_8086_Test, Instruction) {
+    const Byte code[] = {
+    0x06, // push es
+    0x49, // dec cx
+    0xb9, 0x34, 0x12, // mov cx,0x1234
+    0xf3, 0xaa, // rep stosb
+    0x81, 0x78, 0x10, 0xcd, 0xab, // cmp word [bx+si+0x10],0xabcd
+    0x36, 0x21, 0x16, 0xac, 0x19, // and [ss:0x19ac],dx
+    0x74, 0xab, // jz 0xab
+    0xd0, 0xc0 // rol al,1
+    };
+    const Size code_len = 23;
+    const std::string instructions[] = {
+        "push es",
+        "dec cx",
+        "mov cx, 0x1234",
+        "repz stosb",
+        "cmp [bx+si+0x10], 0xabcd",
+        "and ss:[0x19ac], dx",
+        "jz 0xab",
+        "rol al, 1",
+    };
+    const Size lengths[] = {
+        1, 1, 3, 2, 5, 5, 2, 2
+    };
+
+    const Byte *codeptr = code;
+    for (int i = 0; i < 8; ++i) {
+        Instruction ins(codeptr);
+        TRACELN("--- instruction " << i + 1 << ": '" << ins.toString() << "' (length = " << ins.length << ")");
+        ASSERT_EQ(ins.toString(), instructions[i]);
+        ASSERT_EQ(ins.length, lengths[i]);
+        codeptr += ins.length;
+    }
 }
 
 // TODO: implement tests for group opcodes

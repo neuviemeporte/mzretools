@@ -68,21 +68,29 @@ enum ModRM : Byte {
     MODRM_MEM_MASK   = 0b111
 };
 
+// amount of right shift needed to get a modrm component value (MOD/REG/GRP/MEM) into a linear range
+static constexpr Byte MODRM_MOD_SHIFT = 6;
 static constexpr Byte MODRM_REG_SHIFT = 3;
+static constexpr Byte MODRM_GRP_SHIFT = 3;
+static constexpr Byte MODRM_MEM_SHIFT = 0;
 
+#define MODRM_OPERAND \
+    X(MODRM_NONE) \
+    X(MODRM_Eb) \
+    X(MODRM_Gb) \
+    X(MODRM_Ib) \
+    X(MODRM_Ev) \
+    X(MODRM_Gv) \
+    X(MODRM_Iv) \
+    X(MODRM_Sw) \
+    X(MODRM_M) \
+    X(MODRM_Mp) \
+    X(MODRM_1) \
+    X(MODRM_CL)
 enum ModrmOperand {
-    MODRM_NONE, 
-    MODRM_Eb, 
-    MODRM_Gb, 
-    MODRM_Ib, 
-    MODRM_Ev, 
-    MODRM_Gv, 
-    MODRM_Iv, 
-    MODRM_Sw, 
-    MODRM_M, 
-    MODRM_Mp, 
-    MODRM_1, 
-    MODRM_CL,
+#define X(x) x,
+MODRM_OPERAND
+#undef X
 };
 
 // extract mod/reg/mem field from a ModR/M byte value
@@ -90,7 +98,7 @@ inline Byte modrm_mod(const Byte modrm) { return modrm & MODRM_MOD_MASK; }
 inline Byte modrm_reg(const Byte modrm) { return modrm & MODRM_REG_MASK; }
 inline Byte modrm_grp(const Byte modrm) { return modrm & MODRM_GRP_MASK; }
 inline Byte modrm_mem(const Byte modrm) { return modrm & MODRM_MEM_MASK; }
-ModrmOperand modrm_op1type(const Byte modrm);
-ModrmOperand modrm_op2type(const Byte modrm);
+ModrmOperand modrm_op1(const Byte opcode);
+ModrmOperand modrm_op2(const Byte opcode);
 
 #endif // MODRM_H
