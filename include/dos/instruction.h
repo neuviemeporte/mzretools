@@ -3,6 +3,7 @@
 
 #include "dos/types.h"
 #include "dos/registers.h"
+#include "dos/modrm.h"
 #include "dos/address.h"
 
 #include <string>
@@ -100,7 +101,7 @@ enum InstructionPrefix {
     PRF_SEG_DS,
     PRF_CHAIN_REPNZ,
     PRF_CHAIN_REPZ,
-}
+};
 
 enum OperandType : Byte {
     OPR_ERR,  // operand error
@@ -168,7 +169,8 @@ public:
     struct Operand {
         OperandType type;
         SWord offset;
-        UDWord immval;
+        DWord immval;
+        std::string toString() const;
     } op1, op2;
 
     Instruction(const Byte *idata);

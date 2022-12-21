@@ -73,6 +73,12 @@ std::string hexVal(const SWord val) {
     return str.str();    
 }
 
+std::string hexVal(const DWord val) {
+    std::ostringstream str;
+    str << "0x" << std::hex << std::setw(8) << std::setfill('0') <<  val;
+    return str.str();    
+}
+
 std::string hexVal(const Offset val, const bool hdr, const int pad) {
     std::ostringstream str;
     if (hdr) str << "0x";

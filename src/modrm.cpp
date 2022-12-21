@@ -40,10 +40,10 @@ MODRM_NONE, MODRM_NONE, MODRM_NONE, MODRM_NONE, MODRM_NONE, MODRM_NONE, MODRM_NO
 MODRM_NONE, MODRM_NONE, MODRM_NONE, MODRM_NONE, MODRM_NONE, MODRM_NONE, MODRM_NONE, MODRM_NONE, MODRM_NONE, MODRM_NONE, MODRM_NONE, MODRM_NONE, MODRM_NONE, MODRM_NONE, MODRM_NONE, MODRM_NONE, // F
 };
 
-inline ModrmOperand modrm_op1type(const Byte modrm) {
+ModrmOperand modrm_op1type(const Byte modrm) {
     return MODRM_OP1[modrm];
 }
 
-inline ModrmOperand modrm_op2ype(const Byte modrm) {
+ModrmOperand modrm_op2type(const Byte modrm) {
     return MODRM_OP2[modrm];
 }

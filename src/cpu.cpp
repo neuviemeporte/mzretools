@@ -277,29 +277,10 @@ vector<Instruction> Cpu_8086::disassemble(const Address &addr, Size count) {
     while (count) {
         opcode_ = ipByte();
         preProcessOpcode();
-        getInstruction();
+        //getInstruction();
         ipAdvance(WORD_SIGNED(instructionLength()));
         count--;
     }
-    return ret;
-}
-
-Instruction Cpu_8086::getInstruction() const {
-    Instruction ret;
-    ret.addr = regs_.csip();
-    ret.opcode = opcode_;
-    ret.iclass = instr_class(opcode_);
-    if (!opcodeIsModrm(opcode_)) { // normal opcode
-        assert(ret.iclass != INS_NONE);
-
-    }
-    else if (!opcodeIsGroup(opcode_)) { // modrm opcode
-
-    }
-    else { // group opcode
-        assert(opcodeIsGroup(opcode_));
-    }
-
     return ret;
 }
 
@@ -535,9 +516,6 @@ void Cpu_8086::pipeline() {
 
 void Cpu_8086::dispatch() {
     if (!opcodeIsGroup(opcode_)) switch (instr_class(opcode_)) {
-    case INS_NONE: 
-        UNKNOWN_DISPATCH; 
-        break;
     case INS_ADD: instr_add(); break;
     case INS_PUSH: instr_push(); break;
     case INS_POP: instr_pop(); break;
@@ -605,10 +583,6 @@ void Cpu_8086::dispatch() {
     case INS_STI: instr_sti(); break;
     case INS_CLD: instr_cld(); break;
     case INS_STD:  instr_std(); break;
-
-
-
-
     default:
         UNKNOWN_DISPATCH;
         break;

@@ -1,6 +1,5 @@
 #include "dos/instruction.h"
 #include "dos/opcodes.h"
-#include "dos/modrm.h"
 #include "dos/error.h"
 #include "dos/util.h"
 
@@ -32,7 +31,7 @@ INS_LOCK,   INS_ERR,   INS_REPNZ, INS_REPZ, INS_HLT,   INS_CMC,   INS_ERR,   INS
 };
 
 // maps group opcodes to group indexes in the next table
-static const int GRP_IDX[0xff] = {
+static const int GRP_IDX[0x100] = {
 //  0     1     2     3     4     5     6     7     8     9     A     B     C     D     E     F
     0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, // 0
     0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, // 1
@@ -54,54 +53,54 @@ static const int GRP_IDX[0xff] = {
 
 // maps a group index and the GRP value from a modrm byte to an instruction class for a group opcode
 static const InstructionClass GRP_CLASS[6][8] = {
-    INS_ADD,  INS_OR,  INS_ADC,  INS_SBB,  INS_AND, INS_SUB,  INS_XOR,  INS_CMP, // GRP1
-    INS_ROL,  INS_ROR, INS_RCL,  INS_RCR,  INS_SHL, INS_SHR,  INS_ERR,  INS_SAR, // GRP2
-    INS_TEST, INS_ERR, INS_NOT,  INS_NEG,  INS_MUL, INS_IMUL, INS_DIV,  INS_IDIV // GRP3a
-    INS_TEST, INS_ERR, INS_NOT,  INS_NEG,  INS_MUL, INS_IMUL, INS_DIV,  INS_IDIV // GRP3b
-    INS_INC,  INS_DEC, INS_ERR,  INS_ERR,  INS_ERR, INS_ERR,  INS_ERR,  INS_ERR, // GRP4
-    INS_INC,  INS_DEC, INS_CALL, INS_CALL, INS_JMP, INS_JMP,  INS_PUSH, INS_ERR, // GRP5
+    INS_ADD,  INS_OR,  INS_ADC,  INS_SBB,  INS_AND, INS_SUB,  INS_XOR,  INS_CMP,  // GRP1
+    INS_ROL,  INS_ROR, INS_RCL,  INS_RCR,  INS_SHL, INS_SHR,  INS_ERR,  INS_SAR,  // GRP2
+    INS_TEST, INS_ERR, INS_NOT,  INS_NEG,  INS_MUL, INS_IMUL, INS_DIV,  INS_IDIV, // GRP3a
+    INS_TEST, INS_ERR, INS_NOT,  INS_NEG,  INS_MUL, INS_IMUL, INS_DIV,  INS_IDIV, // GRP3b
+    INS_INC,  INS_DEC, INS_ERR,  INS_ERR,  INS_ERR, INS_ERR,  INS_ERR,  INS_ERR,  // GRP4
+    INS_INC,  INS_DEC, INS_CALL, INS_CALL, INS_JMP, INS_JMP,  INS_PUSH, INS_ERR,  // GRP5
 };
 
 // maps non-modrm opcodes into their first operand's type
 static const OperandType OP1_TYPE[] = {
-//   0         1           2           3           4           5           6           7           8           9           A           B           C           D           E           F
-OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_REG_AL, OPR_REG_AX, OPR_REG_ES, OPR_REG_ES, OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_REG_AL, OPR_REG_AX, OPR_REG_CS, OPR_ERR,    // 0
-OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_REG_AL, OPR_REG_AX, OPR_REG_SS, OPR_REG_SS, OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_REG_AL, OPR_REG_AX, OPR_REG_DS, OPR_REG_DS, // 1
-OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_REG_AL, OPR_REG_AX, OPR_ERR,    OPR_NONE,   OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_REG_AL, OPR_REG_AX, OPR_ERR,    OPR_NONE,   // 2
-OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_REG_AL, OPR_REG_AX, OPR_ERR,    OPR_NONE,   OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_REG_AL, OPR_REG_AX, OPR_ERR,    OPR_NONE,   // 3
-OPR_REG_AX, OPR_REG_CX, OPR_REG_DX, OPR_REG_BX, OPR_REG_SP, OPR_REG_BP, OPR_REG_SI, OPR_REG_DI, OPR_REG_AX, OPR_REG_CX, OPR_REG_DX, OPR_REG_BX, OPR_REG_SP, OPR_REG_BP, OPR_REG_SI, OPR_REG_DI, // 4
-OPR_REG_AX, OPR_REG_CX, OPR_REG_DX, OPR_REG_BX, OPR_REG_SP, OPR_REG_BP, OPR_REG_SI, OPR_REG_DI, OPR_REG_AX, OPR_REG_CX, OPR_REG_DX, OPR_REG_BX, OPR_REG_SP, OPR_REG_BP, OPR_REG_SI, OPR_REG_DI, // 5
-OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    // 6
-OPR_IMM8,   OPR_IMM8,   OPR_IMM8,   OPR_IMM8,   OPR_IMM8,   OPR_IMM8,   OPR_IMM8,   OPR_IMM8,   OPR_IMM8,   OPR_IMM8,   OPR_IMM8,   OPR_IMM8,   OPR_IMM8,   OPR_IMM8,   OPR_IMM8,   OPR_IMM8,   // 7
-OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    // 8
-OPR_NONE,   OPR_REG_CX, OPR_REG_DX, OPR_REG_BX, OPR_REG_SP, OPR_REG_BP, OPR_REG_SI, OPR_REG_DI, OPR_NONE,   OPR_NONE,   OPR_IMM32,  OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   // 9
-OPR_REG_AL, OPR_REG_AX, OPR_OFF8,   OPR_OFF8,   OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_REG_AL, OPR_REG_AX, OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   // A
-OPR_REG_AL, OPR_REG_CL, OPR_REG_DL, OPR_REG_BL, OPR_REG_AH, OPR_REG_CH, OPR_REG_DH, OPR_REG_BH, OPR_REG_AX, OPR_REG_CX, OPR_REG_DX, OPR_REG_BX, OPR_REG_SP, OPR_REG_BP, OPR_REG_SI, OPR_REG_DI, // B
-OPR_ERR,    OPR_ERR,    OPR_IMM16,  OPR_NONE,   OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_IMM16,  OPR_NONE,   OPR_NONE,   OPR_IMM8,   OPR_NONE,   OPR_NONE,   // C
-OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_IMM0,   OPR_IMM0,   OPR_ERR,    OPR_NONE,   OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    // D
-OPR_IMM8,   OPR_IMM8,   OPR_IMM8,   OPR_IMM8,   OPR_REG_AL, OPR_REG_AX, OPR_IMM8,   OPR_IMM8,   OPR_IMM16,  OPR_IMM16,  OPR_IMM32,  OPR_IMM8,   OPR_REG_AL, OPR_REG_AX, OPR_REG_DX, OPR_REG_DX, // E
-OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_ERR,    OPR_ERR,    OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_ERR,    OPR_ERR,    // F
+//   0         1           2             3             4           5           6           7           8           9           A           B           C           D           E           F
+OPR_ERR,    OPR_ERR,    OPR_ERR,      OPR_ERR,      OPR_REG_AL, OPR_REG_AX, OPR_REG_ES, OPR_REG_ES, OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_REG_AL, OPR_REG_AX, OPR_REG_CS, OPR_ERR,    // 0
+OPR_ERR,    OPR_ERR,    OPR_ERR,      OPR_ERR,      OPR_REG_AL, OPR_REG_AX, OPR_REG_SS, OPR_REG_SS, OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_REG_AL, OPR_REG_AX, OPR_REG_DS, OPR_REG_DS, // 1
+OPR_ERR,    OPR_ERR,    OPR_ERR,      OPR_ERR,      OPR_REG_AL, OPR_REG_AX, OPR_ERR,    OPR_NONE,   OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_REG_AL, OPR_REG_AX, OPR_ERR,    OPR_NONE,   // 2
+OPR_ERR,    OPR_ERR,    OPR_ERR,      OPR_ERR,      OPR_REG_AL, OPR_REG_AX, OPR_ERR,    OPR_NONE,   OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_REG_AL, OPR_REG_AX, OPR_ERR,    OPR_NONE,   // 3
+OPR_REG_AX, OPR_REG_CX, OPR_REG_DX,   OPR_REG_BX,   OPR_REG_SP, OPR_REG_BP, OPR_REG_SI, OPR_REG_DI, OPR_REG_AX, OPR_REG_CX, OPR_REG_DX, OPR_REG_BX, OPR_REG_SP, OPR_REG_BP, OPR_REG_SI, OPR_REG_DI, // 4
+OPR_REG_AX, OPR_REG_CX, OPR_REG_DX,   OPR_REG_BX,   OPR_REG_SP, OPR_REG_BP, OPR_REG_SI, OPR_REG_DI, OPR_REG_AX, OPR_REG_CX, OPR_REG_DX, OPR_REG_BX, OPR_REG_SP, OPR_REG_BP, OPR_REG_SI, OPR_REG_DI, // 5
+OPR_ERR,    OPR_ERR,    OPR_ERR,      OPR_ERR,      OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    // 6
+OPR_IMM8,   OPR_IMM8,   OPR_IMM8,     OPR_IMM8,     OPR_IMM8,   OPR_IMM8,   OPR_IMM8,   OPR_IMM8,   OPR_IMM8,   OPR_IMM8,   OPR_IMM8,   OPR_IMM8,   OPR_IMM8,   OPR_IMM8,   OPR_IMM8,   OPR_IMM8,   // 7
+OPR_ERR,    OPR_ERR,    OPR_ERR,      OPR_ERR,      OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    // 8
+OPR_NONE,   OPR_REG_CX, OPR_REG_DX,   OPR_REG_BX,   OPR_REG_SP, OPR_REG_BP, OPR_REG_SI, OPR_REG_DI, OPR_NONE,   OPR_NONE,   OPR_IMM32,  OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   // 9
+OPR_REG_AL, OPR_REG_AX, OPR_MEM_OFF8, OPR_MEM_OFF8, OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_REG_AL, OPR_REG_AX, OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   // A
+OPR_REG_AL, OPR_REG_CL, OPR_REG_DL,   OPR_REG_BL,   OPR_REG_AH, OPR_REG_CH, OPR_REG_DH, OPR_REG_BH, OPR_REG_AX, OPR_REG_CX, OPR_REG_DX, OPR_REG_BX, OPR_REG_SP, OPR_REG_BP, OPR_REG_SI, OPR_REG_DI, // B
+OPR_ERR,    OPR_ERR,    OPR_IMM16,    OPR_NONE,     OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_IMM16,  OPR_NONE,   OPR_NONE,   OPR_IMM8,   OPR_NONE,   OPR_NONE,   // C
+OPR_ERR,    OPR_ERR,    OPR_ERR,      OPR_ERR,      OPR_IMM0,   OPR_IMM0,   OPR_ERR,    OPR_NONE,   OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    // D
+OPR_IMM8,   OPR_IMM8,   OPR_IMM8,     OPR_IMM8,     OPR_REG_AL, OPR_REG_AX, OPR_IMM8,   OPR_IMM8,   OPR_IMM16,  OPR_IMM16,  OPR_IMM32,  OPR_IMM8,   OPR_REG_AL, OPR_REG_AX, OPR_REG_DX, OPR_REG_DX, // E
+OPR_NONE,   OPR_NONE,   OPR_NONE,     OPR_NONE,     OPR_NONE,   OPR_NONE,   OPR_ERR,    OPR_ERR,    OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_ERR,    OPR_ERR,    // F
 };
 
 // maps non-modrm opcodes into their first operand's type
 static const OperandType OP2_TYPE[] = {
-//   0       1          2           3           4           5           6           7           8          9          A          B          C           D           E           F
-OPR_ERR,  OPR_ERR,   OPR_ERR,    OPR_ERR,    OPR_IMM8,   OPR_IMM16,  OPR_NONE,   OPR_NONE,   OPR_ERR,   OPR_ERR,   OPR_ERR,   OPR_ERR,   OPR_IMM8,   OPR_IMM16,  OPR_NONE,   OPR_ERR,    // 0
-OPR_ERR,  OPR_ERR,   OPR_ERR,    OPR_ERR,    OPR_IMM8,   OPR_IMM16,  OPR_NONE,   OPR_NONE,   OPR_ERR,   OPR_ERR,   OPR_ERR,   OPR_ERR,   OPR_IMM8,   OPR_IMM16,  OPR_NONE,   OPR_NONE,   // 1
-OPR_ERR,  OPR_ERR,   OPR_ERR,    OPR_ERR,    OPR_IMM8,   OPR_IMM16,  OPR_NONE,   OPR_NONE,   OPR_ERR,   OPR_ERR,   OPR_ERR,   OPR_ERR,   OPR_IMM8,   OPR_IMM16,  OPR_ERR,    OPR_NONE,   // 2
-OPR_ERR,  OPR_ERR,   OPR_ERR,    OPR_ERR,    OPR_IMM8,   OPR_IMM16,  OPR_NONE,   OPR_NONE,   OPR_ERR,   OPR_ERR,   OPR_ERR,   OPR_ERR,   OPR_IMM8,   OPR_IMM16,  OPR_ERR,    OPR_NONE,   // 3
-OPR_NONE, OPR_NONE,  OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,  OPR_NONE,  OPR_NONE,  OPR_NONE,  OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   // 4
-OPR_NONE, OPR_NONE,  OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,  OPR_NONE,  OPR_NONE,  OPR_NONE,  OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   // 5
-OPR_ERR,  OPR_ERR,   OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,   OPR_ERR,   OPR_ERR,   OPR_ERR,   OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    // 6
-OPR_NONE, OPR_NONE,  OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,  OPR_NONE,  OPR_NONE,  OPR_NONE,  OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   // 7
-OPR_ERR,  OPR_ERR,   OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,   OPR_ERR,   OPR_ERR,   OPR_ERR,   OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    // 8
-OPR_NONE, OPR_REG_AX,OPR_REG_AX, OPR_REG_AX, OPR_REG_AX, OPR_REG_AX, OPR_REG_AX, OPR_REG_AX, OPR_NONE,  OPR_NONE,  OPR_NONE,  OPR_NONE,  OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   // 9
-OPR_OFF8, OPR_OFF16, OPR_REG_AL, OPR_REG_AX, OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_IMM8,  OPR_IMM16, OPR_NONE,  OPR_NONE,  OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   // A
-OPR_OFF8, OPR_OFF8,  OPR_OFF8,   OPR_OFF8,   OPR_OFF8,   OPR_OFF8,   OPR_OFF8,   OPR_OFF8,   OPR_OFF16, OPR_OFF16, OPR_OFF16, OPR_OFF16, OPR_OFF16,  OPR_OFF16,  OPR_OFF16,  OPR_OFF16,  // B
-OPR_ERR,  OPR_ERR,   OPR_NONE,   OPR_NONE,   OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,   OPR_ERR,   OPR_NONE,  OPR_NONE,  OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   // C
-OPR_ERR,  OPR_ERR,   OPR_ERR,    OPR_ERR,    OPR_NONE,   OPR_NONE,   OPR_ERR,    OPR_NONE,   OPR_ERR,   OPR_ERR,   OPR_ERR,   OPR_ERR,   OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    // D
-OPR_NONE, OPR_NONE,  OPR_NONE,   OPR_NONE,   OPR_IMM8,   OPR_IMM8,   OPR_REG_AL, OPR_REG_AX, OPR_NONE,  OPR_NONE,  OPR_NONE,  OPR_NONE,  OPR_REG_DX, OPR_REG_DX, OPR_REG_AL, OPR_REG_AX, // E
-OPR_NONE, OPR_NONE,  OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_ERR,    OPR_ERR,    OPR_NONE,  OPR_NONE,  OPR_NONE,  OPR_NONE,  OPR_NONE,   OPR_NONE,   OPR_ERR,    OPR_ERR,    // F
+//   0           1              2             3             4             5             6             7             8              9              A              B              C              D              E              F
+OPR_ERR,      OPR_ERR,       OPR_ERR,      OPR_ERR,      OPR_IMM8,     OPR_IMM16,    OPR_NONE,     OPR_NONE,     OPR_ERR,       OPR_ERR,       OPR_ERR,       OPR_ERR,       OPR_IMM8,      OPR_IMM16,     OPR_NONE,      OPR_ERR,       // 0
+OPR_ERR,      OPR_ERR,       OPR_ERR,      OPR_ERR,      OPR_IMM8,     OPR_IMM16,    OPR_NONE,     OPR_NONE,     OPR_ERR,       OPR_ERR,       OPR_ERR,       OPR_ERR,       OPR_IMM8,      OPR_IMM16,     OPR_NONE,      OPR_NONE,      // 1
+OPR_ERR,      OPR_ERR,       OPR_ERR,      OPR_ERR,      OPR_IMM8,     OPR_IMM16,    OPR_NONE,     OPR_NONE,     OPR_ERR,       OPR_ERR,       OPR_ERR,       OPR_ERR,       OPR_IMM8,      OPR_IMM16,     OPR_ERR,       OPR_NONE,      // 2
+OPR_ERR,      OPR_ERR,       OPR_ERR,      OPR_ERR,      OPR_IMM8,     OPR_IMM16,    OPR_NONE,     OPR_NONE,     OPR_ERR,       OPR_ERR,       OPR_ERR,       OPR_ERR,       OPR_IMM8,      OPR_IMM16,     OPR_ERR,       OPR_NONE,      // 3
+OPR_NONE,     OPR_NONE,      OPR_NONE,     OPR_NONE,     OPR_NONE,     OPR_NONE,     OPR_NONE,     OPR_NONE,     OPR_NONE,      OPR_NONE,      OPR_NONE,      OPR_NONE,      OPR_NONE,      OPR_NONE,      OPR_NONE,      OPR_NONE,      // 4
+OPR_NONE,     OPR_NONE,      OPR_NONE,     OPR_NONE,     OPR_NONE,     OPR_NONE,     OPR_NONE,     OPR_NONE,     OPR_NONE,      OPR_NONE,      OPR_NONE,      OPR_NONE,      OPR_NONE,      OPR_NONE,      OPR_NONE,      OPR_NONE,      // 5
+OPR_ERR,      OPR_ERR,       OPR_ERR,      OPR_ERR,      OPR_ERR,      OPR_ERR,      OPR_ERR,      OPR_ERR,      OPR_ERR,       OPR_ERR,       OPR_ERR,       OPR_ERR,       OPR_ERR,       OPR_ERR,       OPR_ERR,       OPR_ERR,       // 6
+OPR_NONE,     OPR_NONE,      OPR_NONE,     OPR_NONE,     OPR_NONE,     OPR_NONE,     OPR_NONE,     OPR_NONE,     OPR_NONE,      OPR_NONE,      OPR_NONE,      OPR_NONE,      OPR_NONE,      OPR_NONE,      OPR_NONE,      OPR_NONE,      // 7
+OPR_ERR,      OPR_ERR,       OPR_ERR,      OPR_ERR,      OPR_ERR,      OPR_ERR,      OPR_ERR,      OPR_ERR,      OPR_ERR,       OPR_ERR,       OPR_ERR,       OPR_ERR,       OPR_ERR,       OPR_ERR,       OPR_ERR,       OPR_ERR,       // 8
+OPR_NONE,     OPR_REG_AX,    OPR_REG_AX,   OPR_REG_AX,   OPR_REG_AX,   OPR_REG_AX,   OPR_REG_AX,   OPR_REG_AX,   OPR_NONE,      OPR_NONE,      OPR_NONE,      OPR_NONE,      OPR_NONE,      OPR_NONE,      OPR_NONE,      OPR_NONE,      // 9
+OPR_MEM_OFF8, OPR_MEM_OFF16, OPR_REG_AL,   OPR_REG_AX,   OPR_NONE,     OPR_NONE,     OPR_NONE,     OPR_NONE,     OPR_IMM8,      OPR_IMM16,     OPR_NONE,      OPR_NONE,      OPR_NONE,      OPR_NONE,      OPR_NONE,      OPR_NONE,      // A
+OPR_MEM_OFF8, OPR_MEM_OFF8,  OPR_MEM_OFF8, OPR_MEM_OFF8, OPR_MEM_OFF8, OPR_MEM_OFF8, OPR_MEM_OFF8, OPR_MEM_OFF8, OPR_MEM_OFF16, OPR_MEM_OFF16, OPR_MEM_OFF16, OPR_MEM_OFF16, OPR_MEM_OFF16, OPR_MEM_OFF16, OPR_MEM_OFF16, OPR_MEM_OFF16, // B
+OPR_ERR,      OPR_ERR,       OPR_NONE,     OPR_NONE,     OPR_ERR,      OPR_ERR,      OPR_ERR,      OPR_ERR,      OPR_ERR,       OPR_ERR,       OPR_NONE,      OPR_NONE,      OPR_NONE,      OPR_NONE,      OPR_NONE,      OPR_NONE,      // C
+OPR_ERR,      OPR_ERR,       OPR_ERR,      OPR_ERR,      OPR_NONE,     OPR_NONE,     OPR_ERR,      OPR_NONE,     OPR_ERR,       OPR_ERR,       OPR_ERR,       OPR_ERR,       OPR_ERR,       OPR_ERR,       OPR_ERR,       OPR_ERR,       // D
+OPR_NONE,     OPR_NONE,      OPR_NONE,     OPR_NONE,     OPR_IMM8,     OPR_IMM8,     OPR_REG_AL,   OPR_REG_AX,   OPR_NONE,      OPR_NONE,      OPR_NONE,      OPR_NONE,      OPR_REG_DX,    OPR_REG_DX,    OPR_REG_AL,    OPR_REG_AX,    // E
+OPR_NONE,     OPR_NONE,      OPR_NONE,     OPR_NONE,     OPR_NONE,     OPR_NONE,     OPR_ERR,      OPR_ERR,      OPR_NONE,      OPR_NONE,      OPR_NONE,      OPR_NONE,      OPR_NONE,      OPR_NONE,      OPR_ERR,       OPR_ERR,       // F
 };
 
 InstructionClass instr_class(const Byte opcode) {
@@ -113,14 +112,14 @@ Instruction::Instruction(const Byte *idata) : data(idata), addr{}, prefix(PRF_NO
     // in case of a chain opcode, use it to set an appropriate prefix value and replace the opcode with the subsequent instruction
     // TODO: support LOCK, other prefix-like opcodes?
     if (opcode == OP_REPZ || opcode == OP_REPNZ) { 
-        prefix = opcode - OP_REPNZ + PRF_CHAIN_REPNZ; // convert opcode to instruction prefix enum
+        prefix = static_cast<InstructionPrefix>(opcode - OP_REPNZ + PRF_CHAIN_REPNZ); // convert opcode to instruction prefix enum
         // TODO: guard against memory overflow
         opcode = *data++;
         length++;
     }
     // likewise in case of a segment ovverride prefix, set instruction prefix value and get next opcode
     else if (opcodeIsSegmentPrefix(opcode)) {
-        prefix = ((opcode - OP_PREFIX_ES) / 8) + PRF_SEG_ES; // convert opcode to instruction prefix enum, the segment prefix opcode values differ by 8
+        prefix = static_cast<InstructionPrefix>(((opcode - OP_PREFIX_ES) / 8) + PRF_SEG_ES); // convert opcode to instruction prefix enum, the segment prefix opcode values differ by 8
         opcode = *data++;
         length++;
     }
@@ -132,8 +131,8 @@ Instruction::Instruction(const Byte *idata) : data(idata), addr{}, prefix(PRF_NO
         op1.type = OP1_TYPE[opcode];
         op2.type = OP2_TYPE[opcode];
         assert(op1.type != OPR_ERR && op2.type != OPR_ERR);
-        loadOperand(op1, data);
-        loadOperand(op2, data);
+        loadOperand(op1);
+        loadOperand(op2);
     }
     // modr/m insruction opcode
     else if (!opcodeIsGroup(opcode)) {
@@ -147,8 +146,8 @@ Instruction::Instruction(const Byte *idata) : data(idata), addr{}, prefix(PRF_NO
         op1.type = getModrmOperand(modrm, modop1);
         op2.type = getModrmOperand(modrm, modop2);
         assert(op1.type != OPR_ERR && op2.type != OPR_ERR);
-        loadOperand(op1, data);
-        loadOperand(op2, data);
+        loadOperand(op1);
+        loadOperand(op2);
     }
     // group instruction opcode
     else {
@@ -170,8 +169,8 @@ Instruction::Instruction(const Byte *idata) : data(idata), addr{}, prefix(PRF_NO
         op1.type = getModrmOperand(modrm, modop1);
         op2.type = getModrmOperand(modrm, modop2);
         assert(op1.type != OPR_ERR && op2.type != OPR_ERR);
-        loadOperand(op1, data);
-        loadOperand(op2, data);
+        loadOperand(op1);
+        loadOperand(op2);
     }
 
     // don't need it anymore
@@ -185,43 +184,66 @@ static const char* INS_NAME[] = {
     "rol", "ror", "rcl", "rcr", "shl", "shr", "sar", "not", "neg", "mul", "imul", "div", "idiv"
 };
 
-static const char* INS_JMP[] = {
+static const char* JMP_NAME[] = {
     "jo", "jno", "jb", "jnb", "jz", "jnz", "jbe", "ja", "js", "jns", "jpe", "jpo", "jl", "jge", "jle", "jg",
 };
 
-static const char* OP_NAME[] = {
+static const char* OPR_NAME[] = {
     "???", "X", 
     "ax", "al", "ah", "bx", "bl", "bh", "cx", "cl", "ch", "dx", "dl", "dh", "si", "di", "bp", "sp", "cs", "ds", "es", "ss"
     "bx+si", "bx+di", "bp+si", "bp+di", "si", "di", "bx", 
-    "d8", "bx+si+", "bx+di+", "bp+si+", "bp+di+", "si+", "di+", "bp+", "bx+",
-    "d16", "bx+si+", "bx+di+", "bp+si+", "bp+di+", "si+", "di+", "bp+", "bx+",
-    "i0", "i1", "i8", "i16", "i32",
+    "", "bx+si+", "bx+di+", "bp+si+", "bp+di+", "si+", "di+", "bp+", "bx+",
+    "", "bx+si+", "bx+di+", "bp+si+", "bp+di+", "si+", "di+", "bp+", "bx+",
+    "0", "1", "i8", "i16", "i32",
 };
+
+static const char* PRF_NAME[] = {
+    "???", "es:", "cs:", "ss:", "ds:", "repnz", "repz"
+};
+
+std::string Instruction::Operand::toString() const {
+    ostringstream str;
+    if (type >= OPR_REG_AX && type <= OPR_REG_SS)
+        str << OPR_NAME[type];
+    else if (type >= OPR_MEM_BX_SI && type <= OPR_MEM_BX)
+        str << "[" << OPR_NAME[type] << "]";
+    else if (type >= OPR_MEM_OFF8 && type <= OPR_MEM_BX_OFF16)
+        str << "[" << OPR_NAME[type] << hexVal(offset) << "]";
+    else if (type >= OPR_IMM0 && type <= OPR_IMM1)
+        str << OPR_NAME[type];
+    else if (type >= OPR_IMM8 && type <= OPR_IMM32)
+        str << hexVal(immval);
+
+    return str.str();
+}
 
 std::string Instruction::toString() const {
     ostringstream str;
-
-    // output loop prefix if present
-    if (prefix == PRF_CHAIN_REPZ)
-        str << "repz ";
-    else if (prefix == PRF_CHAIN_REPNZ)
-        str << "repnz ";
+    // output chain prefix if present
+    if (prefix > PRF_SEG_DS)
+        str << PRF_NAME[prefix] << " ";
     
     // output instruction name
     if (iclass == INS_JMP && opcode < OP_GRP1_Eb_Ib) // conditional jumps
-        str << INS_JMP[opcode - OP_JO_Jb];
+        str << JMP_NAME[opcode - OP_JO_Jb];
     else
         str << INS_NAME[iclass];
-    str << " ";
 
-    // output operand 1
+    // TODO: word/byte ptr for ambiguous mem access
+
+    // output operands
     if (op1.type != OPR_NONE) {
-        
+        str << " ";
+        // segment override prefix if present
+        if (prefix > PRF_NONE && prefix < PRF_CHAIN_REPNZ)
+            str << PRF_NAME[prefix];
+        str << op1.toString();
+    }
+    if (op2.type != OPR_NONE) {
+        str << ", " << op2.toString();
     }
 
-
-
-
+    return str.str();
 }
 
 // lookup table for converting modrm mod and mem values into OperandType
@@ -370,11 +392,11 @@ void Instruction::loadOperand(Operand &op) {
         break;
     case OPR_IMM32:
         op.offset = 0;
-        op.immval =  *reinterpret_cast<const UDWord*>(data);
+        op.immval =  *reinterpret_cast<const DWord*>(data);
         data += 4;
         length += 4;
         break;
     default:
-        throw CpuError("Invalid operand: "s + hexVal(op.type));
+        throw CpuError("Invalid operand: "s + hexVal((Byte)op.type));
     }
 }

@@ -75,7 +75,6 @@ private:
     std::vector<Instruction> disassemble(const Address &addr, Size count);
     void preProcessOpcode();
     size_t instructionLength() const;
-    Instruction getInstruction() const;
 
     // instruction execution pipeline
     void pipeline();

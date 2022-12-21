@@ -90,7 +90,7 @@ inline Byte modrm_mod(const Byte modrm) { return modrm & MODRM_MOD_MASK; }
 inline Byte modrm_reg(const Byte modrm) { return modrm & MODRM_REG_MASK; }
 inline Byte modrm_grp(const Byte modrm) { return modrm & MODRM_GRP_MASK; }
 inline Byte modrm_mem(const Byte modrm) { return modrm & MODRM_MEM_MASK; }
-inline ModrmOperand modrm_op1type(const Byte modrm);
-inline ModrmOperand modrm_op2type(const Byte modrm);
+ModrmOperand modrm_op1type(const Byte modrm);
+ModrmOperand modrm_op2type(const Byte modrm);
 
 #endif // MODRM_H
