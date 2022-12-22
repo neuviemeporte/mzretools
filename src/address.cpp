@@ -43,8 +43,14 @@ void Address::set(const Offset linear) {
 
 std::string Address::toString(const bool brief) const {
     ostringstream str;
-    str << std::hex << std::setw(WORD_STRLEN) << std::setfill('0') << segment << ":" << std::setw(WORD_STRLEN) << std::setfill('0') << offset;
-    if (!brief) str << "/" << setw(OFFSET_STRLEN) << toLinear();
+    if (isValid() && !isNull()) {
+        str << std::hex << std::setw(WORD_STRLEN) << std::setfill('0') << segment << ":" << std::setw(WORD_STRLEN) << std::setfill('0') << offset;
+        if (!brief) str << "/" << setw(OFFSET_STRLEN) << toLinear();
+    }
+    else if (isNull())
+        str << "(null)";
+    else if (!isValid())
+        str << "(invalid)";
     return str.str();
 }
 

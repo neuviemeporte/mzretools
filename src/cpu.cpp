@@ -269,21 +269,6 @@ string Cpu_8086::opcodeStr() const {
     return ret + opcodeName(opcode_);
 }
 
-vector<Instruction> Cpu_8086::disassemble(const Address &addr, Size count) {
-    vector<Instruction> ret;
-    regs_.reset();
-    setCodeSegment(addr.segment);
-    regs_.bit16(REG_IP) = addr.offset;    
-    while (count) {
-        opcode_ = ipByte();
-        preProcessOpcode();
-        //getInstruction();
-        ipAdvance(WORD_SIGNED(instructionLength()));
-        count--;
-    }
-    return ret;
-}
-
 // explore the code without actually executing instructions, discover routine boundaries
 // TODO: trace modifications to CS, support multiple code segments
 // TODO: process GRP5 jumps and calls

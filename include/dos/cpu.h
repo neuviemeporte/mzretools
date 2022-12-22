@@ -72,7 +72,6 @@ private:
     size_t modrmDisplacementLength() const;
 
     std::string opcodeStr() const;
-    std::vector<Instruction> disassemble(const Address &addr, Size count);
     void preProcessOpcode();
     size_t instructionLength() const;
 

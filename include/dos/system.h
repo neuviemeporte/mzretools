@@ -33,12 +33,14 @@ public:
 private:
     using Params = std::vector<std::string>;
     void printHelp();
+    void debug(const std::string &msg);
     void info(const std::string &msg);
     void error(const std::string &verb, const std::string &message);
     CmdStatus commandLoad(const std::vector<std::string> &params);
     CmdStatus commandRun(const Params &params);
     CmdStatus commandAnalyze();
     CmdStatus commandDump(const Params &params);
+    CmdStatus commandDisasm(const Params &params);
 };
 
 #endif // SYSTEM_H

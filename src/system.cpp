@@ -93,6 +93,9 @@ CmdStatus System::command(const string &cmd) {
         return commandAnalyze();        
     }
     // TODO: implement verb script
+    else if (verb == "disasm") {
+        return commandDisasm(params);
+    }
     else if (verb == "help") {
         printHelp();
         return CMD_OK;
@@ -108,7 +111,12 @@ void System::printHelp() {
         + "cpu - print CPU info\n"
         + "run [address] - start executing code at current cpu instruction pointer\n"
         + "analyze - analyze executable, try to find subroutines\n"
-        + "exit - finish session\n");
+        + "disasm <from_address> <to_address>|<instruction_count>i - disassemble opcodes\n"
+        + "exit - finish session");
+}
+
+void System::debug(const string &msg) {
+    output(msg, LOG_SYSTEM, LOG_DEBUG);
 }
 
 void System::info(const string &msg) {
@@ -233,7 +241,6 @@ CmdStatus System::commandDump(const Params &params) {
         return CMD_FAIL;
     }
 
-
     if (paramCount == 1 || paramCount == 3) { // file output
         info("Dumping memory in range "s + range.toString() + " to file: " + path);
         // check if file exists
@@ -247,6 +254,66 @@ CmdStatus System::commandDump(const Params &params) {
     else { // screen output
         info("Dumping memory in range "s + range.toString());
         hexDump(mem_->pointer(range.begin), range.size(), range.begin.toLinear(), false);
+    }
+
+    return CMD_OK;
+}
+
+CmdStatus System::commandDisasm(const Params &params) {
+    const auto paramCount = params.size();
+    if (paramCount != 2) {
+        error("disasm", "command requires exactly 2 arguments");
+        return CMD_FAIL;
+    }
+
+    Address start, end;
+    Size icount = 0;
+    try {
+        start = Address(params[0]);
+        end = Address(params[1]);
+    }
+    catch (ArgError &e) {
+        if (!start.isValid()) {
+            error("disasm", e.why());
+            return CMD_FAIL;
+        }
+    }
+
+    if (!end.isValid()) {
+        regex hexcount_re{"0x([0-9a-fA-F]+)i"};
+        regex deccount_re{"([0-9]+)i"};
+        smatch match;
+        if (regex_match(params[1], match, hexcount_re)) {
+            icount = stoi(match.str(1), nullptr, 16);
+        }
+        else if (regex_match(params[1], match, deccount_re)) {
+            icount = stoi(match.str(1), nullptr, 10);
+        }
+        else {
+            error("disasm", "invalid argument: '" + params[1] + "'");
+            return CMD_FAIL;
+        }
+    }
+    else if (start >= end) {
+        error("disasm", "start address must be lower than the end");
+        return CMD_FAIL;
+    }
+    debug("start = "s + start.toString() + ", end = " + end.toString() + ", icount = " + to_string(icount));
+    
+    const Byte *code = mem_->pointer(start);
+    Offset ioff = start.toLinear();
+    int instructions = 0;
+    while (true) {
+        Address iaddr(ioff);
+        Instruction i(code);
+        info(iaddr.toString() + ": " + i.toString());
+        if (end.isValid() && iaddr >= end) 
+            break;
+        if (icount && instructions >= icount)
+            break;
+        code += i.length;
+        ioff += i.length;
+        instructions++;
     }
 
     return CMD_OK;

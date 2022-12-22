@@ -10,6 +10,7 @@ static constexpr int SEGMENT_SHIFT = 4;
 static constexpr int OFFSET_MASK = 0xf;
 static constexpr int OFFSET_STRLEN = MEM_TOTAL % 10;
 static constexpr int WORD_STRLEN = UINT16_MAX % 10;
+static constexpr Word ADDR_INVALID = 0xffff;
 
 inline Offset SEG_OFFSET(const Word seg) { return static_cast<Offset>(seg) << SEGMENT_SHIFT; }
 inline Size BYTES_TO_PARA(const Size bytes) { return bytes / PARAGRAPH_SIZE + (bytes % PARAGRAPH_SIZE ? 1 : 0); }
@@ -20,11 +21,12 @@ struct Address {
     Address(const Word segment, const Word offset) : segment(segment), offset(offset) {}
     Address(const Offset linear);
     Address(const std::string &str);
-    Address() : Address(0, 0) {}
+    Address() : Address(ADDR_INVALID, ADDR_INVALID) {}
 
     bool operator==(const Address &arg) const { return toLinear() == arg.toLinear(); }
     bool operator<=(const Address &arg) const { return toLinear() <= arg.toLinear(); }
     bool operator>=(const Address &arg) const { return toLinear() >= arg.toLinear(); }
+    // TODO: handle overflow
     Address operator+(const SByte arg) const { return {segment, static_cast<Word>(offset + arg)}; }
     Address operator+(const SWord arg) const { return {segment, static_cast<Word>(offset + arg)}; }
     Address operator+(const size_t arg) const { return {segment, static_cast<Word>(offset + arg)}; }
@@ -34,6 +36,7 @@ struct Address {
     std::string toString(const bool brief = false) const;
     inline Offset toLinear() const { return SEG_OFFSET(segment) + offset; }
     bool isNull() const { return segment == 0 && offset == 0; }
+    bool isValid() const { return segment != ADDR_INVALID || offset != ADDR_INVALID; }
     void normalize();
     void relocate(const SWord reloc) { segment += reloc; }
     void rebase(const Word base);

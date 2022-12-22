@@ -401,7 +401,8 @@ TEST_F(Cpu_8086_Test, Instruction) {
     0x81, 0x78, 0x10, 0xcd, 0xab, // cmp word [bx+si+0x10],0xabcd
     0x36, 0x21, 0x16, 0xac, 0x19, // and [ss:0x19ac],dx
     0x74, 0xab, // jz 0xab
-    0xd0, 0xc0 // rol al,1
+    0xd0, 0xc0, // rol al,1
+    0x36, 0xA3, 0x52, 0x00, // mov [ss:0x52],ax
     };
     const Size code_len = 23;
     const std::string instructions[] = {
@@ -413,13 +414,15 @@ TEST_F(Cpu_8086_Test, Instruction) {
         "and ss:[0x19ac], dx",
         "jz 0xab",
         "rol al, 1",
+        "mov ss:[0x52], ax",
     };
     const Size lengths[] = {
-        1, 1, 3, 2, 5, 5, 2, 2
+        1, 1, 3, 2, 5, 5, 2, 2, 4,
     };
+    const int icount = sizeof(lengths) / sizeof(Size);
 
     const Byte *codeptr = code;
-    for (int i = 0; i < 8; ++i) {
+    for (int i = 0; i < icount; ++i) {
         Instruction ins(codeptr);
         TRACELN("--- instruction " << i + 1 << ": '" << ins.toString() << "' (length = " << ins.length << ")");
         ASSERT_EQ(ins.toString(), instructions[i]);
