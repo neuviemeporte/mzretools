@@ -403,6 +403,8 @@ TEST_F(Cpu_8086_Test, Instruction) {
     0x74, 0xab, // jz 0xab
     0xd0, 0xc0, // rol al,1
     0x36, 0xA3, 0x52, 0x00, // mov [ss:0x52],ax
+    0xF6, 0xC2, 0x80, // test dl,0x80
+    0xff, 0x18, // call far [bx+si]
     };
     const Size code_len = 23;
     const std::string instructions[] = {
@@ -410,14 +412,16 @@ TEST_F(Cpu_8086_Test, Instruction) {
         "dec cx",
         "mov cx, 0x1234",
         "repz stosb",
-        "cmp [bx+si+0x10], 0xabcd",
+        "cmp word [bx+si+0x10], 0xabcd",
         "and ss:[0x19ac], dx",
         "jz 0xab",
         "rol al, 1",
         "mov ss:[0x52], ax",
+        "test dl, 0x80",
+        "call far [bx+si]",
     };
     const Size lengths[] = {
-        1, 1, 3, 2, 5, 5, 2, 2, 4,
+        1, 1, 3, 2, 5, 5, 2, 2, 4, 3, 2
     };
     const int icount = sizeof(lengths) / sizeof(Size);
 

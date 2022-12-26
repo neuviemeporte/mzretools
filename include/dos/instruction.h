@@ -27,6 +27,7 @@
     X(INS_INC) \
     X(INS_DEC) \
     X(INS_JMP) \
+    X(INS_JMP_FAR) \
     X(INS_TEST) \
     X(INS_XCHG) \
     X(INS_MOV) \
@@ -35,6 +36,7 @@
     X(INS_CBW) \
     X(INS_CWD) \
     X(INS_CALL) \
+    X(INS_CALL_FAR) \
     X(INS_WAIT) \
     X(INS_PUSHF) \
     X(INS_POPF) \
@@ -169,6 +171,43 @@ OPERAND_TYPE
 #undef X
 };
 
+#define OPERAND_SIZE \
+    X(OPRSZ_UNK) \
+    X(OPRSZ_NONE) \
+    X(OPRSZ_BYTE) \
+    X(OPRSZ_WORD) \
+    X(OPRSZ_DWORD)
+enum OperandSize {
+#define X(x) x,
+OPERAND_SIZE
+#undef X
+};
+
+#define INS_GROUP_IDX \
+    X(IGRP_1) \
+    X(IGRP_2) \
+    X(IGRP_3a) \
+    X(IGRP_3b) \
+    X(IGRP_4) \
+    X(IGRP_5) \
+    X(IGRP_BAD)
+enum InstructionGroupIndex {
+#define X(x) x,
+INS_GROUP_IDX
+#undef X
+};
+
+#define INSTRUCTION_MATCH \
+    X(INS_MATCH_FULL) \
+    X(INS_MATCH_DIFFOP1) \
+    X(INS_MATCH_DIFFOP2) \
+    X(INS_MATCH_MISMATCH)
+enum InstructionMatch {
+#define X(x) x,
+INSTRUCTION_MATCH
+#undef X
+};
+
 class Instruction {
 public:
     const Byte *data;
@@ -179,6 +218,7 @@ public:
     Size length;
     struct Operand {
         OperandType type;
+        OperandSize size;
         SWord offset;
         DWord immval;
         std::string toString() const;
@@ -186,6 +226,7 @@ public:
 
     Instruction(const Byte *idata);
     std::string toString() const;
+    InstructionMatch match(const Instruction &other);
 
 private:
     OperandType getModrmOperand(const Byte modrm, const ModrmOperand op);
