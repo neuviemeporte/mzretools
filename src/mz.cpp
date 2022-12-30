@@ -16,6 +16,10 @@
 
 using namespace std;
 
+static void debug(const string &msg) {
+    output(msg, LOG_OS, LOG_DEBUG);
+}
+
 MzImage::MzImage(const std::string &path) : path_(path), loadModuleData_(nullptr) {
     if (path_.empty()) 
         throw ArgError("Empty path for MzImage!");
@@ -29,7 +33,7 @@ MzImage::MzImage(const std::string &path) : path_(path), loadModuleData_(nullptr
     }
 
     filesize_ = file.size;
-    if (filesize_ < HEADER_SIZE)
+    if (filesize_ < MZ_HEADER_SIZE)
         throw IoError(string("MzImage file too small (") + to_string(filesize_) + ")!");
 
     // parse MZ header
@@ -37,12 +41,12 @@ MzImage::MzImage(const std::string &path) : path_(path), loadModuleData_(nullptr
     FILE *mzFile = fopen(path_.c_str(), "r");
     if (!mzFile)
         throw IoError("Unable to open file "s + path_);
-    auto totalSize = fread(&header_, 1, HEADER_SIZE, mzFile);
-    if (totalSize != HEADER_SIZE) {
+    auto totalSize = fread(&header_, 1, MZ_HEADER_SIZE, mzFile);
+    if (totalSize != MZ_HEADER_SIZE) {
         fclose(mzFile);
         throw IoError("Incorrect read size from MzImage file: "s + to_string(totalSize));
     }
-    if (header_.signature != SIGNATURE) {
+    if (header_.signature != MZ_SIGNATURE) {
         ostringstream msg("MzImage file has incorrect signature (0x", std::ios_base::ate);
         msg << std::hex << header_.signature << ")!";
         fclose(mzFile);
@@ -50,9 +54,9 @@ MzImage::MzImage(const std::string &path) : path_(path), loadModuleData_(nullptr
     }
 
     // read in any bytes between end of header and beginning of relocation table: optional overlay information?
-    output("Relocation table at offset "s + hexVal(header_.reloc_table_offset) + ", header size = " + hexVal(HEADER_SIZE), LOG_OS);
-    if (header_.reloc_table_offset > HEADER_SIZE) {
-        const Size ovlInfoSize = header_.reloc_table_offset - HEADER_SIZE;
+    debug("Relocation table at offset "s + hexVal(header_.reloc_table_offset) + ", header size = " + hexVal(MZ_HEADER_SIZE));
+    if (header_.reloc_table_offset > MZ_HEADER_SIZE) {
+        const Size ovlInfoSize = header_.reloc_table_offset - MZ_HEADER_SIZE;
         ovlinfo_ = vector<Byte>(ovlInfoSize);
         fread(ovlinfo_.data(), 1, ovlInfoSize, mzFile);
     }
@@ -65,8 +69,8 @@ MzImage::MzImage(const std::string &path) : path_(path), loadModuleData_(nullptr
         }
         for (size_t i = 0; i < header_.num_relocs; ++i) {
             Word relocData[2];
-            auto relocReadSize = fread(&relocData, 1, RELOC_SIZE, mzFile);
-            if (relocReadSize != RELOC_SIZE) {
+            auto relocReadSize = fread(&relocData, 1, MZ_RELOC_SIZE, mzFile);
+            if (relocReadSize != MZ_RELOC_SIZE) {
                 fclose(mzFile);
                 throw IoError("Invalid relocation read size from MzImage file: "s + to_string(relocReadSize));
             }
@@ -102,14 +106,15 @@ MzImage::MzImage(const std::string &path) : path_(path), loadModuleData_(nullptr
 }
 
 MzImage::~MzImage() {
-    delete loadModuleData_;
+    debug("Freeing module data "s + hexVal(static_cast<void*>(loadModuleData_)));
+    delete[] loadModuleData_;
 }
 
 std::string MzImage::dump() const {
     ostringstream msg;
     char signatureStr[sizeof(Word) + 1] = {0};
     memcpy(signatureStr, &header_.signature, sizeof(Word));
-    msg << "--- " << path_ << " MZ header (" << std::dec << HEADER_SIZE << " bytes)" << endl
+    msg << "--- " << path_ << " MZ header (" << std::dec << MZ_HEADER_SIZE << " bytes)" << endl
         << "\t[0x" << hex << offsetof(Header, signature) << "] signature = 0x" << header_.signature << " ('" << signatureStr << "')" << endl
         << "\t[0x" << hex << offsetof(Header, last_page_size) << "] last_page_size = " << std::hex << "0x" << header_.last_page_size
             << " (" << std::dec << header_.last_page_size << " bytes)" <<  endl       
@@ -163,6 +168,7 @@ void MzImage::load(const Word loadSegment) {
     mzFile.seekg(loadModuleOffset_);
     assert(loadModuleData_ == nullptr);
     loadModuleData_ = new Byte[loadModuleSize_];
+    debug("Allocated module data "s + hexVal(static_cast<void*>(loadModuleData_)));
     mzFile.read(reinterpret_cast<char*>(loadModuleData_), loadModuleSize_);
     const auto bytesRead = mzFile.gcount();
     if (!mzFile) throw IoError("Error while reading load module data from "s + path_);

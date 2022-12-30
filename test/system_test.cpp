@@ -5,10 +5,12 @@
 #include "dos/system.h"
 #include "dos/util.h"
 #include "dos/error.h"
+#include "dos/mz.h"
+#include "dos/analysis.h"
 
 using namespace std;
 
-// TODO: make System support dep injection, use mock memory etc.
+// TODO: remove/rename this test, turn into library module test
 class SystemTest : public ::testing::Test {
 protected:
     System sys;
@@ -19,7 +21,6 @@ protected:
             TRACELN(sys.cpuInfo());
         }
     }
-    Analysis& analysis() { return sys.analysis_; }
 };
 
 TEST_F(SystemTest, HelloWorld) {
@@ -30,9 +31,9 @@ TEST_F(SystemTest, HelloWorld) {
 }
 
 TEST_F(SystemTest, Analysis) {
-    ASSERT_EQ(sys.command("load bin/hello.exe"), CMD_OK);
-    ASSERT_EQ(sys.command("analyze"), CMD_OK);
-    Analysis &a = analysis();
+    MzImage mz{"bin/hello.exe"};
+    mz.load(0);
+    const auto &a = findRoutines(mz.loadModuleData(), mz.loadModuleSize(), mz.codeAddress());
     a.dump();
     const auto &routines = a.routines;
     // verify discovered extents for first routine

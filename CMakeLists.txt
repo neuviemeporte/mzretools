@@ -4,7 +4,7 @@ project(dostrace LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ggdb -Wfatal-errors")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ggdb -O0 -Wfatal-errors")
 
 set(LIBDOS_SRC 
     src/system.cpp
@@ -73,6 +73,9 @@ target_link_libraries(runtest PUBLIC gtest gmock libdos)
 add_custom_target(run_unit_test ALL COMMAND ./runtest DEPENDS runtest)
 
 # utility executables
+add_executable(mzdiff tools/mzdiff.cpp)
+target_link_libraries(mzdiff PUBLIC libdos)
+
 add_executable(mzhdr tools/mzhdr.cpp)
 target_link_libraries(mzhdr PUBLIC libdos)
 

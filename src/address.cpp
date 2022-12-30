@@ -41,6 +41,11 @@ void Address::set(const Offset linear) {
     offset = static_cast<Word>(linear & OFFSET_MASK);
 }
 
+Address Address::operator+(const DWord arg) const {
+    Offset linear = toLinear();
+    return { linear + arg };
+}
+
 std::string Address::toString(const bool brief) const {
     ostringstream str;
     if (isValid() && !isNull()) {

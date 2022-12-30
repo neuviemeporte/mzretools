@@ -16,7 +16,6 @@ public:
     virtual void init(const Address &code, const Address &stack, const Size codeSize) = 0;
     virtual void step() = 0;
     virtual void run() = 0;
-    virtual Analysis analyze() = 0;
 };
 
 class InterruptInterface;
@@ -43,7 +42,6 @@ public:
     void init(const Address &codeAddr, const Address &stackAddr, const Size codeSize) override;
     void step() override;
     void run() override;
-    Analysis analyze() override;
 
 private:
     // utility

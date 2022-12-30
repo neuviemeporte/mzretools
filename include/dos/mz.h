@@ -8,13 +8,13 @@
 #include "dos/types.h"
 #include "dos/address.h"
 
-constexpr Size MAX_COMFILE_SIZE = 0xff00;
+static constexpr Size MAX_COMFILE_SIZE = 0xff00;
+static constexpr Size MZ_HEADER_SIZE = 14 * sizeof(Word);
+static constexpr Size MZ_RELOC_SIZE = 2 * sizeof(Word);
+static constexpr Word MZ_SIGNATURE = 0x5A4D;
 
 class MzImage {
 private:
-    static constexpr Size HEADER_SIZE = 14 * sizeof(Word);
-    static constexpr Size RELOC_SIZE = 2 * sizeof(Word);
-    static constexpr Word SIGNATURE = 0x5A4D;
 
 #pragma pack(push, 1)
     struct Header {
@@ -33,7 +33,7 @@ private:
         Word reloc_table_offset;   // 0x18, from start of file
         Word overlay_number;       // 0x1a, rarely used
     } header_;
-    static_assert(sizeof(Header) == HEADER_SIZE, "Invalid EXE header size");
+    static_assert(sizeof(Header) == MZ_HEADER_SIZE, "Invalid EXE header size");
 #pragma pack(pop)
 
     struct Relocation {
@@ -53,6 +53,7 @@ private:
 
 public:
     MzImage(const std::string &path);
+    MzImage(const MzImage &other) = delete;
     ~MzImage();
     const std::string& path() const { return path_; }
     std::string dump() const;

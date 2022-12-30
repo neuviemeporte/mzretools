@@ -405,6 +405,7 @@ TEST_F(Cpu_8086_Test, Instruction) {
     0x36, 0xA3, 0x52, 0x00, // mov [ss:0x52],ax
     0xF6, 0xC2, 0x80, // test dl,0x80
     0xff, 0x18, // call far [bx+si]
+    0xd0, 0x0a, // ror byte [bp+si],1
     };
     const Size code_len = 23;
     const std::string instructions[] = {
@@ -419,9 +420,10 @@ TEST_F(Cpu_8086_Test, Instruction) {
         "mov ss:[0x52], ax",
         "test dl, 0x80",
         "call far [bx+si]",
+        "ror byte [bp+si], 1"
     };
     const Size lengths[] = {
-        1, 1, 3, 2, 5, 5, 2, 2, 4, 3, 2
+        1, 1, 3, 2, 5, 5, 2, 2, 4, 3, 2, 2,
     };
     const int icount = sizeof(lengths) / sizeof(Size);
 

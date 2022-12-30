@@ -209,9 +209,7 @@ CmdStatus System::commandRun(const Params &params) {
 }
 
 CmdStatus System::commandAnalyze() {
-    analysis_ = cpu_->analyze();
-    if (analysis_.success) return CMD_OK;
-    else return CMD_FAIL;
+    return CMD_FAIL;
 }
 
 // TODO: support address ranges for start and end

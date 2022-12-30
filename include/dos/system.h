@@ -22,7 +22,6 @@ private:
     std::unique_ptr<Memory> mem_;
     std::unique_ptr<Dos> os_;
     std::unique_ptr<InterruptInterface> int_;
-    Analysis analysis_;
 
 public:
     System();

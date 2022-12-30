@@ -23,7 +23,8 @@ std::string hexVal(const SByte val);
 std::string hexVal(const Word val);
 std::string hexVal(const SWord val);
 std::string hexVal(const DWord val);
-std::string hexVal(const Offset val,  const bool hdr = true, const int pad = 0);
+std::string hexVal(const Offset val, const bool hdr = true, const int pad = 0);
+std::string hexVal(const void* ptr);
 std::istream& safeGetline(std::istream& is, std::string& t);
 
 struct FileStatus {

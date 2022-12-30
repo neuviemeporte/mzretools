@@ -261,7 +261,7 @@ Instruction::Instruction(const Byte *idata) : data(idata), addr{}, prefix(PRF_NO
     }
 
     assert(op1.type != OPR_ERR && op2.type != OPR_ERR);
-    DEBUG("generalized operands, op1: type = "s + OPR_TYPE_ID[op1.type] + " size = " + OPR_SIZE_ID[op1.size] + ", op2: type = " + OPR_TYPE_ID[op2.type] + ", size = " + OPR_SIZE_ID[op2.size]);
+    DEBUG("generalized operands, op1: type = "s + OPR_TYPE_ID[op1.type] + ", size = " + OPR_SIZE_ID[op1.size] + ", op2: type = " + OPR_TYPE_ID[op2.type] + ", size = " + OPR_SIZE_ID[op2.size]);
     loadOperand(op1);
     loadOperand(op2);
 
@@ -329,6 +329,14 @@ std::string Instruction::Operand::toString() const {
     return str.str();
 }
 
+InstructionMatch Instruction::Operand::match(const Operand &other) {
+    if (type != other.type || size != other.size)
+        return INS_MATCH_MISMATCH;
+    if (offset != other.offset || immval != other.immval)
+        return INS_MATCH_DIFF;
+    return INS_MATCH_FULL;
+}
+
 std::string Instruction::toString() const {
     ostringstream str;
     // output chain prefix if present
@@ -352,12 +360,14 @@ std::string Instruction::toString() const {
         str << " ";
         // show size prefix if not implicit from operands
         if (operandIsMem(op1.type) && operandIsImmediate(op2.type)) {
-            switch(OPR_SIZE[op2.type]) {
+            OperandSize immSize = op1.size;
+            if (immSize == OPRSZ_UNK) immSize = op2.size;
+            switch(immSize) {
             case OPRSZ_BYTE:  str << "byte ";  break;
             case OPRSZ_WORD:  str << "word ";  break;
             case OPRSZ_DWORD: str << "dword "; break;
             default:
-                throw CpuError("unexpected operand size for operand "s + OPR_SIZE_ID[op2.type]);
+                throw CpuError("unexpected immediate operand size: "s + OPR_SIZE_ID[immSize]);
             }
         }
         // segment override prefix if present
@@ -375,7 +385,21 @@ std::string Instruction::toString() const {
 InstructionMatch Instruction::match(const Instruction &other) {
     if (prefix != other.prefix || opcode != other.opcode || iclass != other.iclass || iclass != other.iclass)
         return INS_MATCH_MISMATCH;
-    return INS_MATCH_MISMATCH;
+
+    const InstructionMatch 
+        op1match = op1.match(other.op1),
+        op2match = op2.match(other.op2);
+        
+    if (op1match == INS_MATCH_MISMATCH || op2match != INS_MATCH_MISMATCH)
+        return INS_MATCH_MISMATCH; // either operand mismatch -> instruction mismatch
+    else if (op1match != INS_MATCH_FULL && op2match != INS_MATCH_FULL)
+        return INS_MATCH_MISMATCH; // both operands non-full match -> instruction mismatch
+    else if (op1match == INS_MATCH_DIFF)
+        return INS_MATCH_DIFFOP1; // difference on operand 1
+    else if (op2match == INS_MATCH_DIFF)
+        return INS_MATCH_DIFFOP2; // difference on operand 2
+    else
+        return INS_MATCH_FULL;
 }
 
 // lookup table for converting modrm mod and mem values into OperandType
@@ -509,10 +533,12 @@ void Instruction::loadOperand(Operand &op) {
     case OPR_IMM0:
         op.offset = 0;
         op.immval = 0;
+        DEBUG("imm0 operand");
         break;
     case OPR_IMM1:
         op.offset = 0;
         op.immval = 1;
+        DEBUG("imm1 operand");
         break;    
     case OPR_IMM8:
         op.offset = 0;

@@ -199,6 +199,7 @@ INS_GROUP_IDX
 
 #define INSTRUCTION_MATCH \
     X(INS_MATCH_FULL) \
+    X(INS_MATCH_DIFF) \
     X(INS_MATCH_DIFFOP1) \
     X(INS_MATCH_DIFFOP2) \
     X(INS_MATCH_MISMATCH)
@@ -222,6 +223,7 @@ public:
         SWord offset;
         DWord immval;
         std::string toString() const;
+        InstructionMatch match(const Operand &other);
     } op1, op2;
 
     Instruction(const Byte *idata);

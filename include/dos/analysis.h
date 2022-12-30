@@ -28,11 +28,13 @@ struct Frame {
     bool isNull() const { return address.isNull(); }
 };
 
-struct Analysis {
+struct RoutineMap {
     bool success;
     std::vector<Routine> routines;
-    Analysis() : success(false) {}
+    RoutineMap() : success(false) {}
     void dump() const;
 };
+
+RoutineMap findRoutines(const Byte *code, const Size size, const Address entrypoint);
 
 #endif // ANALYSIS_H

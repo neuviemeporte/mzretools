@@ -87,6 +87,12 @@ std::string hexVal(const Offset val, const bool hdr, const int pad) {
     return str.str();        
 }
 
+std::string hexVal(const void* ptr) {
+    ostringstream str;
+    str << "0x" << hex << reinterpret_cast<uint64_t>(ptr);
+    return str.str();
+}
+
 std::istream& safeGetline(std::istream& is, std::string& t) {
     t.clear();
 
