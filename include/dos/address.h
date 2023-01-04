@@ -21,6 +21,7 @@ struct Address {
     Address(const Word segment, const Word offset) : segment(segment), offset(offset) {}
     Address(const Offset linear);
     Address(const std::string &str);
+    Address(const Address &other, const SWord displacement);
     Address() : Address(ADDR_INVALID, ADDR_INVALID) {}
 
     bool operator==(const Address &arg) const { return toLinear() == arg.toLinear(); }
@@ -32,6 +33,8 @@ struct Address {
     Address operator+(const DWord arg) const;
     Address operator+(const size_t arg) const { return {segment, static_cast<Word>(offset + arg)}; }
     Size operator-(const Address &arg) const { return toLinear() - arg.toLinear(); }
+    Address& operator+=(const SWord adjust) { offset += adjust; return *this; }
+    Address& operator+=(const SByte adjust) { offset += adjust; return *this; }
 
     void set(const Offset linear);
     std::string toString(const bool brief = false) const;

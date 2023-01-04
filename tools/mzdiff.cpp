@@ -26,7 +26,7 @@ void fatal(const string &msg) {
 string mzInfo(const MzImage &mz) {
     ostringstream str;
     str << mz.path() << ", load module of size " <<  mz.loadModuleSize() << " at " << hexVal(mz.loadModuleOffset()) 
-        << ", entrypoint at " << mz.codeAddress() << ", stack at " << mz.stackAddress();
+        << ", entrypoint at " << mz.entrypoint() << ", stack at " << mz.stackPointer();
     return str.str();
 }
 
@@ -35,15 +35,15 @@ void compare(const MzImage &base, const MzImage &compare) {
         *baseCode = base.loadModuleData(),
         *compCode = compare.loadModuleData();
     const Offset
-        baseEntry = base.codeAddress().toLinear(),
-        compEntry = compare.codeAddress().toLinear();
+        baseEntry = base.entrypoint().toLinear(),
+        compEntry = compare.entrypoint().toLinear();
     
     Offset 
         baseOffset = baseEntry,
         compOffset = compEntry;
 
     stack<Frame> callstack;
-    callstack.push(Frame(base.codeAddress(), 1));
+    callstack.push(Frame(base.entrypoint(), 1));
 
     while (!callstack.empty()) {
         const Frame frame = callstack.top();

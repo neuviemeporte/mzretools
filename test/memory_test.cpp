@@ -50,6 +50,30 @@ TEST_F(MemoryTest, Advance) {
         TRACELN("Address " << a << " displaced by " << d << " = " << b);
         ASSERT_EQ(b, result16[i++]);
     }
+
+    // advance past current segment
+    SWord amount = 0xdead;
+    a = Address(0x1234, 0xabcd);
+    Offset before = a.toLinear();
+    TRACELN("Advancing " << a << " by " << hexVal(amount));
+    a += amount;
+    Offset after = a.toLinear();
+    TRACELN("After advance: " << a);
+    ASSERT_EQ(after, before + amount);
+
+    // advance within current segment
+    before = after;
+    amount = 0xab;
+    TRACELN("Advancing " << a << " by " << hexVal(amount));
+    a += amount;
+    after = a.toLinear();
+    TRACELN("After advance: " << a);
+    ASSERT_EQ(after, before + amount);    
+
+    const SWord displacement = -0xa;
+    a = Address(0x1234, 0xabcd);
+    Address b(a, displacement);
+    ASSERT_EQ(b.toLinear(), a.toLinear() - 0xa);
 }
 
 TEST_F(MemoryTest, Block) {

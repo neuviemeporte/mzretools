@@ -39,23 +39,23 @@ MODRM_OPERAND
 
 // maps (non-group) opcodes to an instruction class
 static const InstructionClass OPCODE_CLASS[] = {
-//   0         1          2          3         4          5          6         7           8         9         A          B          C          D          E          F
-INS_ADD,    INS_ADD,   INS_ADD,   INS_ADD,  INS_ADD,   INS_ADD,   INS_PUSH,  INS_POP,   INS_OR,   INS_OR,   INS_OR,    INS_OR,    INS_OR,    INS_OR,    INS_PUSH,  INS_ERR,   // 0
-INS_ADC,    INS_ADC,   INS_ADC,   INS_ADC,  INS_ADC,   INS_ADC,   INS_PUSH,  INS_POP,   INS_SBB,  INS_SBB,  INS_SBB,   INS_SBB,   INS_SBB,   INS_SBB,   INS_PUSH,  INS_POP,   // 1
-INS_AND,    INS_AND,   INS_AND,   INS_AND,  INS_AND,   INS_AND,   INS_ERR,   INS_DAA,   INS_SUB,  INS_SUB,  INS_SUB,   INS_SUB,   INS_SUB,   INS_SUB,   INS_ERR,   INS_DAS,   // 2
-INS_XOR,    INS_XOR,   INS_XOR,   INS_XOR,  INS_XOR,   INS_XOR,   INS_ERR,   INS_AAA,   INS_CMP,  INS_CMP,  INS_CMP,   INS_CMP,   INS_CMP,   INS_CMP,   INS_ERR,   INS_AAS,   // 3
-INS_INC,    INS_INC,   INS_INC,   INS_INC,  INS_INC,   INS_INC,   INS_INC,   INS_INC,   INS_DEC,  INS_DEC,  INS_DEC,   INS_DEC,   INS_DEC,   INS_DEC,   INS_DEC,   INS_DEC,   // 4
-INS_PUSH,   INS_PUSH,  INS_PUSH,  INS_PUSH, INS_PUSH,  INS_PUSH,  INS_PUSH,  INS_PUSH,  INS_POP,  INS_POP,  INS_POP,   INS_POP,   INS_POP,   INS_POP,   INS_POP,   INS_POP,   // 5
-INS_ERR,    INS_ERR,   INS_ERR,   INS_ERR,  INS_ERR,   INS_ERR,   INS_ERR,   INS_ERR,   INS_ERR,  INS_ERR,  INS_ERR,   INS_ERR,   INS_ERR,   INS_ERR,   INS_ERR,   INS_ERR,   // 6
-INS_JMP,    INS_JMP,   INS_JMP,   INS_JMP,  INS_JMP,   INS_JMP,   INS_JMP,   INS_JMP,   INS_JMP,  INS_JMP,  INS_JMP,   INS_JMP,   INS_JMP,   INS_JMP,   INS_JMP,   INS_JMP,   // 7
-INS_ERR,    INS_ERR,   INS_ERR,   INS_ERR,  INS_TEST,  INS_TEST,  INS_XCHG,  INS_XCHG,  INS_MOV,  INS_MOV,  INS_MOV,   INS_MOV,   INS_MOV,   INS_LEA,   INS_MOV,   INS_POP,   // 8
-INS_NOP,    INS_XCHG,  INS_XCHG,  INS_XCHG, INS_XCHG,  INS_XCHG,  INS_XCHG,  INS_XCHG,  INS_CBW,  INS_CWD,  INS_CALL,  INS_WAIT,  INS_PUSHF, INS_POPF,  INS_SAHF,  INS_LAHF,  // 9
-INS_MOV,    INS_MOV,   INS_MOV,   INS_MOV,  INS_MOVSB, INS_MOVSW, INS_CMPSB, INS_CMPSW, INS_TEST, INS_TEST, INS_STOSB, INS_STOSW, INS_LODSB, INS_LODSW, INS_SCASB, INS_SCASW, // A
-INS_MOV,    INS_MOV,   INS_MOV,   INS_MOV,  INS_MOV,   INS_MOV,   INS_MOV,   INS_MOV,   INS_MOV,  INS_MOV,  INS_MOV,   INS_MOV,   INS_MOV,   INS_MOV,   INS_MOV,   INS_MOV,   // B
-INS_ERR,    INS_ERR,   INS_RET,   INS_RET,  INS_LES,   INS_LDS,   INS_MOV,   INS_MOV,   INS_ERR,  INS_ERR,  INS_RETF,  INS_RETF,  INS_INT,   INS_INT,   INS_INTO,  INS_IRET,  // C
-INS_ERR,    INS_ERR,   INS_ERR,   INS_ERR,  INS_AAM,   INS_AAD,   INS_ERR,   INS_XLAT,  INS_ERR,  INS_ERR,  INS_ERR,   INS_ERR,   INS_ERR,   INS_ERR,   INS_ERR,   INS_ERR,   // D
-INS_LOOPNZ, INS_LOOPZ, INS_LOOP,  INS_JCXZ, INS_IN,    INS_IN,    INS_OUT,   INS_OUT,   INS_CALL, INS_JMP,  INS_JMP,   INS_JMP,   INS_IN,    INS_IN,    INS_OUT,   INS_OUT,   // E
-INS_LOCK,   INS_ERR,   INS_REPNZ, INS_REPZ, INS_HLT,   INS_CMC,   INS_ERR,   INS_ERR,   INS_CLC,  INS_STC,  INS_CLI,   INS_STI,   INS_CLD,   INS_STD,   INS_ERR,   INS_ERR,   // F
+//   0         1          2          3         4          5          6         7           8         9         A             B          C          D          E          F
+INS_ADD,    INS_ADD,   INS_ADD,   INS_ADD,  INS_ADD,   INS_ADD,   INS_PUSH,  INS_POP,   INS_OR,   INS_OR,   INS_OR,       INS_OR,    INS_OR,    INS_OR,    INS_PUSH,  INS_ERR,   // 0
+INS_ADC,    INS_ADC,   INS_ADC,   INS_ADC,  INS_ADC,   INS_ADC,   INS_PUSH,  INS_POP,   INS_SBB,  INS_SBB,  INS_SBB,      INS_SBB,   INS_SBB,   INS_SBB,   INS_PUSH,  INS_POP,   // 1
+INS_AND,    INS_AND,   INS_AND,   INS_AND,  INS_AND,   INS_AND,   INS_ERR,   INS_DAA,   INS_SUB,  INS_SUB,  INS_SUB,      INS_SUB,   INS_SUB,   INS_SUB,   INS_ERR,   INS_DAS,   // 2
+INS_XOR,    INS_XOR,   INS_XOR,   INS_XOR,  INS_XOR,   INS_XOR,   INS_ERR,   INS_AAA,   INS_CMP,  INS_CMP,  INS_CMP,      INS_CMP,   INS_CMP,   INS_CMP,   INS_ERR,   INS_AAS,   // 3
+INS_INC,    INS_INC,   INS_INC,   INS_INC,  INS_INC,   INS_INC,   INS_INC,   INS_INC,   INS_DEC,  INS_DEC,  INS_DEC,      INS_DEC,   INS_DEC,   INS_DEC,   INS_DEC,   INS_DEC,   // 4
+INS_PUSH,   INS_PUSH,  INS_PUSH,  INS_PUSH, INS_PUSH,  INS_PUSH,  INS_PUSH,  INS_PUSH,  INS_POP,  INS_POP,  INS_POP,      INS_POP,   INS_POP,   INS_POP,   INS_POP,   INS_POP,   // 5
+INS_ERR,    INS_ERR,   INS_ERR,   INS_ERR,  INS_ERR,   INS_ERR,   INS_ERR,   INS_ERR,   INS_ERR,  INS_ERR,  INS_ERR,      INS_ERR,   INS_ERR,   INS_ERR,   INS_ERR,   INS_ERR,   // 6
+INS_JMP,    INS_JMP,   INS_JMP,   INS_JMP,  INS_JMP,   INS_JMP,   INS_JMP,   INS_JMP,   INS_JMP,  INS_JMP,  INS_JMP,      INS_JMP,   INS_JMP,   INS_JMP,   INS_JMP,   INS_JMP,   // 7
+INS_ERR,    INS_ERR,   INS_ERR,   INS_ERR,  INS_TEST,  INS_TEST,  INS_XCHG,  INS_XCHG,  INS_MOV,  INS_MOV,  INS_MOV,      INS_MOV,   INS_MOV,   INS_LEA,   INS_MOV,   INS_POP,   // 8
+INS_NOP,    INS_XCHG,  INS_XCHG,  INS_XCHG, INS_XCHG,  INS_XCHG,  INS_XCHG,  INS_XCHG,  INS_CBW,  INS_CWD,  INS_CALL_FAR, INS_WAIT,  INS_PUSHF, INS_POPF,  INS_SAHF,  INS_LAHF,  // 9
+INS_MOV,    INS_MOV,   INS_MOV,   INS_MOV,  INS_MOVSB, INS_MOVSW, INS_CMPSB, INS_CMPSW, INS_TEST, INS_TEST, INS_STOSB,    INS_STOSW, INS_LODSB, INS_LODSW, INS_SCASB, INS_SCASW, // A
+INS_MOV,    INS_MOV,   INS_MOV,   INS_MOV,  INS_MOV,   INS_MOV,   INS_MOV,   INS_MOV,   INS_MOV,  INS_MOV,  INS_MOV,      INS_MOV,   INS_MOV,   INS_MOV,   INS_MOV,   INS_MOV,   // B
+INS_ERR,    INS_ERR,   INS_RET,   INS_RET,  INS_LES,   INS_LDS,   INS_MOV,   INS_MOV,   INS_ERR,  INS_ERR,  INS_RETF,     INS_RETF,  INS_INT,   INS_INT,   INS_INTO,  INS_IRET,  // C
+INS_ERR,    INS_ERR,   INS_ERR,   INS_ERR,  INS_AAM,   INS_AAD,   INS_ERR,   INS_XLAT,  INS_ERR,  INS_ERR,  INS_ERR,      INS_ERR,   INS_ERR,   INS_ERR,   INS_ERR,   INS_ERR,   // D
+INS_LOOPNZ, INS_LOOPZ, INS_LOOP,  INS_JCXZ, INS_IN,    INS_IN,    INS_OUT,   INS_OUT,   INS_CALL, INS_JMP,  INS_JMP,      INS_JMP,   INS_IN,    INS_IN,    INS_OUT,   INS_OUT,   // E
+INS_LOCK,   INS_ERR,   INS_REPNZ, INS_REPZ, INS_HLT,   INS_CMC,   INS_ERR,   INS_ERR,   INS_CLC,  INS_STC,  INS_CLI,      INS_STI,   INS_CLD,   INS_STD,   INS_ERR,   INS_ERR,   // F
 };
 
 // maps group opcodes to group indexes in the next table
@@ -267,6 +267,7 @@ Instruction::Instruction(const Byte *idata) : data(idata), addr{}, prefix(PRF_NO
 
     // don't need it anymore
     data = nullptr; 
+    DEBUG("Instruction: "s + toString());
 }
 
 static const char* INS_NAME[] = {
@@ -323,8 +324,12 @@ std::string Instruction::Operand::toString() const {
         str << "[" << OPR_NAME[type] << "0x" << hex << offset << "]";
     else if (type >= OPR_IMM0 && type <= OPR_IMM1)
         str << OPR_NAME[type];
-    else if (type >= OPR_IMM8 && type <= OPR_IMM32)
-        str << "0x" << hex << immval;
+    else if (type == OPR_IMM8)
+        str << "0x" << hex << static_cast<int>(imm.u8);
+    else if (type == OPR_IMM16)
+        str << "0x" << hex << imm.u16;
+    else if (type == OPR_IMM32)
+        str << "0x" << hex << imm.u32;
 
     return str.str();
 }
@@ -332,7 +337,7 @@ std::string Instruction::Operand::toString() const {
 InstructionMatch Instruction::Operand::match(const Operand &other) {
     if (type != other.type || size != other.size)
         return INS_MATCH_MISMATCH;
-    if (offset != other.offset || immval != other.immval)
+    if (offset != other.offset || imm.u32 != other.imm.u32)
         return INS_MATCH_DIFF;
     return INS_MATCH_FULL;
 }
@@ -495,7 +500,7 @@ void Instruction::loadOperand(Operand &op) {
         // register and memory operands with no displacement 
         DEBUG("direct or no operand, offset = immval = 0");
         op.offset = 0; 
-        op.immval = 0; 
+        op.imm.u32 = 0; 
         break;
     case OPR_MEM_OFF8:
     case OPR_MEM_BX_SI_OFF8:
@@ -509,7 +514,7 @@ void Instruction::loadOperand(Operand &op) {
         // memory operands with 8bit displacement
         // TODO: handle endianness correctly
         op.offset = *reinterpret_cast<const SByte*>(data++);
-        op.immval = 0;
+        op.imm.u32 = 0;
         length++;
         DEBUG("off8 operand, offset = "s + hexVal(op.offset) + ", length = " + to_string(length));
         break;
@@ -525,40 +530,40 @@ void Instruction::loadOperand(Operand &op) {
         // memory operands with 8bit displacement
         // TODO: handle endianness correctly
         op.offset = *reinterpret_cast<const SWord*>(data);
-        op.immval = 0;
+        op.imm.u32 = 0;
         data += 2;
         length += 2;
         DEBUG("off16 operand, offset = "s + hexVal(op.offset) + ", length = " + to_string(length));
         break;    
     case OPR_IMM0:
         op.offset = 0;
-        op.immval = 0;
+        op.imm.u32 = 0;
         DEBUG("imm0 operand");
         break;
     case OPR_IMM1:
         op.offset = 0;
-        op.immval = 1;
+        op.imm.u32 = 1;
         DEBUG("imm1 operand");
         break;    
     case OPR_IMM8:
         op.offset = 0;
-        op.immval = *reinterpret_cast<const Byte*>(data++);
+        op.imm.u8 = *reinterpret_cast<const Byte*>(data++);
         length++;
-        DEBUG("imm8 operand, immval = "s + hexVal(op.immval) + ", length = " + to_string(length));
+        DEBUG("imm8 operand = "s + hexVal(op.imm.u8) + ", length = " + to_string(length));
         break;    
     case OPR_IMM16:
         op.offset = 0;
-        op.immval = *reinterpret_cast<const Word*>(data);
+        op.imm.u16 = *reinterpret_cast<const Word*>(data);
         data += 2;
         length += 2;
-        DEBUG("imm16 operand, immval = "s + hexVal(op.immval) + ", length = " + to_string(length));
+        DEBUG("imm16 operand = "s + hexVal(op.imm.u16) + ", length = " + to_string(length));
         break;
     case OPR_IMM32:
         op.offset = 0;
-        op.immval =  *reinterpret_cast<const DWord*>(data);
+        op.imm.u32 =  *reinterpret_cast<const DWord*>(data);
         data += 4;
         length += 4;
-        DEBUG("imm32 operand, immval = "s + hexVal(op.immval) + ", length = " + to_string(length));
+        DEBUG("imm32 operand = "s + hexVal(op.imm.u32) + ", length = " + to_string(length));
         break;
     default:
         throw CpuError("Invalid operand: "s + hexVal((Byte)op.type));

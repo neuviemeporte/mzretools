@@ -30,27 +30,30 @@ TEST_F(SystemTest, HelloWorld) {
     //ASSERT_EQ(sys.command("run"), CMD_OK);
 }
 
+TEST_F(SystemTest, RoutineMap) {
+    // test loading of routine map from ida file
+    const RoutineMap idaMap{"../bin/hello.lst"};
+    idaMap.dump();
+    // test comparing of routine maps for both the success and failure case
+    RoutineMap matchMap{idaMap};
+    ASSERT_TRUE(idaMap.match(matchMap));
+    const Size routineCount = matchMap.routines.size();
+    auto &r = matchMap.routines[routineCount / 2]; 
+    r.extents.end = Address(0x1234, 0xabcd); // break end of one routine
+    TRACELN("Altered end extent for routine " << r.toString());
+    const Size matchCount = idaMap.match(matchMap);
+    ASSERT_EQ(matchCount, routineCount - 1);
+}
+
 TEST_F(SystemTest, Analysis) {
+    const RoutineMap idaMap{"../bin/hello.lst"};
+    // test discovery of the routine map    
     MzImage mz{"bin/hello.exe"};
-    mz.load(0);
-    const auto &a = findRoutines(mz.loadModuleData(), mz.loadModuleSize(), mz.codeAddress());
-    a.dump();
-    const auto &routines = a.routines;
-    // verify discovered extents for first routine
-    auto firstExtents = Block{ 0x10, 0x1f };
-    TRACELN("first routine: " << routines.front().toString());
-    ASSERT_EQ(routines.front().extents, firstExtents);
-    // find the 'start' routine, verify discovered extents
-    auto startRoutineIt = std::find_if(routines.begin(), routines.end(), [](const Routine &r){
-        return r.name == "start";
-    });
-    ASSERT_NE(startRoutineIt, routines.end());
-    const auto &startRoutine = *startRoutineIt;
-    TRACELN("start routine: " << startRoutine.toString());
-    auto startExtents = Block{ 0x20, 0xc2 };
-    ASSERT_EQ(startRoutine.extents, startExtents);
-    // verify discovered extents for last routine
-    auto lastExtents = Block{ 0x165e, 0x1680 };
-    TRACELN("last routine: " << routines.back().toString());
-    ASSERT_EQ(routines.back().extents, lastExtents);
+    mz.load(0x60);
+    RoutineMap discoveredMap = findRoutines(mz.loadModuleData(), mz.loadModuleSize(), mz.entrypoint(), mz.loadSegment());
+    discoveredMap.dump();
+    // compare against ida map
+    const Size matchCount = idaMap.match(discoveredMap);
+    TRACELN("Found matching " << matchCount << " routines out of " << idaMap.routines.size());
+    ASSERT_GE(matchCount, 26); // not all functions that ida found can be identified for now
 }

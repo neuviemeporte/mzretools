@@ -50,6 +50,7 @@ private:
     Offset loadModuleOffset_;
     Address entrypoint_;
     Byte *loadModuleData_; // TODO: vector
+    Word loadSegment_;
 
 public:
     MzImage(const std::string &path);
@@ -60,10 +61,11 @@ public:
     Size loadModuleSize() const { return loadModuleSize_; }
     Offset loadModuleOffset() const { return loadModuleOffset_; }
     const Byte* loadModuleData() const { return loadModuleData_; }
+    Word loadSegment() const { return loadSegment_; }
     Size minAlloc() const { return header_.min_extra_paragraphs * PARAGRAPH_SIZE; }
     Size maxAlloc() const { return header_.max_extra_paragraphs * PARAGRAPH_SIZE; }
-    Address codeAddress() const { return Address(header_.cs, header_.ip); }
-    Address stackAddress() const { return Address(header_.ss, header_.sp); }
+    Address entrypoint() const { return Address(header_.cs, header_.ip); }
+    Address stackPointer() const { return Address(header_.ss, header_.sp); }
     void load(const Word loadSegment);
 };
 

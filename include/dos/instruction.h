@@ -216,12 +216,18 @@ public:
     InstructionPrefix prefix;
     Byte opcode;
     InstructionClass iclass;
-    Size length;
+    Byte length;
     struct Operand {
         OperandType type;
         OperandSize size;
         SWord offset;
-        DWord immval;
+        union {
+            DWord u32;
+            Word u16;
+            SWord s16;
+            Byte u8;
+            SByte s8;
+        } imm;
         std::string toString() const;
         InstructionMatch match(const Operand &other);
     } op1, op2;

@@ -32,9 +32,11 @@ struct RoutineMap {
     bool success;
     std::vector<Routine> routines;
     RoutineMap() : success(false) {}
+    RoutineMap(const std::string &path);
     void dump() const;
+    Size match(const RoutineMap &other) const;
 };
 
-RoutineMap findRoutines(const Byte *code, const Size size, const Address entrypoint);
+RoutineMap findRoutines(const Byte *code, const Size size, const Address entrypoint, const Word baseSegment);
 
 #endif // ANALYSIS_H

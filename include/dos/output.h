@@ -24,5 +24,6 @@ enum LogPriority {
 
 void output(const std::string &msg, const LogModule mod, const LogPriority pri = LOG_INFO, const bool suppressNewline = false);
 void setOutputLevel(const LogPriority minPriority);
+void setModuleVisibility(const LogModule mod, const bool visible);
 
 #endif // OUTPUT_H

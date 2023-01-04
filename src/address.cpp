@@ -35,6 +35,10 @@ Address::Address(const std::string &str) {
         throw ArgError("Invalid address string: "s + str);
 }
 
+Address::Address(const Address &other, const SWord displacement) : segment(other.segment), offset(other.offset) {
+    offset += displacement;
+}
+
 void Address::set(const Offset linear) {
     if (linear >= MEM_TOTAL) throw MemoryError("Linear address too big while converting to segmented representation: "s + hexVal(linear));
     segment = static_cast<Word>(linear >> SEGMENT_SHIFT);
@@ -48,14 +52,11 @@ Address Address::operator+(const DWord arg) const {
 
 std::string Address::toString(const bool brief) const {
     ostringstream str;
-    if (isValid() && !isNull()) {
+    if (isValid()) {
         str << std::hex << std::setw(WORD_STRLEN) << std::setfill('0') << segment << ":" << std::setw(WORD_STRLEN) << std::setfill('0') << offset;
         if (!brief) str << "/" << setw(OFFSET_STRLEN) << toLinear();
     }
-    else if (isNull())
-        str << "(null)";
-    else if (!isValid())
-        str << "(invalid)";
+    else str << "(invalid)";
     return str.str();
 }
 

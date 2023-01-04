@@ -16,6 +16,8 @@ using Offset = size_t;
 template<typename T> SByte BYTE_SIGNED(const T val) { return static_cast<SByte>(val); }
 template<typename T> SWord WORD_SIGNED(const T val) { return static_cast<SWord>(val); }
 
+static constexpr Word WORD_MAX = UINT16_MAX;
+
 static constexpr Size PARAGRAPH_SIZE = 16;
 constexpr Size operator "" _par(unsigned long long para) { return static_cast<Size>(para) * PARAGRAPH_SIZE; }
 static constexpr Size PAGE_SIZE = 512;

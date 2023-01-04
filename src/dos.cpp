@@ -62,8 +62,8 @@ LoadModule Dos::loadExe(MzImage &mz) {
     // calculate relocated addresses for code and stack
     LoadModule ret;
     const Address
-        codeAddress  = mz.codeAddress(),
-        stackAddress = mz.stackAddress();
+        codeAddress  = mz.entrypoint(),
+        stackAddress = mz.stackPointer();
     ret.code = codeAddress;
     ret.stack = stackAddress;
     ret.code.segment += loadAddr.segment;

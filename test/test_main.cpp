@@ -16,6 +16,12 @@ int main(int argc, char* argv[]) {
             TRACE_ENABLE(true);
             setOutputLevel(LOG_DEBUG);
         }
+        else if (arg == "--noanal") {
+            setModuleVisibility(LOG_ANALYSIS, false);
+        }
+        else if (arg == "--nocpu") {
+            setModuleVisibility(LOG_CPU, false);
+        }        
     }
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();

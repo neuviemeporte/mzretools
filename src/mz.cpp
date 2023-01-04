@@ -20,7 +20,7 @@ static void debug(const string &msg) {
     output(msg, LOG_OS, LOG_DEBUG);
 }
 
-MzImage::MzImage(const std::string &path) : path_(path), loadModuleData_(nullptr) {
+MzImage::MzImage(const std::string &path) : path_(path), loadModuleData_(nullptr), loadSegment_(0) {
     if (path_.empty()) 
         throw ArgError("Empty path for MzImage!");
     const char* cpath = path.c_str();
@@ -106,7 +106,6 @@ MzImage::MzImage(const std::string &path) : path_(path), loadModuleData_(nullptr
 }
 
 MzImage::~MzImage() {
-    debug("Freeing module data "s + hexVal(static_cast<void*>(loadModuleData_)));
     delete[] loadModuleData_;
 }
 
@@ -168,7 +167,7 @@ void MzImage::load(const Word loadSegment) {
     mzFile.seekg(loadModuleOffset_);
     assert(loadModuleData_ == nullptr);
     loadModuleData_ = new Byte[loadModuleSize_];
-    debug("Allocated module data "s + hexVal(static_cast<void*>(loadModuleData_)));
+    loadSegment_ = loadSegment;
     mzFile.read(reinterpret_cast<char*>(loadModuleData_), loadModuleSize_);
     const auto bytesRead = mzFile.gcount();
     if (!mzFile) throw IoError("Error while reading load module data from "s + path_);
