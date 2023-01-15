@@ -5,6 +5,7 @@
 #include <vector>
 #include "dos/types.h"
 #include "dos/address.h"
+#include "dos/mz.h"
 
 struct Routine {
     std::string name;
@@ -37,6 +38,14 @@ struct RoutineMap {
     Size match(const RoutineMap &other) const;
 };
 
-RoutineMap findRoutines(const Byte *code, const Size size, const Address entrypoint, const Word baseSegment);
+struct Executable {
+    std::vector<Byte> code;
+    Address entrypoint;
+    Word reloc;
+    explicit Executable(const MzImage &mz);
+};
+
+RoutineMap findRoutines(const Executable &exe);
+bool compareCode(const Executable &base, const Executable &object);
 
 #endif // ANALYSIS_H

@@ -112,11 +112,20 @@ Size RoutineMap::match(const RoutineMap &other) const {
     return matchCount;
 }
 
+Executable::Executable(const MzImage &mz) : entrypoint(mz.entrypoint()), reloc(mz.loadSegment())  {
+    const Byte *data = mz.loadModuleData();
+    copy(data, data + mz.loadModuleSize(), std::back_inserter(code));
+}
+
 // explore the code without actually executing instructions, discover routine boundaries
 // TODO: trace modifications to CS, support multiple code segments
 // TODO: trace other register values for discovering register-dependent calls?
 // TODO: identify routines through signatures generated from OMF libraries
-RoutineMap findRoutines(const Byte *code, const Size size, const Address entrypoint, const Word baseSegment) {
+RoutineMap findRoutines(const Executable &exe) {
+    const Byte *code = exe.code.data();
+    const Size size = exe.code.size();
+    const Address entrypoint = exe.entrypoint;
+    const Word baseSegment = exe.reloc;
     // memory map for marking which locations belong to which routines, value of 0 is undiscovered
     const int UNDISCOVERED = 0;
     vector<int> memoryMap(size, UNDISCOVERED); // TODO: store addresses from loaded exe in map, otherwise they don't match after analysis done
@@ -352,3 +361,56 @@ RoutineMap findRoutines(const Byte *code, const Size size, const Address entrypo
     return ret;
 }
 
+bool compareCode(const Executable &base, const Executable &object) {
+    const Byte 
+        *bCode = base.code.data(),
+        *oCode = object.code.data();
+    const Size
+        bSize = base.code.size(),
+        oSize = object.code.size();
+    Offset
+        bOffset = base.entrypoint.toLinear(),
+        oOffset = object.entrypoint.toLinear();
+
+    // keep comparing instructions between the two executables (base and object) until a mismatch is found
+    bool done = false;
+    while (!done) {
+        if (bOffset >= bSize) {
+            error("Passed base code boundary: "s + hexVal(bOffset));
+            return false;
+        }
+        if (oOffset >= oSize) {
+            error("Passed object code boundary: "s + hexVal(oOffset));
+            return false;
+        }
+
+        const Byte 
+            *bCur = bCode + bOffset,
+            *oCur = oCode + oOffset;
+        Instruction bi{bCur}, oi{oCur};
+        const InstructionMatch imatch = oi.match(bi);
+        debug(hexVal(bOffset) + ": " + bi.toString() + " -> " + hexVal(oOffset) + ": " + oi.toString() + " [" + to_string(imatch) + "]");
+        switch (imatch) {
+        case INS_MATCH_FULL:
+            break;
+        case INS_MATCH_DIFFOP1:
+        case INS_MATCH_DIFFOP2:
+            info("Operand difference at offset "s + hexVal(bOffset) + " in base executable; has '" + bi.toString() 
+                + "' as opposed to '" + oi.toString() + "' at offset " + hexVal(oOffset) + " in object executable");        
+            break;
+        case INS_MATCH_MISMATCH:
+            info("Instruction mismatch at offset "s + hexVal(bOffset) + " in base executable; has '" + bi.toString() 
+                + "' as opposed to '" + oi.toString() + "' at offset " + hexVal(oOffset) + " in object executable");
+            return false;
+        default:
+            error("Invalid instruction match result: "s + to_string(imatch));
+            return false;
+        }
+
+        // move to next instruction pair
+        bOffset += bi.length;
+        oOffset += oi.length;
+    }
+
+    return true;
+}

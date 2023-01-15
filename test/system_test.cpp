@@ -50,10 +50,28 @@ TEST_F(SystemTest, Analysis) {
     // test discovery of the routine map    
     MzImage mz{"bin/hello.exe"};
     mz.load(0x60);
-    RoutineMap discoveredMap = findRoutines(mz.loadModuleData(), mz.loadModuleSize(), mz.entrypoint(), mz.loadSegment());
+    RoutineMap discoveredMap = findRoutines(Executable{mz});
     discoveredMap.dump();
     // compare against ida map
     const Size matchCount = idaMap.match(discoveredMap);
     TRACELN("Found matching " << matchCount << " routines out of " << idaMap.routines.size());
     ASSERT_GE(matchCount, 26); // not all functions that ida found can be identified for now
+}
+
+TEST_F(SystemTest, CodeCompare) {
+    MzImage mz{"bin/hello.exe"};
+    mz.load(0x60);
+    Executable e1{mz}, e2{mz};
+    ASSERT_TRUE(compareCode(e1, e2));
+}
+
+TEST_F(SystemTest, SignedHex) {
+    SWord pos16val = 0x1234;
+    ASSERT_EQ(signedHexVal(pos16val), "+0x1234");    
+    SWord neg16val = -31989;
+    ASSERT_EQ(signedHexVal(neg16val), "-0x7cf5");
+    SByte pos8val = 0x10;
+    ASSERT_EQ(signedHexVal(pos8val), "+0x10");
+    SByte neg8val = -10;
+    ASSERT_EQ(signedHexVal(neg8val), "-0x0a");
 }

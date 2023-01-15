@@ -1,4 +1,5 @@
 #include <vector>
+#include <limits>
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
 #include "debug.h"
@@ -406,6 +407,7 @@ TEST_F(Cpu_8086_Test, Instruction) {
     0xF6, 0xC2, 0x80, // test dl,0x80
     0xff, 0x18, // call far [bx+si]
     0xd0, 0x0a, // ror byte [bp+si],1
+    0x0B, 0xA4, 0x0B, 0x83 // or sp,[si-0x7cf5]
     };
     const Size code_len = 23;
     const std::string instructions[] = {
@@ -420,10 +422,12 @@ TEST_F(Cpu_8086_Test, Instruction) {
         "mov ss:[0x52], ax",
         "test dl, 0x80",
         "call far [bx+si]",
-        "ror byte [bp+si], 1"
+        "ror byte [bp+si], 1",
+        "or sp, [si-0x7cf5]",
     };
+
     const Size lengths[] = {
-        1, 1, 3, 2, 5, 5, 2, 2, 4, 3, 2, 2,
+        1, 1, 3, 2, 5, 5, 2, 2, 4, 3, 2, 2, 4,
     };
     const int icount = sizeof(lengths) / sizeof(Size);
 
@@ -435,6 +439,16 @@ TEST_F(Cpu_8086_Test, Instruction) {
         ASSERT_EQ(ins.length, lengths[i]);
         codeptr += ins.length;
     }
+}
+
+TEST_F(Cpu_8086_Test, InstructionImm) {
+    Instruction i;
+    i.op2.imm.u32 = numeric_limits<DWord>::max();
+    const Byte code[] = {
+        0xB4, 0x30, // mov ah,0x30
+    };
+    i.load(code);
+    ASSERT_EQ(i.op2.imm.u32, 0x30);
 }
 
 // TODO: implement tests for group opcodes

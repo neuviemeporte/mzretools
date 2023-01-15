@@ -11,6 +11,10 @@
 
 using namespace std;
 
+static void debug(const string &msg) {
+    output(msg, LOG_OTHER, LOG_DEBUG);
+}
+
 void hexDump(const Byte *buf, const Size size, const Size off, const bool header) {
     ostringstream str;
     if (header) str << std::hex << std::setfill('0') << "buf[0x" << size
@@ -47,6 +51,26 @@ void hexDump(const Byte *buf, const Size size, const Size off, const bool header
         }
     }
     output(str.str(), LOG_OTHER, LOG_INFO, true);
+}
+
+std::string signedHexVal(const SByte val, bool plus) {
+    ostringstream str;
+    if (val >= 0) {
+        if (plus) str << "+";
+        str << "0x" << hex << setw(2) << setfill('0') << (int)(val);
+    }
+    else str << "-0x" << hex << setw(2) << setfill('0') << (int)(~val + 1);
+    return str.str();
+}
+
+std::string signedHexVal(const SWord val, bool plus) {
+    ostringstream str;
+    if (val >= 0) {
+        if (plus) str << "+";
+        str << "0x" << hex << setw(4) << setfill('0') << val;
+    }
+    else str << "-0x" << hex << setw(4) << setfill('0') << ~val + 1;
+    return str.str();
 }
 
 std::string hexVal(const Byte val) {

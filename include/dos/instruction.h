@@ -220,7 +220,12 @@ public:
     struct Operand {
         OperandType type;
         OperandSize size;
-        SWord offset;
+        union {
+            Word u16;
+            SWord s16;
+            Byte u8;
+            SByte s8;
+        } off;
         union {
             DWord u32;
             Word u16;
@@ -232,9 +237,11 @@ public:
         InstructionMatch match(const Operand &other);
     } op1, op2;
 
+    Instruction();
     Instruction(const Byte *idata);
     std::string toString() const;
     InstructionMatch match(const Instruction &other);
+    void load(const Byte* idata);
 
 private:
     OperandType getModrmOperand(const Byte modrm, const ModrmOperand op);

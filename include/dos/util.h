@@ -18,6 +18,9 @@ template<typename T, Size size = sizeof(T)> std::string hexString(const T &obj) 
     return str.str();    
 }
 
+std::string signedHexVal(const SByte val, bool plus = true);
+std::string signedHexVal(const SWord val, bool plus = true);
+
 std::string hexVal(const Byte val);
 std::string hexVal(const SByte val);
 std::string hexVal(const Word val);
