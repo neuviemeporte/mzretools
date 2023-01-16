@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <fstream>
 #include <string>
+#include <list>
 
 using namespace std;
 
@@ -205,7 +206,7 @@ RoutineMap findRoutines(const Executable &exe) {
                 return {};
             }
             const Offset instrOffs = csip.toLinear();
-            Instruction i{code + instrOffs};
+            Instruction i{csip, code + instrOffs};
             //analysisMessage("Instruction at offset "s + hexVal(instrOffs) + ": " + i.toString());
             // mark memory map locations as belonging to the current routine
             const Byte instrLen = i.length;
@@ -361,6 +362,13 @@ RoutineMap findRoutines(const Executable &exe) {
     return ret;
 }
 
+std::string RoutinePair::toString() const {
+    ostringstream str;
+    str << "'" << r1.name << "', id " << to_string(r1.id) << ", entrypoints @ " << r1.entrypoint() << " <-> " << r2.entrypoint();
+    return str.str();
+}
+
+// TODO: implement operand correction for jmp, implement jmp around invalid code
 bool compareCode(const Executable &base, const Executable &object) {
     const Byte 
         *bCode = base.code.data(),
@@ -368,13 +376,34 @@ bool compareCode(const Executable &base, const Executable &object) {
     const Size
         bSize = base.code.size(),
         oSize = object.code.size();
-    Offset
-        bOffset = base.entrypoint.toLinear(),
-        oOffset = object.entrypoint.toLinear();
+    Address
+        bAddr = base.entrypoint,
+        oAddr = object.entrypoint;
+    list<RoutinePair> searchQ;
+    RoutinePair curRoutine{"start_"s + hexVal(base.entrypoint.toLinear(), false), 0, base.entrypoint, object.entrypoint};
+    info("Starting in routine "s + curRoutine.toString());
+
+    auto addCall = [&](const Address &a1, const Address &a2) {
+        auto found = find_if(searchQ.begin(), searchQ.end(), [&](const RoutinePair &arg){
+            return arg.r1.entrypoint() == a1;
+        });
+        if (found != searchQ.end()) {
+            assert(found->r2.entrypoint() == a2);
+            info("Call to address "s + a1.toString() + " already present in search queue");
+            return;
+        }
+        int lastId = 0;
+        if (!searchQ.empty()) lastId = searchQ.back().r1.id;
+        RoutinePair call{"routine_"s + hexVal(a1.toLinear(), false), ++lastId, a1, a2};
+        info("Adding routine "s + call.toString() + " to search queue, size = " + to_string(searchQ.size()));
+        searchQ.push_back(call);
+    };
 
     // keep comparing instructions between the two executables (base and object) until a mismatch is found
-    bool done = false;
-    while (!done) {
+    while (true) {
+        const Offset 
+            bOffset = bAddr.toLinear(),
+            oOffset = oAddr.toLinear();
         if (bOffset >= bSize) {
             error("Passed base code boundary: "s + hexVal(bOffset));
             return false;
@@ -384,10 +413,7 @@ bool compareCode(const Executable &base, const Executable &object) {
             return false;
         }
 
-        const Byte 
-            *bCur = bCode + bOffset,
-            *oCur = oCode + oOffset;
-        Instruction bi{bCur}, oi{oCur};
+        Instruction bi{bAddr, bCode + bOffset}, oi{oAddr, oCode + oOffset};
         const InstructionMatch imatch = oi.match(bi);
         debug(hexVal(bOffset) + ": " + bi.toString() + " -> " + hexVal(oOffset) + ": " + oi.toString() + " [" + to_string(imatch) + "]");
         switch (imatch) {
@@ -407,9 +433,50 @@ bool compareCode(const Executable &base, const Executable &object) {
             return false;
         }
 
-        // move to next instruction pair
-        bOffset += bi.length;
-        oOffset += oi.length;
+        bool jump = false;
+        switch (bi.iclass) {
+        case INS_CALL:
+            info("Encountered near call to "s + bi.op1.toString() + " / " + oi.op1.toString());
+            assert(oi.op1.type == bi.op1.type);
+            switch (bi.op1.type) {
+            case OPR_IMM16:
+                addCall(Address{bAddr.segment, bi.op1.imm.u16}, Address{oAddr.segment, oi.op1.imm.u16});
+                break;
+            default:
+                info("Unknown call target of type "s + to_string(bi.op1.type) + ": " + bi.op1.toString() + ", ignoring");
+            }
+            break;
+        case INS_CALL_FAR:
+            error("Far call not implemented");
+            break;
+        case INS_RET:
+        case INS_RETF:
+        case INS_IRET:
+            info("--- Encountered return from routine "s + curRoutine.toString());
+            if (searchQ.empty()) {
+                info("Nothing left on the search stack, concluding comparison");
+                return true;
+            }
+            else {
+                curRoutine = searchQ.front();
+                searchQ.pop_front();
+                info("--- Proceeding to routine " + curRoutine.toString() + ", queue size = " + to_string(searchQ.size()));
+                jump = true;
+                bAddr = curRoutine.r1.entrypoint();
+                oAddr = curRoutine.r2.entrypoint();
+            }
+            break;
+        default: 
+            // normal instruction
+            break;
+        }
+
+        // move to the next instruction pair
+        if (!jump) {
+            bAddr += bi.length;
+            oAddr += oi.length;
+        }
+
     }
 
     return true;

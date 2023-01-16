@@ -64,6 +64,7 @@ public:
     Word loadSegment() const { return loadSegment_; }
     Size minAlloc() const { return header_.min_extra_paragraphs * PARAGRAPH_SIZE; }
     Size maxAlloc() const { return header_.max_extra_paragraphs * PARAGRAPH_SIZE; }
+    // TODO: should be relocated (i.e. apply loadSegment_)? 
     Address entrypoint() const { return Address(header_.cs, header_.ip); }
     Address stackPointer() const { return Address(header_.ss, header_.sp); }
     void load(const Word loadSegment);

@@ -433,7 +433,7 @@ TEST_F(Cpu_8086_Test, Instruction) {
 
     const Byte *codeptr = code;
     for (int i = 0; i < icount; ++i) {
-        Instruction ins(codeptr);
+        Instruction ins(Address{static_cast<Offset>(i)}, codeptr);
         TRACELN("--- instruction " << i + 1 << ": '" << ins.toString() << "' (length = " << ins.length << ")");
         ASSERT_EQ(ins.toString(), instructions[i]);
         ASSERT_EQ(ins.length, lengths[i]);
@@ -447,8 +447,7 @@ TEST_F(Cpu_8086_Test, InstructionImm) {
     const Byte code[] = {
         0xB4, 0x30, // mov ah,0x30
     };
-    i.load(code);
+    i.data = code;
+    i.load();
     ASSERT_EQ(i.op2.imm.u32, 0x30);
 }
-
-// TODO: implement tests for group opcodes

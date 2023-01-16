@@ -303,7 +303,7 @@ CmdStatus System::commandDisasm(const Params &params) {
     int instructions = 0;
     while (true) {
         Address iaddr(ioff);
-        Instruction i(code);
+        Instruction i(iaddr, code);
         info(iaddr.toString() + ": " + i.toString());
         if (end.isValid() && iaddr >= end) 
             break;

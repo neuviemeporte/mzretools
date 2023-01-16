@@ -60,7 +60,7 @@ TEST_F(SystemTest, Analysis) {
 
 TEST_F(SystemTest, CodeCompare) {
     MzImage mz{"bin/hello.exe"};
-    mz.load(0x60);
+    mz.load(0);
     Executable e1{mz}, e2{mz};
     ASSERT_TRUE(compareCode(e1, e2));
 }

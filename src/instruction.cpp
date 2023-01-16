@@ -174,12 +174,11 @@ InstructionClass instr_class(const Byte opcode) {
 Instruction::Instruction() : data(nullptr), addr{}, prefix(PRF_NONE), opcode(OP_INVALID), iclass(INS_ERR), length(0) {
 }
 
-Instruction::Instruction(const Byte *idata) : data(idata), addr{}, prefix(PRF_NONE), opcode(OP_INVALID), iclass(INS_ERR), length(0) {
-    load(idata);
+Instruction::Instruction(const Address &addr, const Byte *idata) : addr{addr}, data(idata), prefix(PRF_NONE), opcode(OP_INVALID), iclass(INS_ERR), length(0) {
+    load();
 }
 
-void Instruction::load(const Byte *idata)  {
-    data = idata;
+void Instruction::load()  {
     opcode = *data++;
     length++;
     DEBUG("Parsed opcode: "s + opcodeName(opcode) + ", length = " + to_string(length));
@@ -575,6 +574,7 @@ void Instruction::loadOperand(Operand &op) {
         op.imm.u32 = *reinterpret_cast<const Word*>(data);
         data += 2;
         length += 2;
+        if (iclass == INS_CALL) op.imm.u16 += addr.offset + length;
         DEBUG("imm16 operand = "s + hexVal(op.imm.u16) + ", length = " + to_string(length));
         break;
     case OPR_IMM32:

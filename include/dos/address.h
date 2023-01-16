@@ -35,6 +35,7 @@ struct Address {
     Size operator-(const Address &arg) const { return toLinear() - arg.toLinear(); }
     Address& operator+=(const SWord adjust) { offset += adjust; return *this; }
     Address& operator+=(const SByte adjust) { offset += adjust; return *this; }
+    Address& operator+=(const Byte adjust) { offset += adjust; return *this; }
 
     void set(const Offset linear);
     std::string toString(const bool brief = false) const;

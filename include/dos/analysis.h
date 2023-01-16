@@ -21,6 +21,12 @@ struct Routine {
     std::string toString() const;
 };
 
+struct RoutinePair {
+    Routine r1, r2;
+    RoutinePair(const std::string &name, const int id, const Address &e1, const Address &e2) : r1{name, id, e1}, r2{name, id, e2} {}
+    std::string toString() const;
+};
+
 struct Frame {
     Address address;
     int id;

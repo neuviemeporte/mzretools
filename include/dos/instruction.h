@@ -238,10 +238,10 @@ public:
     } op1, op2;
 
     Instruction();
-    Instruction(const Byte *idata);
+    Instruction(const Address &addr, const Byte *idata);
     std::string toString() const;
     InstructionMatch match(const Instruction &other);
-    void load(const Byte* idata);
+    void load();
 
 private:
     OperandType getModrmOperand(const Byte modrm, const ModrmOperand op);

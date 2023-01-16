@@ -31,30 +31,7 @@ string mzInfo(const MzImage &mz) {
 }
 
 void compare(const MzImage &base, const MzImage &compare) {
-    const Byte 
-        *baseCode = base.loadModuleData(),
-        *compCode = compare.loadModuleData();
-    const Offset
-        baseEntry = base.entrypoint().toLinear(),
-        compEntry = compare.entrypoint().toLinear();
-    
-    Offset 
-        baseOffset = baseEntry,
-        compOffset = compEntry;
 
-    stack<Frame> callstack;
-    callstack.push(Frame(base.entrypoint(), 1));
-
-    while (!callstack.empty()) {
-        const Frame frame = callstack.top();
-        callstack.pop();
-        Instruction iB(baseCode + baseOffset), iC(compCode + compOffset);
-
-        cout << "iB @ " << hexVal(baseOffset) << ": " << iB.toString() << endl
-             << "iC @ " << hexVal(compOffset) << ": " << iC.toString() << endl;
-        baseOffset += iB.length;
-        compOffset += iC.length;
-    }
 }
 
 int main(int argc, char *argv[]) {
