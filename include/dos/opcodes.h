@@ -2,6 +2,7 @@
 #define OPCODES_H
 
 #include "dos/types.h"
+#include <string>
 
 // Legend for abbreviations used in opcode names:
 // 'v' and not 'w' is used for word-sized operands because the opcode map I used to do this employed this letter, supposedly 'w' and 'v' have some distinction for later (than 8086) x86 instruction opcodes
@@ -287,13 +288,12 @@ enum Opcode : Byte {
     OP_GRP5_Ev    = 0xff,
 };
 
-
-
 std::string opcodeName(const Byte opcode);
 std::string opcodeString(const Byte opcode);
 bool opcodeIsModrm(const Byte opcode);
 bool opcodeIsGroup(const Byte opcode);
 bool opcodeIsSegmentPrefix(const Byte opcode);
+bool opcodeIsConditionalJump(const Byte opcode);
 size_t opcodeInstructionLength(const Byte opcode);
 
 #endif // OPCODES_H

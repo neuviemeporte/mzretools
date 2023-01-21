@@ -73,37 +73,44 @@ std::string signedHexVal(const SWord val, bool plus) {
     return str.str();
 }
 
-std::string hexVal(const Byte val, bool prefix) {
+// TODO: templatize
+std::string hexVal(const Byte val, bool prefix, bool pad) {
     std::ostringstream str;
-    str << "0x" << std::hex << std::setw(2) << std::setfill('0') <<  (int)val;
+    if (prefix) str << "0x";
+    if (pad) str << std::setw(2) << std::setfill('0');
+    str << std::hex << (int)val;
     return str.str();
 }
 
-std::string hexVal(const SByte val, bool prefix) {
+std::string hexVal(const SByte val, bool prefix, bool pad) {
     std::ostringstream str;
     if (prefix) str << "0x";
-    str << std::hex << std::setw(2) << std::setfill('0') <<  (int)val;
+    if (pad) str << std::setw(2) << std::setfill('0');
+    str << std::hex << (int)val;
     return str.str();
 }
 
-std::string hexVal(const Word val, bool prefix) {
+std::string hexVal(const Word val, bool prefix, bool pad) {
     std::ostringstream str;
     if (prefix) str << "0x";
-    str << std::hex << std::setw(4) << std::setfill('0') <<  val;
+    if (pad) str << std::setw(4) << std::setfill('0');
+    str << std::hex <<  val;
     return str.str();    
 }
 
-std::string hexVal(const SWord val, bool prefix) {
+std::string hexVal(const SWord val, bool prefix, bool pad) {
     std::ostringstream str;
     if (prefix) str << "0x";
-    str << std::hex << std::setw(4) << std::setfill('0') <<  val;
+    if (pad) str << std::setw(4) << std::setfill('0');
+    str << std::hex << val;
     return str.str();    
 }
 
-std::string hexVal(const DWord val, bool prefix) {
+std::string hexVal(const DWord val, bool prefix, bool pad) {
     std::ostringstream str;
     if (prefix) str << "0x";
-    str << std::hex << std::setw(8) << std::setfill('0') <<  val;
+    if (pad) str << std::setw(8) << std::setfill('0');
+    str << std::hex <<  val;
     return str.str();    
 }
 

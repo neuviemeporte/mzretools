@@ -380,10 +380,17 @@ bool compareCode(const Executable &base, const Executable &object) {
         bAddr = base.entrypoint,
         oAddr = object.entrypoint;
     list<RoutinePair> searchQ;
+    vector<bool> visited(bSize, false);
     RoutinePair curRoutine{"start_"s + hexVal(base.entrypoint.toLinear(), false), 0, base.entrypoint, object.entrypoint};
     info("Starting in routine "s + curRoutine.toString());
 
+    Size routineCount = 1;
+    // TODO: check if address already visited, could encounter the same address again after it was already popped
     auto addCall = [&](const Address &a1, const Address &a2) {
+        if (visited.at(a1.toLinear())) {
+            info("Address "s + a1.toString() + " already visited");
+            return;
+        }
         auto found = find_if(searchQ.begin(), searchQ.end(), [&](const RoutinePair &arg){
             return arg.r1.entrypoint() == a1;
         });
@@ -397,13 +404,19 @@ bool compareCode(const Executable &base, const Executable &object) {
         RoutinePair call{"routine_"s + hexVal(a1.toLinear(), false), ++lastId, a1, a2};
         info("Adding routine "s + call.toString() + " to search queue, size = " + to_string(searchQ.size()));
         searchQ.push_back(call);
+        routineCount++;
     };
 
     // keep comparing instructions between the two executables (base and object) until a mismatch is found
-    while (true) {
+    bool done = false;
+    while (!done) {
         const Offset 
             bOffset = bAddr.toLinear(),
             oOffset = oAddr.toLinear();
+        if (visited.at(bOffset)) {
+            error("Address "s + bAddr.toString() + " already visited");
+            return false;
+        }
         if (bOffset >= bSize) {
             error("Passed base code boundary: "s + hexVal(bOffset));
             return false;
@@ -414,6 +427,8 @@ bool compareCode(const Executable &base, const Executable &object) {
         }
 
         Instruction bi{bAddr, bCode + bOffset}, oi{oAddr, oCode + oOffset};
+        // mark instruction bytes as visited
+        fill(visited.begin() + bOffset, visited.begin() + bOffset + bi.length, true);
         const InstructionMatch imatch = oi.match(bi);
         debug(hexVal(bOffset) + ": " + bi.toString() + " -> " + hexVal(oOffset) + ": " + oi.toString() + " [" + to_string(imatch) + "]");
         switch (imatch) {
@@ -435,6 +450,29 @@ bool compareCode(const Executable &base, const Executable &object) {
 
         bool jump = false;
         switch (bi.iclass) {
+        case INS_JMP:
+            if (opcodeIsConditionalJump(bi.opcode)) break;
+            else {
+                info("Encountered unconditional near jump to "s + bi.op1.toString() + " / " + oi.op1.toString());
+                Address jumpAddr(bAddr.segment, bi.op1.imm.u16);
+                if (visited.at(jumpAddr.toLinear())) { 
+                    info("Address "s + jumpAddr.toString() + " already visited");
+                    break;
+                }
+                switch (bi.op1.type) {
+                case OPR_IMM16:
+                    jump = true;
+                    bAddr = jumpAddr;
+                    oAddr.offset = oi.op1.imm.u16;
+                    break;
+                default:
+                    info("Unknown jump target of type "s + to_string(bi.op1.type) + ": " + bi.op1.toString() + ", ignoring");
+                }
+            }
+            break;
+        case INS_JMP_FAR:
+            error("Far jump not implemented");
+            break;
         case INS_CALL:
             info("Encountered near call to "s + bi.op1.toString() + " / " + oi.op1.toString());
             assert(oi.op1.type == bi.op1.type);
@@ -455,7 +493,7 @@ bool compareCode(const Executable &base, const Executable &object) {
             info("--- Encountered return from routine "s + curRoutine.toString());
             if (searchQ.empty()) {
                 info("Nothing left on the search stack, concluding comparison");
-                return true;
+                done = true;
             }
             else {
                 curRoutine = searchQ.front();
@@ -479,5 +517,6 @@ bool compareCode(const Executable &base, const Executable &object) {
 
     }
 
+    info("Identified and compared "s + to_string(routineCount) + " routines");
     return true;
 }

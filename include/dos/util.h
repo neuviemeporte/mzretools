@@ -21,11 +21,11 @@ template<typename T, Size size = sizeof(T)> std::string hexString(const T &obj) 
 std::string signedHexVal(const SByte val, bool plus = true);
 std::string signedHexVal(const SWord val, bool plus = true);
 
-std::string hexVal(const Byte val, bool prefix = true);
-std::string hexVal(const SByte val, bool prefix = true);
-std::string hexVal(const Word val, bool prefix = true);
-std::string hexVal(const SWord val, bool prefix = true);
-std::string hexVal(const DWord val, bool prefix = true);
+std::string hexVal(const Byte  val, bool prefix = true, bool pad = true);
+std::string hexVal(const SByte val, bool prefix = true, bool pad = true);
+std::string hexVal(const Word  val, bool prefix = true, bool pad = true);
+std::string hexVal(const SWord val, bool prefix = true, bool pad = true);
+std::string hexVal(const DWord val, bool prefix = true, bool pad = true);
 std::string hexVal(const Offset val, const bool hdr = true, const int pad = 0);
 std::string hexVal(const void* ptr);
 std::istream& safeGetline(std::istream& is, std::string& t);

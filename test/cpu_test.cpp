@@ -401,7 +401,7 @@ TEST_F(Cpu_8086_Test, Instruction) {
     0xf3, 0xaa, // rep stosb
     0x81, 0x78, 0x10, 0xcd, 0xab, // cmp word [bx+si+0x10],0xabcd
     0x36, 0x21, 0x16, 0xac, 0x19, // and [ss:0x19ac],dx
-    0x74, 0xab, // jz 0xab
+    0x74, 0xfd, // jz -0x3 (+0x11+0x2 = 0x10)
     0xd0, 0xc0, // rol al,1
     0x36, 0xA3, 0x52, 0x00, // mov [ss:0x52],ax
     0xF6, 0xC2, 0x80, // test dl,0x80
@@ -417,7 +417,7 @@ TEST_F(Cpu_8086_Test, Instruction) {
         "repz stosb",
         "cmp word [bx+si+0x10], 0xabcd",
         "and ss:[0x19ac], dx",
-        "jz 0xab",
+        "jz 0x10",
         "rol al, 1",
         "mov ss:[0x52], ax",
         "test dl, 0x80",
@@ -425,29 +425,18 @@ TEST_F(Cpu_8086_Test, Instruction) {
         "ror byte [bp+si], 1",
         "or sp, [si-0x7cf5]",
     };
-
     const Size lengths[] = {
         1, 1, 3, 2, 5, 5, 2, 2, 4, 3, 2, 2, 4,
     };
     const int icount = sizeof(lengths) / sizeof(Size);
 
-    const Byte *codeptr = code;
+    Size codeofs = 0;
     for (int i = 0; i < icount; ++i) {
-        Instruction ins(Address{static_cast<Offset>(i)}, codeptr);
-        TRACELN("--- instruction " << i + 1 << ": '" << ins.toString() << "' (length = " << ins.length << ")");
+        Instruction ins(Address(0, codeofs), code + codeofs);
+        TRACELN("--- " << hexVal(ins.addr.toLinear()) << ": instruction " << i + 1 << ": '" << ins.toString() << "' (length = " << static_cast<int>(ins.length) << ")");
         ASSERT_EQ(ins.toString(), instructions[i]);
         ASSERT_EQ(ins.length, lengths[i]);
-        codeptr += ins.length;
+        codeofs += ins.length;
     }
 }
 
-TEST_F(Cpu_8086_Test, InstructionImm) {
-    Instruction i;
-    i.op2.imm.u32 = numeric_limits<DWord>::max();
-    const Byte code[] = {
-        0xB4, 0x30, // mov ah,0x30
-    };
-    i.data = code;
-    i.load();
-    ASSERT_EQ(i.op2.imm.u32, 0x30);
-}

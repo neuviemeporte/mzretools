@@ -1,3 +1,4 @@
+#include "dos/opcodes.h"
 #include "dos/types.h"
 #include "dos/util.h"
 
@@ -342,6 +343,10 @@ static const int OPCODE_PREFIX[256] = {
 
 bool opcodeIsSegmentPrefix(const Byte opcode) {
     return OPCODE_PREFIX[opcode] == 1;
+}
+
+bool opcodeIsConditionalJump(const Byte opcode) {
+    return opcode >= OP_JO_Jb && opcode <= OP_JG_Jb;
 }
 
 // total length of instruction per opcode, not including the length of any displacements 

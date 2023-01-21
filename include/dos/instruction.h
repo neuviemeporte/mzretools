@@ -220,6 +220,7 @@ public:
     struct Operand {
         OperandType type;
         OperandSize size;
+        // TODO: don't need both, just "val"?
         union {
             Word u16;
             SWord s16;

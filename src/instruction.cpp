@@ -340,14 +340,14 @@ std::string Instruction::Operand::toString() const {
         if (type == OPR_MEM_OFF16) str << "[0x" << hex << off.u16 << "]";
         else str << "[" << OPR_NAME[type] << signedHexVal(off.s16) << "]";
     }
-    else if (type >= OPR_IMM0 && type <= OPR_IMM1)
+    else if (type == OPR_IMM0 || type == OPR_IMM1)
         str << OPR_NAME[type];
     else if (type == OPR_IMM8)
-        str << "0x" << hex << static_cast<int>(imm.u8);
+        str << hexVal(imm.u8, true, false);
     else if (type == OPR_IMM16)
-        str << "0x" << hex << imm.u16;
+        str << hexVal(imm.u16, true, false);
     else if (type == OPR_IMM32)
-        str << "0x" << hex << imm.u32;
+        str << hexVal(imm.u32, true, false);
 
     return str.str();
 }
@@ -355,8 +355,41 @@ std::string Instruction::Operand::toString() const {
 InstructionMatch Instruction::Operand::match(const Operand &other) {
     if (type != other.type || size != other.size)
         return INS_MATCH_MISMATCH;
-    if (off.s16 != other.off.s16 || imm.u32 != other.imm.u32)
-        return INS_MATCH_DIFF;
+    switch(type) {
+    case OPR_MEM_OFF8:
+    case OPR_MEM_BX_SI_OFF8:
+    case OPR_MEM_BX_DI_OFF8:
+    case OPR_MEM_BP_SI_OFF8:
+    case OPR_MEM_BP_DI_OFF8:
+    case OPR_MEM_SI_OFF8:
+    case OPR_MEM_DI_OFF8:
+    case OPR_MEM_BP_OFF8:
+    case OPR_MEM_BX_OFF8:
+        if (off.u8 != other.off.u8) return INS_MATCH_DIFF;
+        else break;
+    case OPR_MEM_OFF16:
+    case OPR_MEM_BX_SI_OFF16:
+    case OPR_MEM_BX_DI_OFF16:
+    case OPR_MEM_BP_SI_OFF16:
+    case OPR_MEM_BP_DI_OFF16:
+    case OPR_MEM_SI_OFF16:
+    case OPR_MEM_DI_OFF16:
+    case OPR_MEM_BP_OFF16:
+    case OPR_MEM_BX_OFF16:
+        if (off.u16 != other.off.u16) return INS_MATCH_DIFF;
+        else break;
+    case OPR_IMM8:
+        if (imm.u8 != other.imm.u8) return INS_MATCH_DIFF;
+        else break;
+    case OPR_IMM16:
+        if (imm.u16 != other.imm.u16) return INS_MATCH_DIFF;
+        else break;
+    case OPR_IMM32:
+        if (imm.u32 != other.imm.u32) return INS_MATCH_DIFF;
+        else break;
+    default:
+        break;
+    }
     return INS_MATCH_FULL;
 }
 
@@ -367,16 +400,16 @@ std::string Instruction::toString() const {
         str << PRF_NAME[prefix] << " ";
     
     // output instruction name
-    if (iclass == INS_JMP && opcode < OP_GRP1_Eb_Ib) { // conditional jumps
+    // conditional jumps, lookup specific jump name
+    if (iclass == INS_JMP && opcodeIsConditionalJump(opcode)) { 
         Byte idx = opcode - OP_JO_Jb;
         assert(idx < 16);
         str << JMP_NAME[idx];
     }
+    // otherwise just output name corresponding to instruction class
     else {
         str << INS_NAME[iclass];
     }
-
-    // TODO: handle jmp/call/loop operand output correctly, take current instruction address into account
 
     // output operands
     if (op1.type != OPR_NONE) {
@@ -486,6 +519,8 @@ OperandType Instruction::getModrmOperand(const Byte modrm, const ModrmOperand op
 }
 
 void Instruction::loadOperand(Operand &op) {
+    Word wordVal;
+    Byte byteVal;
     switch (op.type) {
     case OPR_NONE:
     case OPR_REG_AX:
@@ -564,18 +599,30 @@ void Instruction::loadOperand(Operand &op) {
         DEBUG("imm1 operand");
         break;    
     case OPR_IMM8:
+        length += 1;
         op.off.s16 = 0;
-        op.imm.u32 = *reinterpret_cast<const Byte*>(data++);
-        length++;
-        DEBUG("imm8 operand = "s + hexVal(op.imm.u8) + ", length = " + to_string(length));
+        byteVal = *reinterpret_cast<const Byte*>(data++);
+        DEBUG("imm8 operand = "s + hexVal(byteVal) + ", length = " + to_string(length));
+        // for calls and jumps apply correction to the operand value - it is a signed offset relative to the instruction end
+        if (iclass == INS_CALL || iclass == INS_JMP) {
+            op.imm.s16 = addr.offset + length;
+            op.imm.s16 += static_cast<SByte>(byteVal);
+            DEBUG("applied operand correction: " + hexVal(addr.offset) + "+" + hexVal(length) + signedHexVal(static_cast<SByte>(byteVal),true) + " = " + hexVal(op.imm.u16));
+            op.type = OPR_IMM16; // loaded as 8bit but display as 16
+        }
+        else op.imm.u8 = byteVal;
         break;    
     case OPR_IMM16:
-        op.off.s16 = 0;
-        op.imm.u32 = *reinterpret_cast<const Word*>(data);
-        data += 2;
         length += 2;
-        if (iclass == INS_CALL) op.imm.u16 += addr.offset + length;
-        DEBUG("imm16 operand = "s + hexVal(op.imm.u16) + ", length = " + to_string(length));
+        DEBUG("imm16 operand = "s + hexVal(wordVal) + ", length = " + to_string(length));
+        op.off.s16 = 0;
+        wordVal = *reinterpret_cast<const Word*>(data);
+        if (iclass == INS_CALL || iclass == INS_JMP) {
+            op.imm.s16 = addr.offset + length;
+            op.imm.s16 += static_cast<SWord>(wordVal);
+        }
+        else op.imm.u16 = wordVal;
+        data += 2;
         break;
     case OPR_IMM32:
         op.off.s16 = 0;
