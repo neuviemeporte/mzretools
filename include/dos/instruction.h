@@ -211,7 +211,6 @@ INSTRUCTION_MATCH
 
 class Instruction {
 public:
-    const Byte *data;
     Address addr;
     InstructionPrefix prefix;
     Byte opcode;
@@ -220,33 +219,25 @@ public:
     struct Operand {
         OperandType type;
         OperandSize size;
-        // TODO: don't need both, just "val"?
-        union {
-            Word u16;
-            SWord s16;
-            Byte u8;
-            SByte s8;
-        } off;
         union {
             DWord u32;
             Word u16;
-            SWord s16;
             Byte u8;
-            SByte s8;
-        } imm;
+        } immval; // optional immediate offset or literal value
         std::string toString() const;
         InstructionMatch match(const Operand &other);
     } op1, op2;
 
     Instruction();
-    Instruction(const Address &addr, const Byte *idata);
+    Instruction(const Address &addr, const Byte *data);
     std::string toString() const;
     InstructionMatch match(const Instruction &other);
-    void load();
+    void load(const Byte *data);
+    Word relativeOffset() const;
 
 private:
     OperandType getModrmOperand(const Byte modrm, const ModrmOperand op);
-    void loadOperand(Operand &op);
+    Size loadImmediate(Operand &op, const Byte *data);
 };
 
 InstructionClass instr_class(const Byte opcode);

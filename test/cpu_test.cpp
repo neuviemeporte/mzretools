@@ -20,7 +20,7 @@ public:
     MOCK_METHOD(IntStatus, interrupt, (const Byte num, Registers &regs), (override));
 };
 
-class Cpu_8086_Test : public ::testing::Test {
+class CpuTest : public ::testing::Test {
 protected:
     Cpu_8086 *cpu_;
     Memory *mem_;
@@ -62,7 +62,7 @@ protected:
     inline Word instructionLength() const { return cpu_->instructionLength(); }
 };
 
-TEST_F(Cpu_8086_Test, OrderHL) {
+TEST_F(CpuTest, OrderHL) {
     reg16(REG_AX) = 0x4c7b;
     reg16(REG_BX) = 0x1234;
     reg16(REG_CX) = 0x0b0c;
@@ -78,7 +78,7 @@ TEST_F(Cpu_8086_Test, OrderHL) {
     ASSERT_EQ(reg8(REG_DL), 0xfc);    
 }
 
-TEST_F(Cpu_8086_Test, Flags) {
+TEST_F(CpuTest, Flags) {
     auto flagset = vector<Flag>{ 
         FLAG_CARRY, FLAG_B1, FLAG_PARITY, FLAG_B3, FLAG_AUXC, FLAG_B5, FLAG_ZERO, FLAG_SIGN, 
         FLAG_TRAP, FLAG_INT, FLAG_DIR, FLAG_OVER, FLAG_B12, FLAG_B13, FLAG_B14, FLAG_B15
@@ -102,7 +102,7 @@ TEST_F(Cpu_8086_Test, Flags) {
     ASSERT_EQ(reg16(REG_FLAGS), 0x0);
 }
 
-TEST_F(Cpu_8086_Test, DISABLED_Arithmetic) {
+TEST_F(CpuTest, DISABLED_Arithmetic) {
     // TODO: implement an assembler to generate code from a vector of structs
     const Byte code[] = {
         OP_MOV_AL_Ib, 0xFF, // mov al,0xff
@@ -148,7 +148,7 @@ TEST_F(Cpu_8086_Test, DISABLED_Arithmetic) {
     ASSERT_EQ(reg16(REG_FLAGS) & mask, 0b10010101); // C1 Z0 S1 O0 A1 P1
 }
 
-TEST_F(Cpu_8086_Test, WordOperand) {
+TEST_F(CpuTest, WordOperand) {
     const Byte code[] = {
         0xbf, 0x6f, 0x01 // mov di,0x16f
     };
@@ -158,7 +158,7 @@ TEST_F(Cpu_8086_Test, WordOperand) {
 }
 
 // test all combinations of the mov opcodes with modrm modificator bytes
-TEST_F(Cpu_8086_Test, Mov) {
+TEST_F(CpuTest, Mov) {
     const Byte disp1 = 0xa, disp2 = 0x8c;
     Offset off;
     const Byte code[] = {
@@ -302,7 +302,7 @@ TEST_F(Cpu_8086_Test, Mov) {
     ASSERT_EQ(mem_->readByte(off), reg8(REG_CH));
 }
 
-TEST_F(Cpu_8086_Test, Int) {
+TEST_F(CpuTest, Int) {
     const Byte code[] = {
         OP_INT_3,
         OP_INT_Ib, 0x21,
@@ -326,7 +326,7 @@ TEST_F(Cpu_8086_Test, Int) {
     cpu_->step(); // into    
 }
 
-TEST_F(Cpu_8086_Test, CmpSub) {
+TEST_F(CpuTest, CmpSub) {
     Byte code[] = {
         OP_SUB_Gv_Ev, MODRM_MOD_REG | MODRM_REG_AX | MODRM_REG_BX >> MODRM_REG_SHIFT,  // sub, ax,bx
     };
@@ -386,14 +386,14 @@ TEST_F(Cpu_8086_Test, CmpSub) {
 
 }
 
-TEST_F(Cpu_8086_Test, Word) {
+TEST_F(CpuTest, Word) {
     Word x = 0x165;
     SByte b = 0xf7;
     x += b;
     TRACELN("x = " << hexVal(x));
 }
 
-TEST_F(Cpu_8086_Test, Instruction) {
+TEST_F(CpuTest, Instruction) {
     const Byte code[] = {
     0x06, // push es
     0x49, // dec cx

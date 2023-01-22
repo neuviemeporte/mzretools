@@ -21,7 +21,7 @@ public:
 class InterruptInterface;
 
 class Cpu_8086 : public Cpu {
-    friend class Cpu_8086_Test;
+    friend class CpuTest;
     
 private:
     Memory *mem_;

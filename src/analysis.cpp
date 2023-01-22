@@ -225,49 +225,49 @@ RoutineMap findRoutines(const Executable &exe) {
             {
             case INS_JMP:
             {
-                Address jumpDest(csip, instrLen);
+                Address jumpDest{csip};
                 string jumpType;
                 Word jumpReturn = 0;
                 bool jumpOk = true;
                 switch (i.opcode) {
                 // unconditional jumps: don't store current location on stack, we aren't coming back
-                case OP_JMP_Jb: jumpDest += i.op1.imm.s8; jumpType = "unconditional 8bit jump"; break;
-                case OP_JMP_Jv: jumpDest += i.op1.imm.s16; jumpType = "unconditional 16bit jump"; break;
-                case OP_JMP_Ap: jumpDest = Address{i.op1.imm.u32}; jumpType = "unconditional far jump"; break;
+                case OP_JMP_Jb: jumpDest.offset = i.relativeOffset(); jumpType = "unconditional 8bit jump"; break;
+                case OP_JMP_Jv: jumpDest.offset = i.relativeOffset(); jumpType = "unconditional 16bit jump"; break;
+                case OP_JMP_Ap: jumpDest = Address{i.op1.immval.u32}; jumpType = "unconditional far jump"; break;
                 // conditional 8bit jumps, store  next instruction's address on callstack to come back to
                 case OP_GRP5_Ev:
                     analysisMessage("unknown near jump target: "s + i.toString());
                     jumpOk = false;
                     break; 
-                default: jumpDest += i.op1.imm.s8; jumpType = "conditional 8bit jump"; jumpReturn = instrLen; break;
+                default: jumpDest.offset = i.relativeOffset(); jumpType = "conditional 8bit jump"; jumpReturn = instrLen; break;
                 }
                 if (jumpOk && checkAndJump(jumpDest, jumpType, jumpReturn)) continue; // if jump allowed, continue to next loop iteration - move to frame from callstack top
             }
                 break; // otherwise, break out from switch and advance to next instruction
             case INS_JMP_FAR:
                 if (i.op1.type == OPR_IMM32) {
-                    if (checkAndJump(Address{i.op1.imm.u32}, "unconditional far jump")) continue;
+                    if (checkAndJump(Address{i.op1.immval.u32}, "unconditional far jump")) continue;
                 }
                 else analysisMessage("unknown far jump target: "s + i.toString());
                 break;
             case INS_JCXZ: // TODO: group together with other conditionals
-                if (checkAndJump(Address(csip, instrLen + i.op1.imm.s8), "jcxz jump", instrLen)) continue;
+                if (checkAndJump(Address(csip.segment, i.relativeOffset()), "jcxz jump", instrLen)) continue;
                 break;                
             case INS_LOOP:
             case INS_LOOPNZ:
             case INS_LOOPZ:
-                if (checkAndJump(Address(csip, instrLen + i.op1.imm.s8), "loop", instrLen)) continue;
+                if (checkAndJump(Address(csip.segment, i.relativeOffset()), "loop", instrLen)) continue;
                 break;
             // calls
             case INS_CALL:
                 if (i.op1.type == OPR_IMM16) {
-                    if (checkAndJump(Address(csip, instrLen + i.op1.imm.u16), "call", instrLen, true)) continue;
+                    if (checkAndJump(Address(csip.segment, i.relativeOffset()), "call", instrLen, true)) continue;
                 }
                 else analysisMessage("unknown near call target: "s + i.toString());
                 break;
             case INS_CALL_FAR:
                 if (i.op1.type == OPR_IMM32) {
-                    if (checkAndJump(Address{i.op1.imm.u32}, "far call", instrLen, true)) continue;
+                    if (checkAndJump(Address{i.op1.immval.u32}, "far call", instrLen, true)) continue;
                 }
                 else analysisMessage("unknown far call target: "s + i.toString());
                 break;
@@ -454,7 +454,7 @@ bool compareCode(const Executable &base, const Executable &object) {
             if (opcodeIsConditionalJump(bi.opcode)) break;
             else {
                 info("Encountered unconditional near jump to "s + bi.op1.toString() + " / " + oi.op1.toString());
-                Address jumpAddr(bAddr.segment, bi.op1.imm.u16);
+                Address jumpAddr(bAddr.segment, bi.relativeOffset());
                 if (visited.at(jumpAddr.toLinear())) { 
                     info("Address "s + jumpAddr.toString() + " already visited");
                     break;
@@ -463,7 +463,7 @@ bool compareCode(const Executable &base, const Executable &object) {
                 case OPR_IMM16:
                     jump = true;
                     bAddr = jumpAddr;
-                    oAddr.offset = oi.op1.imm.u16;
+                    oAddr.offset = oi.relativeOffset();
                     break;
                 default:
                     info("Unknown jump target of type "s + to_string(bi.op1.type) + ": " + bi.op1.toString() + ", ignoring");
@@ -478,7 +478,7 @@ bool compareCode(const Executable &base, const Executable &object) {
             assert(oi.op1.type == bi.op1.type);
             switch (bi.op1.type) {
             case OPR_IMM16:
-                addCall(Address{bAddr.segment, bi.op1.imm.u16}, Address{oAddr.segment, oi.op1.imm.u16});
+                addCall(Address{bAddr.segment, bi.relativeOffset()}, Address{oAddr.segment, oi.relativeOffset()});
                 break;
             default:
                 info("Unknown call target of type "s + to_string(bi.op1.type) + ": " + bi.op1.toString() + ", ignoring");

@@ -45,7 +45,7 @@ TEST_F(SystemTest, RoutineMap) {
     ASSERT_EQ(matchCount, routineCount - 1);
 }
 
-TEST_F(SystemTest, Analysis) {
+TEST_F(SystemTest, FindRoutines) {
     const RoutineMap idaMap{"../bin/hello.lst"};
     // test discovery of the routine map    
     MzImage mz{"bin/hello.exe"};
