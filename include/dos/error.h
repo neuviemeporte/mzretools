@@ -52,4 +52,8 @@ class SystemError : public Error {
     using Error::Error;
 };
 
+class AnalysisError : public Error {
+    using Error::Error;
+};
+
 #endif // ERROR_H

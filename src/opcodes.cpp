@@ -346,7 +346,7 @@ bool opcodeIsSegmentPrefix(const Byte opcode) {
 }
 
 bool opcodeIsConditionalJump(const Byte opcode) {
-    return opcode >= OP_JO_Jb && opcode <= OP_JG_Jb;
+    return opcode == OP_JCXZ_Jb || (opcode >= OP_JO_Jb && opcode <= OP_JG_Jb);
 }
 
 // total length of instruction per opcode, not including the length of any displacements 

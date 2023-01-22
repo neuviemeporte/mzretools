@@ -65,7 +65,6 @@
     X(INS_LOOPNZ) \
     X(INS_LOOPZ) \
     X(INS_LOOP) \
-    X(INS_JCXZ) \
     X(INS_IN) \
     X(INS_OUT) \
     X(INS_LOCK) \

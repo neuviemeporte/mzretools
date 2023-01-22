@@ -55,7 +55,7 @@ INS_MOV,    INS_MOV,   INS_MOV,   INS_MOV,  INS_MOVSB, INS_MOVSW, INS_CMPSB, INS
 INS_MOV,    INS_MOV,   INS_MOV,   INS_MOV,  INS_MOV,   INS_MOV,   INS_MOV,   INS_MOV,   INS_MOV,  INS_MOV,  INS_MOV,      INS_MOV,   INS_MOV,   INS_MOV,   INS_MOV,   INS_MOV,   // B
 INS_ERR,    INS_ERR,   INS_RET,   INS_RET,  INS_LES,   INS_LDS,   INS_MOV,   INS_MOV,   INS_ERR,  INS_ERR,  INS_RETF,     INS_RETF,  INS_INT,   INS_INT,   INS_INTO,  INS_IRET,  // C
 INS_ERR,    INS_ERR,   INS_ERR,   INS_ERR,  INS_AAM,   INS_AAD,   INS_ERR,   INS_XLAT,  INS_ERR,  INS_ERR,  INS_ERR,      INS_ERR,   INS_ERR,   INS_ERR,   INS_ERR,   INS_ERR,   // D
-INS_LOOPNZ, INS_LOOPZ, INS_LOOP,  INS_JCXZ, INS_IN,    INS_IN,    INS_OUT,   INS_OUT,   INS_CALL, INS_JMP,  INS_JMP,      INS_JMP,   INS_IN,    INS_IN,    INS_OUT,   INS_OUT,   // E
+INS_LOOPNZ, INS_LOOPZ, INS_LOOP,  INS_JMP,  INS_IN,    INS_IN,    INS_OUT,   INS_OUT,   INS_CALL, INS_JMP,  INS_JMP,      INS_JMP,   INS_IN,    INS_IN,    INS_OUT,   INS_OUT,   // E
 INS_LOCK,   INS_ERR,   INS_REPNZ, INS_REPZ, INS_HLT,   INS_CMC,   INS_ERR,   INS_ERR,   INS_CLC,  INS_STC,  INS_CLI,      INS_STI,   INS_CLD,   INS_STD,   INS_ERR,   INS_ERR,   // F
 };
 
@@ -329,13 +329,14 @@ Word Instruction::relativeOffset() const {
 static const char* INS_NAME[] = {
     "???", "add", "push", "pop", "or", "adc", "sbb", "and", "daa", "sub", "das", "xor", "aaa", "cmp", "aas", "inc", "dec", "jmp", "jmp far", "test", "xchg", "mov", "lea", "nop", "cbw", "cwd",
     "call", "call far", "wait", "pushf", "popf", "sahf", "lahf", "movsb", "movsw", "cmpsb", "cmpsw", "stosb", "stosw", "lodsb", "lodsw", "scasb", "scasw", "ret", "les", "lds", "retf", "int",
-    "into", "iret", "aam", "aad", "xlat", "loopnz", "loopz", "loop", "jcxz", "in", "out", "lock", "repnz", "repz", "hlt", "cmc", "clc", "stc", "cli", "sti", "cld", "std",
+    "into", "iret", "aam", "aad", "xlat", "loopnz", "loopz", "loop", "in", "out", "lock", "repnz", "repz", "hlt", "cmc", "clc", "stc", "cli", "sti", "cld", "std",
     "rol", "ror", "rcl", "rcr", "shl", "shr", "sar", "not", "neg", "mul", "imul", "div", "idiv"
 };
 
-static const char* JMP_NAME[16] = {
-    "jo", "jno", "jb", "jnb", "jz", "jnz", "jbe", "ja", "js", "jns", "jpe", "jpo", "jl", "jge", "jle", "jg",
+static const char* JMP_NAME[] = {
+    "jo", "jno", "jb", "jnb", "jz", "jnz", "jbe", "ja", "js", "jns", "jpe", "jpo", "jl", "jge", "jle", "jg", "jcxz"
 };
+static constexpr Size JMP_NAME_COUNT = sizeof(JMP_NAME) / sizeof(JMP_NAME[0]);
 
 static const char* OPR_NAME[] = {
     "???", "X", 
@@ -424,7 +425,8 @@ std::string Instruction::toString() const {
     // conditional jumps, lookup specific jump name
     if (iclass == INS_JMP && opcodeIsConditionalJump(opcode)) { 
         Byte idx = opcode - OP_JO_Jb;
-        assert(idx < 16);
+        // jcxz special case
+        if (idx >= JMP_NAME_COUNT) idx = JMP_NAME_COUNT - 1;
         str << JMP_NAME[idx];
     }
     // otherwise just output name corresponding to instruction class

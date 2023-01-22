@@ -8,6 +8,7 @@
 #include <iostream>
 #include <sstream>
 #include <stack>
+#include <queue>
 #include <algorithm>
 #include <fstream>
 #include <string>
@@ -45,9 +46,11 @@ string Routine::toString() const {
 }
 
 // create routine map from IDA .lst file
+// TODO: ida puts the procedure end on the instruction start, get next offset and correct
 RoutineMap::RoutineMap(const std::string &path) {
     const auto fstat = checkFile(path);
     if (!fstat.exists) throw ArgError("File does not exist: "s + path);
+    debug("Loading IDA routine map from "s + path);
     ifstream fstr{path};
     string line;
     Size lineno = 1;
@@ -118,207 +121,187 @@ Executable::Executable(const MzImage &mz) : entrypoint(mz.entrypoint()), reloc(m
     copy(data, data + mz.loadModuleSize(), std::back_inserter(code));
 }
 
+struct SearchPoint {
+    Address address;
+    int routineId;
+    bool isCall;
+    SearchPoint(const Routine &r) : address(r.entrypoint), routineId(r.id), isCall(true) {}
+    SearchPoint(const Address address, const int id, const bool call) : address(address), routineId(id), isCall(call) {}
+    bool isNull() const { return address.isNull(); }
+};
+
 // explore the code without actually executing instructions, discover routine boundaries
 // TODO: trace modifications to CS, support multiple code segments
 // TODO: trace other register values for discovering register-dependent calls?
 // TODO: identify routines through signatures generated from OMF libraries
 RoutineMap findRoutines(const Executable &exe) {
     const Byte *code = exe.code.data();
-    const Size size = exe.code.size();
+    const Size codeSize = exe.code.size();
     const Address entrypoint = exe.entrypoint;
-    const Word baseSegment = exe.reloc;
+    const Block codeExtents = Block({entrypoint.segment, 0}, Address(SEG_OFFSET(entrypoint.segment) + codeSize));
     // memory map for marking which locations belong to which routines, value of 0 is undiscovered
-    const int UNDISCOVERED = 0;
-    vector<int> memoryMap(size, UNDISCOVERED); // TODO: store addresses from loaded exe in map, otherwise they don't match after analysis done
-    // store for all routines found
-    RoutineMap ret;
-    vector<Routine> &routines = ret.routines;
-    // stack structure for DFS search
-    stack<Frame> callstack;
-    // create default routine for entrypoint
-    routines.push_back(Routine("start", 1, entrypoint));
-    Routine *curRoutine = &(routines.back());
-    callstack.push(Frame(entrypoint, 1));
-    Address csip = entrypoint;
-    const Block codeExtents = Block({entrypoint.segment, 0}, Address(SEG_OFFSET(entrypoint.segment) + size));
+    const int NOT_VISITED = 0;
+    vector<int> visited(codeSize, NOT_VISITED); // TODO: store addresses from loaded exe in map, otherwise they don't match after analysis done
+    // queue for BFS search
+    queue<SearchPoint> searchQ = { SearchPoint(entrypoint, 1, true) };
+    int foundRoutines = 1;
 
-    auto analysisMessage = [&](const string &str, const LogPriority pri = LOG_VERBOSE) {
-        output("[r"s + to_string(curRoutine->id) + "/s" + to_string(callstack.size()) + "]: " + Address(csip.segment + baseSegment, csip.offset).toString() + ": " + str, LOG_ANALYSIS, pri);
+    auto analysisMessage = [&](const SearchPoint &s, const Address &a, const string &msg, const LogPriority pri = LOG_VERBOSE) {
+        output("[r"s + to_string(s.routineId) + "/q" + to_string(jumpQ.size()) + "]: " + a.toString() + ": " + str, LOG_ANALYSIS, pri);
     };
 
-    // create new routine and switch to it, or switch to one that exists already
-    auto switchRoutine = [&](const Address &entrypoint) {
-        auto existingRoutine = std::find_if(routines.begin(), routines.end(), [&entrypoint](const Routine &r){
-            return r.entrypoint() == entrypoint;
-        });
-        if (existingRoutine == routines.end()) {
-            const int id = routines.back().id + 1;
-            const string name = "routine_" + to_string(id);
-            routines.push_back(Routine(name, id, entrypoint));
-            curRoutine = &(routines.back());
-            debug("\tcreated routine " + curRoutine->name + " at entrypoint " + curRoutine->entrypoint());
+    // place a jump (conditional jump or call) into the search queue to be investigated later
+    auto saveJump = [&](const SearchPoint &p, const Address &src, const Address &dest, const bool isCall) {
+        const Offset destOff = dest.toLinear();
+        const int destId = visited.at(destOff);
+        if (isCall) { 
+            // function call, create new routine at destination if either not visited, 
+            // or visited but previous location is marked with the same routine id as the call location, 
+            // meaning this was not discovered as a routine entrypoint and this call now takes precedence and will replace it
+            if (destId == NOT_VISITED || (destOff > 0 && visited.at(destOff - 1) == destId)) {
+                analysisMessage(p, src, "discovered call to new routine at "s + dest.toString());
+                foundRoutines++;
+                searchQ.push(SearchPoint(dest, foundRoutines, true));
+            }
+            else {
+                analysisMessage(p, src, "call destination already discovered as entrypoint to routine "s + to_string(destId));
+            }
         }
-        else {
-            curRoutine = &(*existingRoutine);
-            debug("\texisting routine " + curRoutine->name + " at entrypoint " + curRoutine->entrypoint());
-        }
-    };
-
-    // check if jump/call destination is within current code extents and jump to it, 
-    // optionally placing a return location on the callstack and switching to a different routine
-    auto checkAndJump = [&](const Address &destination, const string &type, const Word instrLen = 0, const bool call = false) {
-        if (codeExtents.contains(destination)) {
-            analysisMessage("taking " + type + " to " + Address(destination.segment + baseSegment, destination.offset).toString());
-            if (instrLen) callstack.push(Frame(Address(csip, instrLen), curRoutine->id));
-            if (call) switchRoutine(destination);
-            csip = destination;
-            return true;
-        }
-        // XXX: check if jump target lies before current routine's entrypoint, in such case don't go there,
-        // otherwise that routine will have locations attributed to it which do not show in the output map
-        else {
-            analysisMessage(type + " to " + destination + " outside loaded code, ignoring");
-            return false;
-        }
-    };
-    
-    auto dumpStack = [&]() {
-        debug("Current call stack:");
-        while (!callstack.empty()) {
-            const Frame f = callstack.top();
-            debug("["s + to_string(callstack.size()) + "]: id " + to_string(f.id) + ", address " + f.address);
-            callstack.pop();
+        else { 
+            // conditional jump, save as destination to be investigated, belonging to current routine
+            if (destId == NOT_VISITED) {
+                searchQ.push(SearchPoint(dest, s.routineId, false));
+            }
+            else {
+                analysisMessage(p, src, "jump destination already belongs to routine "s + to_string(destId));
+            }
         }
     };
 
     info("Analyzing code in range " + codeExtents);
-    while (!callstack.empty()) {
-        // pop an address of the stack and jump to it
-        const Frame frame = callstack.top();
-        curRoutine = &(routines[frame.id - 1]);
-        callstack.pop();
-        csip = frame.address;
-        analysisMessage("now in routine '" + curRoutine->name + "', id: " + to_string(curRoutine->id));
-        bool done = false;
-        while (!done) {
+    // iterate over entries in the search queue
+    while (!jumpQ.empty()) {
+        // get a location from the queue and jump to it
+        const SearchPoint search = jumpQ.front();
+        jumpQ.pop();
+        Address csip = search.address;
+        analysisMessage(search, csip, "starting search at new location");
+        bool jump = false;
+        // iterate over instructions at current location
+        while (!jump) {
             if (!codeExtents.contains(csip)) {
                 analysisMessage("ERROR: advanced past loaded code extents", LOG_ERROR);
                 return {};
             }
             const Offset instrOffs = csip.toLinear();
-            Instruction i{csip, code + instrOffs};
+            Instruction i(csip, code + instrOffs);
             //analysisMessage("Instruction at offset "s + hexVal(instrOffs) + ": " + i.toString());
-            // mark memory map locations as belonging to the current routine
-            const Byte instrLen = i.length;
-            auto instrIt = memoryMap.begin() + instrOffs;
-            const int curId = memoryMap[instrOffs];
             // cpuMessage(regs_.csip().toString() +  ": opcode " + hexVal(opcode_) + ", instrLen = " + to_string(instrLen));
-            // make sure this location isn't discovered yet
-            if (curId != UNDISCOVERED) {
-                // XXX: remove routine if empty extents, here or during sorting
-                analysisMessage("location already belongs to routine " + to_string(curId));
-                break;
-            }
-            // XXX: ida puts the procedure end on the instruction start, match convention to get more compatibility?
-            std::fill(instrIt, instrIt + instrLen, curRoutine->id);
-            switch (i.iclass)
-            {
+            // mark memory map items corresponding to the current instruction as belonging to the current routine
+            std::fill(visited.begin() + instrOffs, visited.begin() + instrOffs + i.length, search.routineId);
+            Address jumpAddr = csip;
+            switch (i.iclass) {
+            // jumps
             case INS_JMP:
-            {
-                Address jumpDest{csip};
-                string jumpType;
-                Word jumpReturn = 0;
-                bool jumpOk = true;
-                switch (i.opcode) {
-                // unconditional jumps: don't store current location on stack, we aren't coming back
-                case OP_JMP_Jb: jumpDest.offset = i.relativeOffset(); jumpType = "unconditional 8bit jump"; break;
-                case OP_JMP_Jv: jumpDest.offset = i.relativeOffset(); jumpType = "unconditional 16bit jump"; break;
-                case OP_JMP_Ap: jumpDest = Address{i.op1.immval.u32}; jumpType = "unconditional far jump"; break;
-                // conditional 8bit jumps, store  next instruction's address on callstack to come back to
+                // conditional jump, put destination into search queue to check out later
+                if (opcodeIsConditionalJump(i.opcode)) {
+                    jumpAddr.offset = i.relativeOffset();
+                    analysisMessage(curRoutine, "encountered conditional near jump to "s + jumpAddr.toString());
+                    saveJump(search, csip, jumpAddr, false);
+                }
+                else switch (i.opcode) {
+                // unconditional jumps, cannot continue at current location, need to jump now
+                case OP_JMP_Jb: 
+                case OP_JMP_Jv: 
+                    jumpAddr.offset = i.relativeOffset();
+                    analysisMessage(curRoutine, "encountered unconditional near jump to "s + jumpAddr.toString());
+                    jump = true;
+                    break;
                 case OP_GRP5_Ev:
                     analysisMessage("unknown near jump target: "s + i.toString());
-                    jumpOk = false;
                     break; 
-                default: jumpDest.offset = i.relativeOffset(); jumpType = "conditional 8bit jump"; jumpReturn = instrLen; break;
+                default: 
+                    throw AnalysisError("Unsupported jump opcode: "s + hexVal(i.opcode));
                 }
-                if (jumpOk && checkAndJump(jumpDest, jumpType, jumpReturn)) continue; // if jump allowed, continue to next loop iteration - move to frame from callstack top
-            }
-                break; // otherwise, break out from switch and advance to next instruction
+                break;
             case INS_JMP_FAR:
                 if (i.op1.type == OPR_IMM32) {
-                    if (checkAndJump(Address{i.op1.immval.u32}, "unconditional far jump")) continue;
+                    jumpAddr = Address{i.op1.immval.u32}; 
+                    analysisMessage(search, csip, "encountered unconditional far jump to "s + jumpAddr.toString());
+                    jump = true;
                 }
                 else analysisMessage("unknown far jump target: "s + i.toString());
                 break;
-            case INS_JCXZ: // TODO: group together with other conditionals
-                if (checkAndJump(Address(csip.segment, i.relativeOffset()), "jcxz jump", instrLen)) continue;
-                break;                
+            // loops
             case INS_LOOP:
             case INS_LOOPNZ:
             case INS_LOOPZ:
-                if (checkAndJump(Address(csip.segment, i.relativeOffset()), "loop", instrLen)) continue;
+                jumpAddr.offset = i.relativeOffset();
+                analysisMessage(search, csip, "encountered loop to "s + jumpAddr.toString());
+                saveJump(search, csip, jumpAddr, false);
                 break;
             // calls
             case INS_CALL:
                 if (i.op1.type == OPR_IMM16) {
-                    if (checkAndJump(Address(csip.segment, i.relativeOffset()), "call", instrLen, true)) continue;
+                    jumpAddr.offset = i.relativeOffset();
+                    analysisMessage(search, csip, "encountered call to "s + jumpAddr.toString());
+                    saveJump(search, csip, jumpAddr, true);
                 }
                 else analysisMessage("unknown near call target: "s + i.toString());
                 break;
             case INS_CALL_FAR:
                 if (i.op1.type == OPR_IMM32) {
-                    if (checkAndJump(Address{i.op1.immval.u32}, "far call", instrLen, true)) continue;
+                    jumpAddr = Address(i.op1.immval.u32);
+                    analysisMessage(search, csip, "encountered far call to "s + jumpAddr.toString());
+                    saveJump(search, csip, jumpAddr, true);
                 }
                 else analysisMessage("unknown far call target: "s + i.toString());
                 break;
-            // return
+            // returns
             case INS_RET:
             case INS_RETF:
             case INS_IRET:
-                analysisMessage("returning from " + curRoutine->name);
-                done = true;
+                analysisMessage(search, csip, "returning from routine");
+                jump = true;
                 break;
-            // jumps and calls encoded with group opcode
-            } // switch on instrucion type
+            } // switch on instruction class
 
-            // advance to next instruction
-            if (instrLen == 0) {
-                analysisMessage("ERROR: calculated instruction length is zero, opcode " + hexVal(i.opcode), LOG_ERROR);
-                dumpStack();
-                return {};
-            }
-            csip += static_cast<SByte>(instrLen);
+            // advance to next instruction unless we are jumping to search elsewhere
+            csip.offset += i.length;
         } // iterate over instructions
     } // next address from callstack
-    analysisMessage("Done analyzing code");
+    info("Done analyzing code, found "s + to_string(foundRoutines) + " routines");
 
     // iterate over memory map that we built up, identify contiguous chunks belonging to routines
+    int prev = NOT_VISITED, undiscoveredPrev = NOT_VISITED;
+    Offset blockStart = 0;
+    Block undiscoveredBlock;
+    // find runs of undiscovered bytes surrounded by bytes discovered as belonging to the same routine and coalesce them with the routine
+    // TODO: those areas are still practically undiscovered as we did not pass over their instructions, so we are missing paths leading from there,
+    // perhaps a second pass over that area could discover more stuff?
+    for (size_t mapOffset = codeExtents.begin.toLinear(); mapOffset < codeExtents.end.toLinear(); ++mapOffset) {
+        const int m = visited.at(mapOffset);
+        if (m == NOT_VISITED && (prev != NOT_VISITED || mapOffset == 0))  {
+            undiscoveredBlock = Block{Address{mapOffset}}; // start new undiscovered block
+            undiscoveredPrev = prev; // store id of routine preceeding the new block
+        }
+        else if (m != NOT_VISITED && undiscoveredPrev == m) { // end of undiscovered block and current routine matches the one before the block
+            undiscoveredBlock.end = Address{mapOffset - 1};
+            // overwrite undiscovered block with id of routine surrounding it
+            fill(visited.begin() + undiscoveredBlock.begin.toLinear(), visited.begin() + undiscoveredBlock.end.toLinear(), m);
+        }
+        prev = m;
+    }
+    // iterate over discovered memory map again and create routine map
+    RoutineMap ret;
     // dump map to file for debugging
     ofstream mapFile("analysis.map");
     mapFile << "      ";
     for (int i = 0; i < 16; ++i) mapFile << hex << setw(5) << setfill(' ') << i << " ";
     mapFile << endl;
-    int prev = UNDISCOVERED, undiscoveredPrev = UNDISCOVERED;
-    Offset blockStart = 0;
-    Block undiscoveredBlock;
-    // find runs of undiscovered bytes surrounded by bytes discovered as belonging to the same routine and coalesce them with the routine
-    // XXX: those areas are still practically undiscovered as we did not pass over their instructions, so we are missing paths leading from there,
-    //      perhaps need a second analysis pass?
+    prev = NOT_VISITED;
     for (size_t mapOffset = codeExtents.begin.toLinear(); mapOffset < codeExtents.end.toLinear(); ++mapOffset) {
-        const int m = memoryMap[mapOffset];
-        if (m == UNDISCOVERED && (prev != UNDISCOVERED || mapOffset == 0))  {
-            undiscoveredBlock = Block{Address{mapOffset}}; // start new undiscovered block
-            undiscoveredPrev = prev; // store id of routine preceeding the new block
-        }
-        else if (m != UNDISCOVERED && undiscoveredPrev == m) { // end of undiscovered block and current routine matches the one before the block
-            undiscoveredBlock.end = Address{mapOffset - 1};
-            // overwrite undiscovered block with id of routine surrounding it
-            fill(memoryMap.begin() + undiscoveredBlock.begin.toLinear(), memoryMap.begin() + undiscoveredBlock.end.toLinear(), m);
-        }
-        prev = m;
-    }
-    for (size_t mapOffset = codeExtents.begin.toLinear(); mapOffset < codeExtents.end.toLinear(); ++mapOffset) {
-        const int m = memoryMap[mapOffset];
+        const int m = visited.at(mapOffset);
         //debug(hexVal(mapOffset) + ": " + to_string(m));
         if (mapOffset % 16 == 0) {
             if (mapOffset != 0) mapFile << endl;
@@ -326,8 +309,8 @@ RoutineMap findRoutines(const Executable &exe) {
         }
         mapFile << dec << setw(5) << setfill(' ') << m << " ";
         if (m != prev) { // new chunk begin
-            if (prev != UNDISCOVERED) { // need to close previous routine and start a new one
-                Routine &r = routines[prev - 1];
+            if (prev != NOT_VISITED) { // need to close previous routine and start a new one
+                Routine r()
                 Block block{Address(blockStart), Address(mapOffset - 1)};
                 debug(hexVal(mapOffset) + ": closing block " + block + " for routine " + r.name + ", entrypoint " + r.entrypoint());
                 // this is the main body of the routine, update the extents
@@ -345,7 +328,7 @@ RoutineMap findRoutines(const Executable &exe) {
                 }
             }
             // start new chunk
-            if (m != UNDISCOVERED) {
+            if (m != NOT_VISITED) {
                 debug(hexVal(mapOffset) + ": starting block for routine " + to_string(m));
                 blockStart = mapOffset;
             }
@@ -362,11 +345,15 @@ RoutineMap findRoutines(const Executable &exe) {
     return ret;
 }
 
-std::string RoutinePair::toString() const {
-    ostringstream str;
-    str << "'" << r1.name << "', id " << to_string(r1.id) << ", entrypoints @ " << r1.entrypoint() << " <-> " << r2.entrypoint();
-    return str.str();
-}
+struct RoutinePair {
+    Routine r1, r2;
+    RoutinePair(const std::string &name, const int id, const Address &e1, const Address &e2) : r1{name, id, e1}, r2{name, id, e2} {}
+    std::string toString() const {
+        ostringstream str;
+        str << "'" << r1.name << "', id " << to_string(r1.id) << ", entrypoints @ " << r1.entrypoint() << " <-> " << r2.entrypoint();
+        return str.str();
+    }
+};
 
 // TODO: implement operand correction for jmp, implement jmp around invalid code
 bool compareCode(const Executable &base, const Executable &object) {
