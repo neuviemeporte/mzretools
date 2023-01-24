@@ -25,6 +25,7 @@ struct Address {
     Address() : Address(ADDR_INVALID, ADDR_INVALID) {}
 
     bool operator==(const Address &arg) const { return toLinear() == arg.toLinear(); }
+    bool operator!=(const Address &arg) const { return !(*this == arg); }
     bool operator<=(const Address &arg) const { return toLinear() <= arg.toLinear(); }
     bool operator>=(const Address &arg) const { return toLinear() >= arg.toLinear(); }
     // TODO: handle overflow

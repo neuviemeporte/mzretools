@@ -337,7 +337,6 @@ void Cpu_8086::dispatch() {
     case INS_LOOPNZ: instr_loopnz(); break;
     case INS_LOOPZ: instr_loopz(); break;
     case INS_LOOP: instr_loop(); break; 
-    case INS_JCXZ: instr_jcxz(); break;
     case INS_IN: instr_in(); break;
     case INS_OUT: instr_out(); break;
     case INS_LOCK: instr_lock(); break;
@@ -948,9 +947,6 @@ throw CpuError("Opcode not implemented: LOOPZ");
 }
 void Cpu_8086::instr_loop() {
 throw CpuError("Opcode not implemented: LOOP");
-}
-void Cpu_8086::instr_jcxz() {
-throw CpuError("Opcode not implemented: JCXZ");
 }
 void Cpu_8086::instr_in() {
 throw CpuError("Opcode not implemented: IN");

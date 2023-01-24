@@ -146,7 +146,6 @@ private:
     void instr_loopnz();
     void instr_loopz();
     void instr_loop(); 
-    void instr_jcxz();
     void instr_in();
     void instr_out();
     void instr_lock();
