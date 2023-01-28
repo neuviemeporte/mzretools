@@ -7,27 +7,29 @@
 #include "dos/address.h"
 #include "dos/mz.h"
 
+static constexpr int NULL_ROUTINE = 0;
+
 struct Routine {
     std::string name;
     int id;
     Block extents;
     std::vector<Block> chunks;
     size_t stackSize;
-    Routine(const std::string &name, const int id, const Address &entrypoint) : name(name), id(id), stackSize(0) {
-        extents.begin = extents.end = entrypoint;
-    }
+    Routine() : id(NULL_ROUTINE), stackSize(0) {}
+    Routine(const std::string &name, const int id, const Block &extents) : name(name), id(id), extents(extents), stackSize(0) {}
     Address entrypoint() const { return extents.begin; }
     bool contains(const Address &addr) const;
     std::string toString() const;
 };
 
 struct RoutineMap {
-    bool success;
     std::vector<Routine> routines;
-    RoutineMap() : success(false) {}
+    RoutineMap() {}
     RoutineMap(const std::string &path);
+    bool empty() const { return routines.empty(); }
     void dump() const;
     Size match(const RoutineMap &other) const;
+    void addBlock(const Block &b, const int id);
 };
 
 struct Executable {
