@@ -452,9 +452,9 @@ std::string Instruction::toString() const {
         // segment override prefix if present
         if (prefix > PRF_NONE && prefix < PRF_CHAIN_REPNZ)
             str << PRF_NAME[prefix];
-        // for call and jump instructions, the literal offset operand is added to the address of the byte past the current instruction
+        // for call and jump instructions, the immediate offset operand is added to the address of the byte past the current instruction
         // to form a relative offset
-        if (iclass == INS_CALL || iclass == INS_JMP) 
+        if ((iclass == INS_CALL || iclass == INS_JMP) && operandIsImmediate(op1.type)) 
             str << hexVal(relativeOffset(), true, false);
         else
             str << op1.toString();

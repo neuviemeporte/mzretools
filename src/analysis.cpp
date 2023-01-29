@@ -51,9 +51,10 @@ RoutineMap::RoutineMap(const std::string &path) {
     if (!fstat.exists) throw ArgError("File does not exist: "s + path);
     debug("Loading IDA routine map from "s + path);
     ifstream fstr{path};
-    string line;
+    string line, lastAddr;
     Size lineno = 1;
     Size routineCount = 0;
+    Address curAddr, endpAddr;
     while (safeGetline(fstr, line)) {
         istringstream sstr{line};
         string token[4];
@@ -62,21 +63,33 @@ RoutineMap::RoutineMap(const std::string &path) {
             tokenno++;
         }
         string &addrStr = token[0];
-        string::size_type n;
-        if ((n = addrStr.find("seg000")) != string::npos) {
+        if (addrStr.find("seg000") != string::npos) {
             addrStr = addrStr.substr(2,9);
             addrStr[0] = '0';
+            curAddr = Address{addrStr};
+        }
+        else {
+            curAddr = Address();
         }
 
-        if (token[2] == "proc") { // found routine
-            routines.emplace_back(Routine(token[1], ++routineCount, Address{addrStr}));
+        // close previous routine if we encountered an endp and the address 
+        if (endpAddr.isValid() && curAddr != endpAddr) {
+            auto &r = routines.back();
+            r.extents.end = curAddr - 1; // go one byte before current address
+            debug("Closing routine "s + r.name + ", id " + to_string(r.id) + " @ " + r.extents.end.toString());
+            endpAddr = Address(); // makes address invalid
+        }
+        // start new routine
+        if (token[2] == "proc") { 
+            routines.emplace_back(Routine(token[1], ++routineCount, curAddr));
             const auto &r = routines.back();
             debug("Found start of routine "s + r.name + ", id " + to_string(r.id) + " @ " + r.extents.begin.toString());
         }
-        else if (token[2] == "endp") { // routine end
-            auto &r = routines.back();
-            r.extents.end = Address{addrStr};
-            debug("Found end of routine "s + r.name + ", id " + to_string(r.id) + " @ " + r.extents.end.toString());
+        // routine end, but IDA places endp at the offset of the beginning of the last instruction, 
+        // and we want the end to include the last instructions' bytes, so just memorize the address and close the routine later
+        else if (token[2] == "endp") { 
+            endpAddr = curAddr;
+            debug("Found end of routine @ " + endpAddr.toString());
         }
         lineno++;
     }
@@ -288,7 +301,12 @@ RoutineMap findRoutines(const Executable &exe) {
         // get a location from the queue and jump to it
         const SearchPoint search = searchQ.nextPoint();
         Address csip = search.address;
-        searchQ.message(csip, "starting search at new location");
+        const int rid = searchQ.getRoutine(csip.toLinear());
+        searchQ.message(csip, "starting search at new location, call: "s + to_string(search.isCall));
+        if (rid != NULL_ROUTINE && !search.isCall) {
+            debug("location already claimed by routine "s + to_string(rid) + " and search point did not originate from a call, skipping");
+            continue;
+        }
         bool scan = true;
         // iterate over instructions at current search location in a linear fashion, until an unconditional jump or return encountered
         while (scan) {
@@ -399,7 +417,6 @@ RoutineMap findRoutines(const Executable &exe) {
     }
 
     // iterate over discovered memory map again and create routine map
-    debug("Creating routine map from analysis result");
     return searchQ.makeMap();
 }
 

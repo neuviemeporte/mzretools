@@ -33,8 +33,9 @@ struct Address {
     Address operator+(const SByte arg) const { return {segment, static_cast<Word>(offset + arg)}; }
     Address operator+(const SWord arg) const { return {segment, static_cast<Word>(offset + arg)}; }
     Address operator+(const DWord arg) const;
-    Address operator+(const size_t arg) const { return {segment, static_cast<Word>(offset + arg)}; }
+    Address operator+(const Offset arg) const { return {segment, static_cast<Word>(offset + arg)}; }
     Size operator-(const Address &arg) const { return toLinear() - arg.toLinear(); }
+    Address operator-(const Offset &arg) const { return {segment, static_cast<Word>(offset - arg)}; }
     Address& operator+=(const SWord adjust) { offset += adjust; return *this; }
     Address& operator+=(const SByte adjust) { offset += adjust; return *this; }
     Address& operator+=(const Byte adjust) { offset += adjust; return *this; }

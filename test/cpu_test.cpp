@@ -407,7 +407,8 @@ TEST_F(CpuTest, Instruction) {
     0xF6, 0xC2, 0x80, // test dl,0x80
     0xff, 0x18, // call far [bx+si]
     0xd0, 0x0a, // ror byte [bp+si],1
-    0x0B, 0xA4, 0x0B, 0x83 // or sp,[si-0x7cf5]
+    0x0B, 0xA4, 0x0B, 0x83, // or sp,[si-0x7cf5]
+    0xff, 0xe1, // jmp cx
     };
     const Size code_len = 23;
     const std::string instructions[] = {
@@ -424,9 +425,10 @@ TEST_F(CpuTest, Instruction) {
         "call far [bx+si]",
         "ror byte [bp+si], 1",
         "or sp, [si-0x7cf5]",
+        "jmp cx",
     };
     const Size lengths[] = {
-        1, 1, 3, 2, 5, 5, 2, 2, 4, 3, 2, 2, 4,
+        1, 1, 3, 2, 5, 5, 2, 2, 4, 3, 2, 2, 4, 2,
     };
     const int icount = sizeof(lengths) / sizeof(Size);
 

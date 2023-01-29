@@ -55,7 +55,7 @@ TEST_F(SystemTest, FindRoutines) {
     // compare against ida map
     const Size matchCount = idaMap.match(discoveredMap);
     TRACELN("Found matching " << matchCount << " routines out of " << idaMap.routines.size());
-    ASSERT_GE(matchCount, 26); // not all functions that ida found can be identified for now
+    ASSERT_GE(matchCount, 32); // not all 54 functions that ida finds can be identified for now
 }
 
 TEST_F(SystemTest, CodeCompare) {
