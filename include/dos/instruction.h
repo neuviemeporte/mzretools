@@ -111,6 +111,8 @@ INSTRUCTION_PREFIX
 #undef X
 };
 
+Register prefixRegId(const InstructionPrefix p);
+
 #define OPERAND_TYPE \
     X(OPR_ERR) \
     X(OPR_NONE) \
@@ -170,6 +172,34 @@ OPERAND_TYPE
 #undef X
 };
 
+inline bool operandIsReg(const OperandType type) {
+    return type >= OPR_REG_AX && type <= OPR_REG_SS;
+}
+
+inline bool operandIsMem(const OperandType type) {
+    return type >= OPR_MEM_BX_SI && type <= OPR_MEM_BX_OFF16;
+}
+
+inline bool operandIsMemNoOffset(const OperandType type) {
+    return type >= OPR_MEM_BX_SI && type <= OPR_MEM_BX;
+}
+
+inline bool operandIsMemImmediate(const OperandType ot) {
+    return ot == OPR_MEM_OFF8 || ot == OPR_MEM_OFF16;
+}
+
+inline bool operandIsMemWithByteOffset(const OperandType type) {
+    return type >= OPR_MEM_OFF8 && type <= OPR_MEM_BX_OFF8;
+}
+
+inline bool operandIsMemWithWordOffset(const OperandType type) {
+    return type >= OPR_MEM_OFF16 && type <= OPR_MEM_BX_OFF16;
+}
+
+inline bool operandIsImmediate(const OperandType ot) {
+    return ot >= OPR_IMM0 && ot <= OPR_IMM32;
+}
+
 #define OPERAND_SIZE \
     X(OPRSZ_UNK) \
     X(OPRSZ_NONE) \
@@ -225,6 +255,7 @@ public:
         } immval; // optional immediate offset or literal value
         std::string toString() const;
         InstructionMatch match(const Operand &other);
+        Register regId() const;
     } op1, op2;
 
     Instruction();
@@ -239,6 +270,7 @@ private:
     Size loadImmediate(Operand &op, const Byte *data);
 };
 
+// TODO: this is useless, remove
 InstructionClass instr_class(const Byte opcode);
 
 #endif // INSTRUCTION_H

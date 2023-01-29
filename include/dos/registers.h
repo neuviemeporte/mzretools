@@ -5,6 +5,7 @@
 #include "dos/types.h"
 #include "dos/address.h"
 
+// TODO: this is stupid, get rid of non-unique register codes
 enum Register {
     REG_AX = 0, REG_AL = 0, REG_AH = 1,
     REG_BX = 1, REG_BL = 2, REG_BH = 3,
@@ -49,6 +50,7 @@ enum Flag : Word {
     FLAG_B15    = 0b1000000000000000, // ----
 };
 
+// TODO: this is not portable
 class Registers {
 private:
     union {

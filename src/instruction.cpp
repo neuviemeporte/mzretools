@@ -168,43 +168,6 @@ static const OperandSize MODRM_OPR_SIZE[] = {
     OPRSZ_BYTE,  // MODRM_CL
 };
 
-InstructionClass instr_class(const Byte opcode) {
-    return OPCODE_CLASS[opcode];
-}
-
-inline bool operandIsReg(const OperandType type) {
-    return type >= OPR_REG_AX && type <= OPR_REG_SS;
-}
-
-inline bool operandIsMem(const OperandType type) {
-    return type >= OPR_MEM_BX_SI && type <= OPR_MEM_BX_OFF16;
-}
-
-inline bool operandIsMemNoOffset(const OperandType type) {
-    return type >= OPR_MEM_BX_SI && type <= OPR_MEM_BX;
-}
-
-inline bool operandIsMemWithByteOffset(const OperandType type) {
-    return type >= OPR_MEM_OFF8 && type <= OPR_MEM_BX_OFF8;
-}
-
-inline bool operandIsMemWithWordOffset(const OperandType type) {
-    return type >= OPR_MEM_OFF16 && type <= OPR_MEM_BX_OFF16;
-}
-
-static bool operandIsImmediate(const OperandType ot) {
-    switch (ot) {
-    case OPR_IMM0:
-    case OPR_IMM1:
-    case OPR_IMM8:
-    case OPR_IMM16:
-    case OPR_IMM32:
-        return true;
-    default:
-        return false;
-    }
-}
-
 Instruction::Instruction() : addr{}, prefix(PRF_NONE), opcode(OP_INVALID), iclass(INS_ERR), length(0) {
 }
 
@@ -603,6 +566,20 @@ Size Instruction::loadImmediate(Operand &op, const Byte *data) {
         op.immval.u32 = 0; 
         break;
     }
-
     return size;
+}
+
+Register Instruction::Operand::regId() const {
+    static const Register regs[] = { REG_AX, REG_AL, REG_AH, REG_BX, REG_BL, REG_BH, REG_CX, REG_CL, REG_CH, REG_DX, REG_DL, REG_DH, REG_SI, REG_DI, REG_BP, REG_SP, REG_CS, REG_DS, REG_ES, REG_SS };
+    if (operandIsReg(type)) return regs[type];
+    else return REG_NONE;
+}
+
+Register prefixRegId(const InstructionPrefix p) {
+    static const Register segs[] = { REG_DS, REG_ES, REG_CS, REG_SS, REG_DS, REG_NONE, REG_NONE };
+    return segs[p];
+}
+
+InstructionClass instr_class(const Byte opcode) {
+    return OPCODE_CLASS[opcode];
 }

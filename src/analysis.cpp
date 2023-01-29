@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <fstream>
 #include <string>
+#include <cstring>
 #include <list>
 
 using namespace std;
@@ -283,6 +284,10 @@ public:
     }
 };
 
+void setRegValue(const Registers &regs, const Register regid, const Instruction::Operand &source) {
+
+}
+
 // explore the code without actually executing instructions, discover routine boundaries
 // TODO: trace modifications to CS, support multiple code segments
 // TODO: trace other register values for discovering register-dependent calls?
@@ -294,6 +299,9 @@ RoutineMap findRoutines(const Executable &exe) {
     const Block codeExtents = Block({entrypoint.segment, 0}, Address(SEG_OFFSET(entrypoint.segment) + codeSize));
     // queue for BFS search
     SearchQueue searchQ(codeSize, SearchPoint(entrypoint, 1, true));
+    Registers regs;
+    Byte memByte;
+    Word memWord;
 
     info("Analyzing code in range " + codeExtents);
     // iterate over entries in the search queue
@@ -368,6 +376,16 @@ RoutineMap findRoutines(const Executable &exe) {
                     searchQ.message(csip, "encountered near call to "s + jumpAddr.toString());
                     call = true;
                 }
+                else if (operandIsReg(i.op1.type)) {
+                    jumpAddr.offset = regs.bit16(i.op1.regId());
+                    searchQ.message(csip, "[XXX] encountered near call through register to "s + jumpAddr.toString());
+                }
+                else if (operandIsMemImmediate(i.op1.type)) {
+                    Address a{regs.bit16(REG_DS), i.op1.immval.u16};
+                    memcpy(&memWord, code + a.toLinear(), sizeof(Word));
+                    jumpAddr.offset = memWord;
+                    searchQ.message(csip, "[XXX] encountered near call through mem pointer to "s + jumpAddr.toString());
+                }
                 else searchQ.message(csip, "unknown near call target: "s + i.toString());
                 break;
             case INS_CALL_FAR:
@@ -384,6 +402,62 @@ RoutineMap findRoutines(const Executable &exe) {
             case INS_IRET:
                 searchQ.message(csip, "returning from routine");
                 scan = false;
+                break;
+            // track some movs to gather some jump/call targets from register values
+            // TODO: store regs' values and known/unknown state in queue with SearchPoint, pop when searching at new location
+            case INS_MOV:
+                if (operandIsReg(i.op1.type)) {
+                    const Register dest = i.op1.regId();
+                    bool set = false;
+                    if (operandIsImmediate(i.op2.type)) {
+                        switch(i.op2.size) {
+                        case OPRSZ_BYTE: 
+                            debug("setting reg8 "s + to_string(dest) + " to imm " + hexVal(i.op2.immval.u8));
+                            regs.bit8(dest) = i.op2.immval.u8; 
+                            debug("value = "s + hexVal(regs.bit8(dest)));
+                            set = true; 
+                            break;
+                        case OPRSZ_WORD: 
+                            regs.bit16(dest) = i.op2.immval.u16;
+                            set = true; 
+                            break;
+                        }
+                    }
+                    else if (operandIsReg(i.op2.type)) {
+                        const Register src = i.op2.regId();
+                        switch(i.op2.size) {
+                        case OPRSZ_BYTE: 
+                            regs.bit8(dest) = regs.bit8(src);
+                            set = true;
+                            break;
+                        case OPRSZ_WORD: 
+                            regs.bit16(dest) = regs.bit16(src);
+                            set = true;
+                            break;
+                        }
+                    }
+                    else if (operandIsMemImmediate(i.op2.type)) {
+                        const Register base = prefixRegId(i.prefix);
+                        Address a(regs.bit16(base), i.op2.immval.u16);
+                        switch(i.op2.size) {
+                        case OPRSZ_BYTE:
+                            debug("setting reg8 "s + to_string(dest) + " to mem " + a.toString());
+                            memByte = code[a.toLinear()];
+                            regs.bit8(dest) = memByte; 
+                            set = true;
+                            break;
+                        case OPRSZ_WORD: 
+                            memcpy(&memWord, code + a.toLinear(), sizeof(Word));
+                            regs.bit16(dest) = memWord; 
+                            set = true;
+                            break;
+                        }
+                    }
+                    if (set) {
+                        searchQ.message(csip, "[XXX] encountered move to register: "s + i.toString());
+                        debug(regs.dump());
+                    }
+                }
                 break;
             } // switch on instruction class
 
@@ -576,7 +650,6 @@ bool compareCode(const Executable &base, const Executable &object) {
             bAddr += bi.length;
             oAddr += oi.length;
         }
-
     }
 
     info("Identified and compared "s + to_string(routineCount) + " routines");
