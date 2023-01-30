@@ -264,6 +264,7 @@ public:
     InstructionMatch match(const Instruction &other);
     void load(const Byte *data);
     Word relativeOffset() const;
+    Register touchedReg() const { return op1.regId(); }
 
 private:
     OperandType getModrmOperand(const Byte modrm, const ModrmOperand op);

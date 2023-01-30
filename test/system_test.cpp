@@ -49,13 +49,13 @@ TEST_F(SystemTest, FindRoutines) {
     const RoutineMap idaMap{"../bin/hello.lst"};
     // test discovery of the routine map    
     MzImage mz{"bin/hello.exe"};
-    mz.load(0x60);
+    mz.load(0x0);
     RoutineMap discoveredMap = findRoutines(Executable{mz});
     discoveredMap.dump();
     // compare against ida map
     const Size matchCount = idaMap.match(discoveredMap);
     TRACELN("Found matching " << matchCount << " routines out of " << idaMap.routines.size());
-    ASSERT_GE(matchCount, 32); // not all 54 functions that ida finds can be identified for now
+    ASSERT_GE(matchCount, 34); // not all 54 functions that ida finds can be identified for now
 }
 
 TEST_F(SystemTest, CodeCompare) {

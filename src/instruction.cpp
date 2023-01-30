@@ -413,7 +413,7 @@ std::string Instruction::toString() const {
             }
         }
         // segment override prefix if present
-        if (prefix > PRF_NONE && prefix < PRF_CHAIN_REPNZ)
+        if (prefix > PRF_NONE && prefix < PRF_CHAIN_REPNZ && operandIsMem(op1.type))
             str << PRF_NAME[prefix];
         // for call and jump instructions, the immediate offset operand is added to the address of the byte past the current instruction
         // to form a relative offset
@@ -423,7 +423,11 @@ std::string Instruction::toString() const {
             str << op1.toString();
     }
     if (op2.type != OPR_NONE) {
-        str << ", " << op2.toString();
+        str << ", ";
+        // segment override prefix if present
+        if (prefix > PRF_NONE && prefix < PRF_CHAIN_REPNZ && operandIsMem(op2.type))
+            str << PRF_NAME[prefix];
+        str << op2.toString();
     }
 
     return str.str();
@@ -571,8 +575,10 @@ Size Instruction::loadImmediate(Operand &op, const Byte *data) {
 
 Register Instruction::Operand::regId() const {
     static const Register regs[] = { REG_AX, REG_AL, REG_AH, REG_BX, REG_BL, REG_BH, REG_CX, REG_CL, REG_CH, REG_DX, REG_DL, REG_DH, REG_SI, REG_DI, REG_BP, REG_SP, REG_CS, REG_DS, REG_ES, REG_SS };
-    if (operandIsReg(type)) return regs[type];
-    else return REG_NONE;
+    if (!operandIsReg(type)) return REG_NONE;
+    const int idx = type - OPR_REG_AX;
+    assert(idx >= 0 && idx < sizeof(regs) / sizeof(regs[0]));
+    return regs[idx];
 }
 
 Register prefixRegId(const InstructionPrefix p) {

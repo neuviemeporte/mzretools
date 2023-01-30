@@ -148,6 +148,11 @@ Executable::Executable(const MzImage &mz) : entrypoint(mz.entrypoint()), reloc(m
     copy(data, data + mz.loadModuleSize(), std::back_inserter(code));
 }
 
+struct RegisterState {
+    Registers regs;
+    Registers known;
+};
+
 struct SearchPoint {
     Address address;
     int routineId;
@@ -183,7 +188,7 @@ public:
     void message(const Address &a, const string &msg, const LogPriority pri = LOG_VERBOSE) {
         output("[r"s + to_string(curSearch.routineId) + "/q" + to_string(size()) + "]: " + a.toString() + ": " + msg, LOG_ANALYSIS, pri);
     }
-    int getRoutine(const Offset off) const {return visited.at(off); }
+    int getRoutine(const Offset off) const { return visited.at(off); }
 
     void markRoutine(const Offset off, const Size length, int id = NULL_ROUTINE) {
         if (id == NULL_ROUTINE) id = curSearch.routineId;
@@ -214,6 +219,10 @@ public:
     // place a jump (conditional jump or call) into the search queue to be investigated later
     void savePoint(const Address &src, const Address &dest, const bool isCall) {
         const Offset destOff = dest.toLinear();
+        if (destOff > visited.size()) {
+            debug("search point destination outside code boundaries: "s + dest.toString());
+            return;
+        }
         const int destId = getRoutine(destOff);
         if (isCall) { 
             // function call, create new routine at destination if either not visited, 
@@ -232,6 +241,7 @@ public:
                 debug("jump destination not belonging to any routine "s + dest.toString() + ", saving as search point for existing routine " + to_string(curSearch.routineId));
                 sq.emplace_front(SearchPoint(dest, curSearch.routineId, false));
             }
+            else if (destId != NULL_ROUTINE) debug("jump destination already claimed by routine "s + to_string(destId));
         }
     }
 
@@ -283,10 +293,6 @@ public:
         return map;
     }
 };
-
-void setRegValue(const Registers &regs, const Register regid, const Instruction::Operand &source) {
-
-}
 
 // explore the code without actually executing instructions, discover routine boundaries
 // TODO: trace modifications to CS, support multiple code segments
@@ -379,12 +385,14 @@ RoutineMap findRoutines(const Executable &exe) {
                 else if (operandIsReg(i.op1.type)) {
                     jumpAddr.offset = regs.bit16(i.op1.regId());
                     searchQ.message(csip, "[XXX] encountered near call through register to "s + jumpAddr.toString());
+                    call = true;
                 }
                 else if (operandIsMemImmediate(i.op1.type)) {
                     Address a{regs.bit16(REG_DS), i.op1.immval.u16};
                     memcpy(&memWord, code + a.toLinear(), sizeof(Word));
                     jumpAddr.offset = memWord;
                     searchQ.message(csip, "[XXX] encountered near call through mem pointer to "s + jumpAddr.toString());
+                    call = true;
                 }
                 else searchQ.message(csip, "unknown near call target: "s + i.toString());
                 break;
@@ -409,12 +417,11 @@ RoutineMap findRoutines(const Executable &exe) {
                 if (operandIsReg(i.op1.type)) {
                     const Register dest = i.op1.regId();
                     bool set = false;
+                    // mov reg, imm
                     if (operandIsImmediate(i.op2.type)) {
                         switch(i.op2.size) {
                         case OPRSZ_BYTE: 
-                            debug("setting reg8 "s + to_string(dest) + " to imm " + hexVal(i.op2.immval.u8));
                             regs.bit8(dest) = i.op2.immval.u8; 
-                            debug("value = "s + hexVal(regs.bit8(dest)));
                             set = true; 
                             break;
                         case OPRSZ_WORD: 
@@ -423,6 +430,7 @@ RoutineMap findRoutines(const Executable &exe) {
                             break;
                         }
                     }
+                    // mov reg, reg
                     else if (operandIsReg(i.op2.type)) {
                         const Register src = i.op2.regId();
                         switch(i.op2.size) {
@@ -436,22 +444,25 @@ RoutineMap findRoutines(const Executable &exe) {
                             break;
                         }
                     }
+                    // mov reg, mem
                     else if (operandIsMemImmediate(i.op2.type)) {
                         const Register base = prefixRegId(i.prefix);
-                        Address a(regs.bit16(base), i.op2.immval.u16);
-                        switch(i.op2.size) {
+                        Address memAddr(regs.bit16(base), i.op2.immval.u16);
+                        if (codeExtents.contains(memAddr)) switch(i.op2.size) {
                         case OPRSZ_BYTE:
-                            debug("setting reg8 "s + to_string(dest) + " to mem " + a.toString());
-                            memByte = code[a.toLinear()];
+                            assert(memAddr.toLinear() < codeSize);
+                            memByte = code[memAddr.toLinear()];
                             regs.bit8(dest) = memByte; 
                             set = true;
                             break;
-                        case OPRSZ_WORD: 
-                            memcpy(&memWord, code + a.toLinear(), sizeof(Word));
+                        case OPRSZ_WORD:
+                            assert(memAddr.toLinear() < codeSize);
+                            memcpy(&memWord, code + memAddr.toLinear(), sizeof(Word));
                             regs.bit16(dest) = memWord; 
                             set = true;
                             break;
                         }
+                        else debug("mov source address outside code range");
                     }
                     if (set) {
                         searchQ.message(csip, "[XXX] encountered move to register: "s + i.toString());
