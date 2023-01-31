@@ -149,8 +149,6 @@ Executable::Executable(const MzImage &mz) : entrypoint(mz.entrypoint()), reloc(m
 }
 
 struct RegisterState {
-    Registers regs;
-    Registers known;
 };
 
 struct SearchPoint {
@@ -219,10 +217,7 @@ public:
     // place a jump (conditional jump or call) into the search queue to be investigated later
     void savePoint(const Address &src, const Address &dest, const bool isCall) {
         const Offset destOff = dest.toLinear();
-        if (destOff > visited.size()) {
-            debug("search point destination outside code boundaries: "s + dest.toString());
-            return;
-        }
+        assert(destOff < visited.size());
         const int destId = getRoutine(destOff);
         if (isCall) { 
             // function call, create new routine at destination if either not visited, 
@@ -296,8 +291,9 @@ public:
 
 // explore the code without actually executing instructions, discover routine boundaries
 // TODO: trace modifications to CS, support multiple code segments
-// TODO: trace other register values for discovering register-dependent calls?
 // TODO: identify routines through signatures generated from OMF libraries
+// TODO: trace usage of bp register (sub/add) to determine stack frame size of routines
+// TODO: store references to potential jump tables (e.g. jmp cs:[bx+0xc08]), if unclaimed after initial search, try treating entries as pointers and run second search before coalescing blocks?
 RoutineMap findRoutines(const Executable &exe) {
     const Byte *code = exe.code.data();
     const Size codeSize = exe.code.size();
@@ -383,15 +379,15 @@ RoutineMap findRoutines(const Executable &exe) {
                     call = true;
                 }
                 else if (operandIsReg(i.op1.type)) {
-                    jumpAddr.offset = regs.bit16(i.op1.regId());
-                    searchQ.message(csip, "[XXX] encountered near call through register to "s + jumpAddr.toString());
+                    jumpAddr.offset = regs.get(i.op1.regId());
+                    searchQ.message(csip, "encountered near call through register to "s + jumpAddr.toString());
                     call = true;
                 }
                 else if (operandIsMemImmediate(i.op1.type)) {
-                    Address a{regs.bit16(REG_DS), i.op1.immval.u16};
+                    Address a{regs.get(REG_DS), i.op1.immval.u16};
                     memcpy(&memWord, code + a.toLinear(), sizeof(Word));
                     jumpAddr.offset = memWord;
-                    searchQ.message(csip, "[XXX] encountered near call through mem pointer to "s + jumpAddr.toString());
+                    searchQ.message(csip, "encountered near call through mem pointer to "s + jumpAddr.toString());
                     call = true;
                 }
                 else searchQ.message(csip, "unknown near call target: "s + i.toString());
@@ -411,7 +407,7 @@ RoutineMap findRoutines(const Executable &exe) {
                 searchQ.message(csip, "returning from routine");
                 scan = false;
                 break;
-            // track some movs to gather some jump/call targets from register values
+            // track some movs to be able to infer jump/call destinations from register values
             // TODO: store regs' values and known/unknown state in queue with SearchPoint, pop when searching at new location
             case INS_MOV:
                 if (operandIsReg(i.op1.type)) {
@@ -421,11 +417,11 @@ RoutineMap findRoutines(const Executable &exe) {
                     if (operandIsImmediate(i.op2.type)) {
                         switch(i.op2.size) {
                         case OPRSZ_BYTE: 
-                            regs.bit8(dest) = i.op2.immval.u8; 
+                            regs.set(dest, i.op2.immval.u8); 
                             set = true; 
                             break;
                         case OPRSZ_WORD: 
-                            regs.bit16(dest) = i.op2.immval.u16;
+                            regs.set(dest, i.op2.immval.u16);
                             set = true; 
                             break;
                         }
@@ -435,11 +431,11 @@ RoutineMap findRoutines(const Executable &exe) {
                         const Register src = i.op2.regId();
                         switch(i.op2.size) {
                         case OPRSZ_BYTE: 
-                            regs.bit8(dest) = regs.bit8(src);
+                            regs.set(dest, regs.get(src));
                             set = true;
                             break;
                         case OPRSZ_WORD: 
-                            regs.bit16(dest) = regs.bit16(src);
+                            regs.set(dest, regs.get(src));
                             set = true;
                             break;
                         }
@@ -447,33 +443,38 @@ RoutineMap findRoutines(const Executable &exe) {
                     // mov reg, mem
                     else if (operandIsMemImmediate(i.op2.type)) {
                         const Register base = prefixRegId(i.prefix);
-                        Address memAddr(regs.bit16(base), i.op2.immval.u16);
+                        Address memAddr(regs.get(base), i.op2.immval.u16);
                         if (codeExtents.contains(memAddr)) switch(i.op2.size) {
                         case OPRSZ_BYTE:
                             assert(memAddr.toLinear() < codeSize);
                             memByte = code[memAddr.toLinear()];
-                            regs.bit8(dest) = memByte; 
+                            regs.set(dest, memByte); 
                             set = true;
                             break;
                         case OPRSZ_WORD:
                             assert(memAddr.toLinear() < codeSize);
                             memcpy(&memWord, code + memAddr.toLinear(), sizeof(Word));
-                            regs.bit16(dest) = memWord; 
+                            regs.set(dest, memWord);
                             set = true;
                             break;
                         }
                         else debug("mov source address outside code range");
                     }
                     if (set) {
-                        searchQ.message(csip, "[XXX] encountered move to register: "s + i.toString());
-                        debug(regs.dump());
+                        searchQ.message(csip, "encountered move to register: "s + i.toString());
+                        // debug(regs.dump());
                     }
                 }
                 break;
+            default:
+                break;
             } // switch on instruction class
 
-            // if the processed instruction was a jump or a call, store its entry in the search queue
-            if (jumpAddr != csip) searchQ.savePoint(csip, jumpAddr, call);
+            // if the processed instruction was a jump or a call, store its destination in the search queue
+            if (jumpAddr != csip) {
+                if (codeExtents.contains(jumpAddr)) searchQ.savePoint(csip, jumpAddr, call);
+                else debug("search point destination outside code boundaries: "s + jumpAddr.toString());
+            } 
             // advance to next instruction
             csip.offset += i.length;
         } // iterate over instructions
@@ -486,7 +487,7 @@ RoutineMap findRoutines(const Executable &exe) {
     Block undiscoveredBlock;
     // find runs of undiscovered bytes surrounded by bytes discovered as belonging to the same routine and coalesce them with the routine
     // TODO: those areas are still practically undiscovered as we did not pass over their instructions, so we are missing paths leading from there,
-    // perhaps a second pass over that area could discover more stuff?
+    // perhaps a second pass over that area could discover more stuff? Need to be careful not to treat inline data as code though.
     for (size_t mapOffset = codeExtents.begin.toLinear(); mapOffset < codeExtents.end.toLinear(); ++mapOffset) {
         const int m = searchQ.getRoutine(mapOffset);
         if (m == NULL_ROUTINE && (prev != NULL_ROUTINE || mapOffset == 0))  {

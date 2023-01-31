@@ -38,7 +38,7 @@ MODRM_OPERAND
 #undef X
 
 
-// maps (non-group) opcodes to an instruction class
+// maps non-group opcodes to an instruction class
 static const InstructionClass OPCODE_CLASS[] = {
 //   0         1          2          3         4          5          6         7           8         9         A             B          C          D          E          F
 INS_ADD,    INS_ADD,   INS_ADD,   INS_ADD,  INS_ADD,   INS_ADD,   INS_PUSH,  INS_POP,   INS_OR,   INS_OR,   INS_OR,       INS_OR,    INS_OR,    INS_OR,    INS_PUSH,  INS_ERR,   // 0
@@ -178,7 +178,6 @@ Instruction::Instruction(const Address &addr, const Byte *data) : addr{addr}, pr
 void Instruction::load(const Byte *data)  {
     opcode = *data++;
     length++;
-    DEBUG("Parsed opcode: "s + opcodeName(opcode) + ", length = " + to_string(length));
     // in case of a chain opcode, use it to set an appropriate prefix value and replace the opcode with the subsequent instruction
     // TODO: support LOCK, other prefix-like opcodes?
     if (opcode == OP_REPZ || opcode == OP_REPNZ) { 
@@ -186,26 +185,25 @@ void Instruction::load(const Byte *data)  {
         // TODO: guard against memory overflow
         opcode = *data++;
         length++;
-        DEBUG("Found chain prefix "s + INS_PRF_ID[prefix] + ", opcode now: "s + opcodeName(opcode) + ", length = " + to_string(length));
+        DEBUG("Found chain prefix "s + INS_PRF_ID[prefix] + ", length = " + to_string(length));
     }
     // likewise in case of a segment ovverride prefix, set instruction prefix value and get next opcode
     else if (opcodeIsSegmentPrefix(opcode)) {
         prefix = static_cast<InstructionPrefix>(((opcode - OP_PREFIX_ES) / 8) + PRF_SEG_ES); // convert opcode to instruction prefix enum, the segment prefix opcode values differ by 8
         opcode = *data++;
         length++;
-        DEBUG("Found segment prefix "s + INS_PRF_ID[prefix] + ", opcode now: "s + opcodeName(opcode) + ", length = " + to_string(length));
+        DEBUG("Found segment prefix "s + INS_PRF_ID[prefix] + ", length = " + to_string(length));
     }
 
     // regular instruction opcode
     if (!opcodeIsModrm(opcode)) {
         iclass = instr_class(opcode);
-        DEBUG("regular opcode, class "s + INS_CLASS_ID[iclass]);
         // get type of operands
         op1.type = OP1_TYPE[opcode];
         op2.type = OP2_TYPE[opcode];
-
+        DEBUG("regular opcode "s + opcodeName(opcode) + ", operand types: op1 = "s + OPR_TYPE_ID[op1.type] + ", op2 = " + OPR_TYPE_ID[op2.type] 
+            + ", class " + INS_CLASS_ID[iclass]);        
         // TODO: do not derive size from operand type, but from opcode, same for modrm and group
-
         op1.size = OPR_SIZE[op1.type];
         op2.size = OPR_SIZE[op2.type];
     }
@@ -274,7 +272,7 @@ void Instruction::load(const Byte *data)  {
     immSize = loadImmediate(op2, data);
     data += immSize;
     length += immSize;
-    DEBUG("Instruction: "s + toString());
+    DEBUG("Instruction: "s + toString() + ", length = " + to_string(length));
 }
 
 Word Instruction::relativeOffset() const {
@@ -533,7 +531,7 @@ Size Instruction::loadImmediate(Operand &op, const Byte *data) {
         size = sizeof(Byte);
         memcpy(&byteVal, data, size);
         op.immval.u8 = byteVal;
-        DEBUG("8bit operand, value = "s + hexVal(op.immval.u8) + ", instruction length = " + to_string(length));
+        DEBUG("8bit operand, value = "s + hexVal(op.immval.u8) + ", instruction length = " + to_string(length + size));
         break;
     case OPR_MEM_OFF16:
     case OPR_MEM_BX_SI_OFF16:
@@ -548,7 +546,7 @@ Size Instruction::loadImmediate(Operand &op, const Byte *data) {
         size = sizeof(Word);
         memcpy(&wordVal, data, size);
         op.immval.u16 = wordVal;
-        DEBUG("16bit operand, value = "s + hexVal(op.immval.u16) + ", instruction length = " + to_string(length));
+        DEBUG("16bit operand, value = "s + hexVal(op.immval.u16) + ", instruction length = " + to_string(length + size));
         break;    
     case OPR_IMM0:
         op.immval.u32 = 0;
@@ -562,7 +560,7 @@ Size Instruction::loadImmediate(Operand &op, const Byte *data) {
         size = sizeof(DWord);
         memcpy(&dwordVal, data, size);
         op.immval.u32 = dwordVal;
-        DEBUG("32bit immediate = "s + hexVal(op.immval.u32) + ", instruction length = " + to_string(length));
+        DEBUG("32bit immediate = "s + hexVal(op.immval.u32) + ", instruction length = " + to_string(length + size));
         break;
     default:
         // register and memory operands with no displacement 

@@ -22,8 +22,8 @@ void intMessage(const string &msg) {
 
 IntStatus InterruptHandler::interrupt(const Byte num, Registers &regs) {
     const Byte 
-        funcHi = regs.bit8(REG_AH), 
-        funcLo = regs.bit8(REG_AL);
+        funcHi = regs.get(REG_AH), 
+        funcLo = regs.get(REG_AL);
     switch (num) {
     case INT_DOS_TERMINATE:
         return INT_TERMINATE;
@@ -43,8 +43,8 @@ void InterruptHandler::dosFunction(const Byte funcHi, const Byte funcLo, Registe
     switch (funcHi)
     {
     case DOS_VERSION:
-        regs.bit8(REG_AL) = static_cast<Byte>(dos_->version());
-        regs.bit8(REG_AH) = 0;
+        regs.set(REG_AL, static_cast<Byte>(dos_->version()));
+        regs.set(REG_AH, 0);
         break;
     default:
         throw InterruptError("DOS interrupt function not implemented: "s + hexVal(funcHi) + "/" + hexVal(funcLo));

@@ -49,25 +49,17 @@ private:
     void setCodeSegment(const Word seg);
 
     // instruction pointer access and manipulation
-    inline Byte ipByte(const Word offset = 0) const { return code_[regs_.bit16(REG_IP) + offset]; }
-    inline Word ipWord(const Word offset = 0) const { return *WORD_PTR(code_, regs_.bit16(REG_IP) + offset); }
-    inline void ipJump(const Address &target) { setCodeSegment(target.segment); regs_.bit16(REG_IP) = target.offset; }
-    inline void ipAdvance(const SWord amount) { regs_.bit16(REG_IP) += amount; }
-    inline void ipAdvance(const SByte amount) { regs_.bit16(REG_IP) += amount; }
+    inline Byte ipByte(const Word offset = 0) const { return code_[regs_.get(REG_IP) + offset]; }
+    inline Word ipWord(const Word offset = 0) const { return *WORD_PTR(code_, regs_.get(REG_IP) + offset); } // TODO: ouch
+    inline void ipJump(const Address &target) { setCodeSegment(target.segment); regs_.set(REG_IP, target.offset); }
+    inline void ipAdvance(const SWord amount) { regs_.set(REG_IP, regs_.get(REG_IP) + amount); }
+    inline void ipAdvance(const SByte amount) { regs_.set(REG_IP, regs_.get(REG_IP) + amount); }
 
     inline Byte memByte(const Offset offset) const { return memBase_[offset]; }
     inline Word memWord(const Offset offset) const { return *WORD_PTR(memBase_, offset); }
 
     // ModR/M byte and evaluation
-    Register modrmRegister(const RegType type, const Byte value) const;
-    inline Register modrmRegRegister(const RegType regType) const;
-    inline Register modrmMemRegister(const RegType regType) const;
     Offset modrmMemAddress() const;
-    void modrmStoreByte(const Byte value);
-    void modrmStoreWord(const Word value);
-    Byte modrmGetByte();
-    Word modrmGetWord();
-    size_t modrmDisplacementLength() const;
 
     std::string opcodeStr() const;
     void preProcessOpcode();

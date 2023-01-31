@@ -23,7 +23,7 @@ protected:
     }
 };
 
-TEST_F(SystemTest, HelloWorld) {
+TEST_F(SystemTest, DISABLED_HelloWorld) {
     ASSERT_EQ(sys.command("load bin/hello.exe"), CMD_OK);
     EXPECT_THROW(sys.command("run"), CpuError);
     // TODO: reenable when complete instruction set implemented

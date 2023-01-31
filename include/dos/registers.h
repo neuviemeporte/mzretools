@@ -5,32 +5,20 @@
 #include "dos/types.h"
 #include "dos/address.h"
 
-// TODO: this is stupid, get rid of non-unique register codes
-enum Register {
-    REG_AX = 0, REG_AL = 0, REG_AH = 1,
-    REG_BX = 1, REG_BL = 2, REG_BH = 3,
-    REG_CX = 2, REG_CL = 4, REG_CH = 5,
-    REG_DX = 3, REG_DL = 6, REG_DH = 7,
-    REG_SI = 4, 
-    REG_DI = 5, 
-    REG_BP = 6, 
-    REG_SP = 7,
-    REG_CS = 8, 
-    REG_DS = 9, 
-    REG_ES = 10,
-    REG_SS = 11, 
-    REG_IP = 12, 
-    REG_FLAGS = 13,
-    REG_NONE
+enum Register { 
+    REG_NONE, 
+    REG_AL, REG_AH, REG_BL, REG_BH, REG_CL, REG_CH, REG_DL,REG_DH,
+    REG_AX, REG_BX, REG_CX, REG_DX,
+    REG_SI, REG_DI, REG_BP, REG_SP,
+    REG_CS, REG_DS, REG_ES, REG_SS,
+    REG_IP, REG_FLAGS,
 };
 
-enum RegType {
-    REG_GP8,  // general purpose 8bit
-    REG_GP16, // general purpose 16bit
-    REG_SEG   // segment register
-};
+inline bool regIsByte(const Register reg) { return reg >= REG_AL && reg <= REG_DH; }
+inline bool regIsWord(const Register reg) { return reg >= REG_AX; }
+inline bool regIsSegment(const Register reg) { return reg >= REG_CS && reg <= REG_SS; }
 
-// XXXXODITSZXAXPXC
+// flag word bits: XXXXODITSZXAXPXC
 enum Flag : Word {
     FLAG_CARRY  = 0b0000000000000001, // carry
     FLAG_B1     = 0b0000000000000010, // ----
@@ -50,28 +38,25 @@ enum Flag : Word {
     FLAG_B15    = 0b1000000000000000, // ----
 };
 
-// TODO: this is not portable
 class Registers {
 private:
-    union {
-        Word bit16[REG_FLAGS + 1]; // 14x 16bit registers
-        Byte bit8[REG_DL + 1];     // 8x 8bit registers
-    } regs_;
+    Word values[REG_FLAGS - REG_AX + 1]; // 14x 16bit registers
 
 public:
     Registers();
-    inline Byte& bit8(const Register reg) { return regs_.bit8[reg]; }
-    inline Word& bit16(const Register reg) { return regs_.bit16[reg]; }
-    inline const Byte& bit8(const Register reg) const { return regs_.bit8[reg]; }
-    inline const Word& bit16(const Register reg) const { return regs_.bit16[reg]; }
-    inline bool getFlag(const Flag flag) const { return regs_.bit16[REG_FLAGS] & flag; }
+    Word get(const Register r) const;
+    void set(const Register r, const Word value);
+    inline bool getFlag(const Flag flag) const { return reg(REG_FLAGS) & flag; }
     inline void setFlag(const Flag flag, const bool val) { 
-        if (val) regs_.bit16[REG_FLAGS] |= flag; 
-        else regs_.bit16[REG_FLAGS] &= ~flag; 
+        if (val) reg(REG_FLAGS) |= flag; 
+        else reg(REG_FLAGS) &= ~flag; 
     }
-    inline Address csip() const { return { regs_.bit16[REG_CS], regs_.bit16[REG_IP]}; }
+    inline Address csip() const { return { values[REG_CS], values[REG_IP]}; }
     std::string dump() const;
     void reset();
+private:
+    inline Word& reg(const Register r) { return values[r - REG_AX]; }
+    inline const Word& reg(const Register r) const { return values[r - REG_AX]; }
 };
 
 #endif // REGISTERS_H
