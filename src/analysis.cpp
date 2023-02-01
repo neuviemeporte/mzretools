@@ -384,11 +384,14 @@ RoutineMap findRoutines(const Executable &exe) {
                     call = true;
                 }
                 else if (operandIsMemImmediate(i.op1.type)) {
-                    Address a{regs.get(REG_DS), i.op1.immval.u16};
-                    memcpy(&memWord, code + a.toLinear(), sizeof(Word));
-                    jumpAddr.offset = memWord;
-                    searchQ.message(csip, "encountered near call through mem pointer to "s + jumpAddr.toString());
-                    call = true;
+                    Address memAddr{regs.get(REG_DS), i.op1.immval.u16};
+                    if (codeExtents.contains(memAddr)) {
+                        searchQ.message(csip, "encountered near call through mem pointer to "s + jumpAddr.toString());
+                        memcpy(&memWord, code + memAddr.toLinear(), sizeof(Word));
+                        jumpAddr.offset = memWord;
+                        call = true;
+                    }
+                    else debug("call destination address outside code extents: " + memAddr.toString());
                 }
                 else searchQ.message(csip, "unknown near call target: "s + i.toString());
                 break;
@@ -458,7 +461,7 @@ RoutineMap findRoutines(const Executable &exe) {
                             set = true;
                             break;
                         }
-                        else debug("mov source address outside code range");
+                        else debug("mov source address outside code extents: " + memAddr.toString());
                     }
                     if (set) {
                         searchQ.message(csip, "encountered move to register: "s + i.toString());

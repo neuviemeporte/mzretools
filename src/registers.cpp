@@ -31,7 +31,7 @@ void Registers::reset() {
 
 Word Registers::get(const Register r) const {
     assert(r > REG_NONE && r <= REG_FLAGS);
-    if (regIsWord(r)) return values[r];
+    if (regIsWord(r)) return reg(r);
     assert(regIsByte(r));
     return byteValue(reg(PARENT_REG[r]), BYTE_SHIFT[r]);
 }

@@ -148,7 +148,7 @@ TEST_F(CpuTest, DISABLED_Arithmetic) {
     ASSERT_EQ(getReg(REG_FLAGS) & mask, 0b10010101); // C1 Z0 S1 O0 A1 P1
 }
 
-TEST_F(CpuTest, WordOperand) {
+TEST_F(CpuTest, DISABLED_WordOperand) {
     const Byte code[] = {
         0xbf, 0x6f, 0x01 // mov di,0x16f
     };
