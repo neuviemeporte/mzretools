@@ -15,6 +15,20 @@ inline Word byteValue(const Word w, const Word s) {
     return (w & (0xff << s)) >> s;
 }
 
+std::string regName(const Register r) {
+    static const string regnames[] = {
+        "XXX", 
+        "AL", "AH", "BL", "BH", 
+        "CL", "CH", "DL", "DH",
+        "AX", "BX", "CX", "DX",
+        "SI", "DI", "BP", "SP",
+        "CS", "DS", "ES", "SS",
+        "IP", "FLAGS",        
+    };
+    assert(r >= REG_NONE && r <= REG_FLAGS);
+    return regnames[r];
+}
+
 Registers::Registers() {
     reset();
 }

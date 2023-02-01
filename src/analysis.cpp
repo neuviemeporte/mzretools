@@ -148,16 +148,63 @@ Executable::Executable(const MzImage &mz) : entrypoint(mz.entrypoint()), reloc(m
     copy(data, data + mz.loadModuleSize(), std::back_inserter(code));
 }
 
-struct RegisterState {
+class RegisterState {
+private:
+    static constexpr Word WORD_KNOWN = 0xffff;
+    static constexpr Word BYTE_KNOWN = 0xff;
+    Registers regs_;
+    Registers known_;
+
+    void setState(const Register r, const Word value, const bool known) {
+        if (regIsWord(r)) {
+            regs_.set(r, value);
+            known_.set(r, known ? WORD_KNOWN : 0);
+        }
+        else {
+            regs_.set(r, value);
+            known_.set(r, known ? BYTE_KNOWN : 0);            
+        }
+    }
+public:
+    bool isKnown(const Register r) const {
+        if (regIsWord(r)) return known_.get(r) == WORD_KNOWN;
+        else return known_.get(r) == BYTE_KNOWN;
+    }
+    Word getValue(const Register r) const {
+        if (isKnown(r)) return regs_.get(r);
+        else return 0;
+    }
+    void setValue(const Register r, const Word value) {
+        setState(r, value, true);
+    }
+    void setUnknown(const Register r) {
+        setState(r, 0, false);
+    }
+    string getString(const Register r) {
+        return regName(r) + " = " + (isKnown(r) ? hexVal(regs_.get(r)) : "?     ");
+    }
+    string dump() {
+        ostringstream str;
+        str << std::hex 
+            << getString(REG_AX) << ", " << getString(REG_BX) << ", "
+            << getString(REG_CX) << ", " << getString(REG_DX) << endl
+            << getString(REG_SI) << ", " << getString(REG_DI) << ", "
+            << getString(REG_BP) << ", " << getString(REG_SP) << endl
+            << getString(REG_CS) << ", " << getString(REG_DS) << ", "
+            << getString(REG_SS) << ", " << getString(REG_ES) << endl
+            << getString(REG_IP) << ", " << getString(REG_FLAGS);
+        return str.str();   
+    }
 };
 
 struct SearchPoint {
     Address address;
     int routineId;
     bool isCall;
+    RegisterState regs;
+
     SearchPoint() : routineId(0), isCall(false) {}
-    SearchPoint(const Routine &r) : address(r.entrypoint()), routineId(r.id), isCall(true) {}
-    SearchPoint(const Address address, const int id, const bool call) : address(address), routineId(id), isCall(call) {}
+    SearchPoint(const Address address, const int id, const bool call, const RegisterState &regs) : address(address), routineId(id), isCall(call), regs(regs) {}
     bool match(const SearchPoint &other) const {
         return address == other.address && isCall == other.isCall;
     }
@@ -215,7 +262,7 @@ public:
     };
 
     // place a jump (conditional jump or call) into the search queue to be investigated later
-    void savePoint(const Address &src, const Address &dest, const bool isCall) {
+    void savePoint(const Address &src, const Address &dest, const bool isCall, const RegisterState &regs) {
         const Offset destOff = dest.toLinear();
         assert(destOff < visited.size());
         const int destId = getRoutine(destOff);
@@ -227,14 +274,14 @@ public:
                 lastRoutineId++;
                 if (destId == NULL_ROUTINE) debug("call destination not belonging to any routine, saving as search point for new routine " + to_string(lastRoutineId));
                 else debug("call destination internal to routine " + to_string(destId) + ", saving as search point for new routine " + to_string(lastRoutineId));
-                sq.emplace_front(SearchPoint(dest, lastRoutineId, true));
+                sq.emplace_front(SearchPoint(dest, lastRoutineId, true, regs));
             }
         }
         else { 
             // conditional jump, save as destination to be investigated, belonging to current routine
             if (destId == NULL_ROUTINE && !hasPoint(dest, isCall)) {
                 debug("jump destination not belonging to any routine "s + dest.toString() + ", saving as search point for existing routine " + to_string(curSearch.routineId));
-                sq.emplace_front(SearchPoint(dest, curSearch.routineId, false));
+                sq.emplace_front(SearchPoint(dest, curSearch.routineId, false, regs));
             }
             else if (destId != NULL_ROUTINE) debug("jump destination already claimed by routine "s + to_string(destId));
         }
@@ -301,7 +348,6 @@ RoutineMap findRoutines(const Executable &exe) {
     const Block codeExtents = Block({entrypoint.segment, 0}, Address(SEG_OFFSET(entrypoint.segment) + codeSize));
     // queue for BFS search
     SearchQueue searchQ(codeSize, SearchPoint(entrypoint, 1, true));
-    Registers regs;
     Byte memByte;
     Word memWord;
 
@@ -317,6 +363,7 @@ RoutineMap findRoutines(const Executable &exe) {
             debug("location already claimed by routine "s + to_string(rid) + " and search point did not originate from a call, skipping");
             continue;
         }
+        RegisterState regs = search.regs;
         bool scan = true;
         // iterate over instructions at current search location in a linear fashion, until an unconditional jump or return encountered
         while (scan) {
@@ -332,6 +379,7 @@ RoutineMap findRoutines(const Executable &exe) {
             searchQ.markRoutine(instrOffs, i.length);
             Address jumpAddr = csip;
             bool call = false;
+            Register touchReg = REG_NONE;
             // interpret the instruction
             switch (i.iclass) {
             // jumps
@@ -378,13 +426,13 @@ RoutineMap findRoutines(const Executable &exe) {
                     searchQ.message(csip, "encountered near call to "s + jumpAddr.toString());
                     call = true;
                 }
-                else if (operandIsReg(i.op1.type)) {
-                    jumpAddr.offset = regs.get(i.op1.regId());
+                else if (operandIsReg(i.op1.type) && regs.isKnown(i.op1.regId())) {
+                    jumpAddr.offset = regs.getValue(i.op1.regId());
                     searchQ.message(csip, "encountered near call through register to "s + jumpAddr.toString());
                     call = true;
                 }
-                else if (operandIsMemImmediate(i.op1.type)) {
-                    Address memAddr{regs.get(REG_DS), i.op1.immval.u16};
+                else if (operandIsMemImmediate(i.op1.type) && regs.isKnown(REG_DS)) {
+                    Address memAddr{regs.getValue(REG_DS), i.op1.immval.u16};
                     if (codeExtents.contains(memAddr)) {
                         searchQ.message(csip, "encountered near call through mem pointer to "s + jumpAddr.toString());
                         memcpy(&memWord, code + memAddr.toLinear(), sizeof(Word));
@@ -420,44 +468,35 @@ RoutineMap findRoutines(const Executable &exe) {
                     if (operandIsImmediate(i.op2.type)) {
                         switch(i.op2.size) {
                         case OPRSZ_BYTE: 
-                            regs.set(dest, i.op2.immval.u8); 
+                            regs.setValue(dest, i.op2.immval.u8); 
                             set = true; 
                             break;
                         case OPRSZ_WORD: 
-                            regs.set(dest, i.op2.immval.u16);
+                            regs.setValue(dest, i.op2.immval.u16);
                             set = true; 
                             break;
                         }
                     }
                     // mov reg, reg
-                    else if (operandIsReg(i.op2.type)) {
+                    else if (operandIsReg(i.op2.type) && regs.isKnown(i.op2.regId())) {
                         const Register src = i.op2.regId();
-                        switch(i.op2.size) {
-                        case OPRSZ_BYTE: 
-                            regs.set(dest, regs.get(src));
-                            set = true;
-                            break;
-                        case OPRSZ_WORD: 
-                            regs.set(dest, regs.get(src));
-                            set = true;
-                            break;
-                        }
+                        regs.setValue(dest, regs.getValue(src));
+                        set = true;
                     }
                     // mov reg, mem
-                    else if (operandIsMemImmediate(i.op2.type)) {
-                        const Register base = prefixRegId(i.prefix);
-                        Address memAddr(regs.get(base), i.op2.immval.u16);
+                    else if (operandIsMemImmediate(i.op2.type) && regs.isKnown(prefixRegId(i.prefix))) {
+                        Address memAddr(regs.getValue(prefixRegId(i.prefix)), i.op2.immval.u16);
                         if (codeExtents.contains(memAddr)) switch(i.op2.size) {
                         case OPRSZ_BYTE:
                             assert(memAddr.toLinear() < codeSize);
                             memByte = code[memAddr.toLinear()];
-                            regs.set(dest, memByte); 
+                            regs.setValue(dest, memByte); 
                             set = true;
                             break;
                         case OPRSZ_WORD:
                             assert(memAddr.toLinear() < codeSize);
                             memcpy(&memWord, code + memAddr.toLinear(), sizeof(Word));
-                            regs.set(dest, memWord);
+                            regs.setValue(dest, memWord);
                             set = true;
                             break;
                         }
@@ -465,17 +504,22 @@ RoutineMap findRoutines(const Executable &exe) {
                     }
                     if (set) {
                         searchQ.message(csip, "encountered move to register: "s + i.toString());
-                        // debug(regs.dump());
+                        debug(regs.dump());
                     }
                 }
                 break;
             default:
-                break;
+                touchReg = i.touchedReg();
+                if (touchReg != REG_NONE) {
+                    debug("Instruction "s + i.toString() + " modified register " + regName(touchReg));
+                    regs.setUnknown(touchReg);
+                    debug(regs.dump());
+                }
             } // switch on instruction class
 
             // if the processed instruction was a jump or a call, store its destination in the search queue
             if (jumpAddr != csip) {
-                if (codeExtents.contains(jumpAddr)) searchQ.savePoint(csip, jumpAddr, call);
+                if (codeExtents.contains(jumpAddr)) searchQ.savePoint(csip, jumpAddr, call, regs);
                 else debug("search point destination outside code boundaries: "s + jumpAddr.toString());
             } 
             // advance to next instruction

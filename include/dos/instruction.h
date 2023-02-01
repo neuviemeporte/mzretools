@@ -253,6 +253,7 @@ public:
             Word u16;
             Byte u8;
         } immval; // optional immediate offset or literal value
+
         std::string toString() const;
         InstructionMatch match(const Operand &other);
         Register regId() const;
@@ -264,6 +265,7 @@ public:
     InstructionMatch match(const Instruction &other);
     void load(const Byte *data);
     Word relativeOffset() const;
+    // TODO: make this more sophisticated, not every instruction with a register operand changes its value
     Register touchedReg() const { return op1.regId(); }
 
 private:

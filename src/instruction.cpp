@@ -580,7 +580,8 @@ Register Instruction::Operand::regId() const {
 }
 
 Register prefixRegId(const InstructionPrefix p) {
-    static const Register segs[] = { REG_DS, REG_ES, REG_CS, REG_SS, REG_DS, REG_NONE, REG_NONE };
+                                // PRF_NONE   PRF_ES  PRF_CS  PRF_SS  PRF_DS  PRF_REPNZ PRF_REPZ
+    static const Register segs[] = { REG_DS,  REG_ES, REG_CS, REG_SS, REG_DS, REG_NONE, REG_NONE };
     return segs[p];
 }
 

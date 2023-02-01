@@ -17,6 +17,7 @@ enum Register {
 inline bool regIsByte(const Register reg) { return reg >= REG_AL && reg <= REG_DH; }
 inline bool regIsWord(const Register reg) { return reg >= REG_AX; }
 inline bool regIsSegment(const Register reg) { return reg >= REG_CS && reg <= REG_SS; }
+std::string regName(const Register r);
 
 // flag word bits: XXXXODITSZXAXPXC
 enum Flag : Word {
