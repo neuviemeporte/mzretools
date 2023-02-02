@@ -12,12 +12,16 @@ enum Register {
     REG_SI, REG_DI, REG_BP, REG_SP,
     REG_CS, REG_DS, REG_ES, REG_SS,
     REG_IP, REG_FLAGS,
+    REG_ALL
 };
 
 inline bool regIsByte(const Register reg) { return reg >= REG_AL && reg <= REG_DH; }
 inline bool regIsWord(const Register reg) { return reg >= REG_AX; }
+inline bool regIsGeneral(const Register reg) { return reg >= REG_AX && reg <= REG_DX; }
 inline bool regIsSegment(const Register reg) { return reg >= REG_CS && reg <= REG_SS; }
 std::string regName(const Register r);
+Register regHigh(const Register r);
+Register regLow(const Register r);
 
 // flag word bits: XXXXODITSZXAXPXC
 enum Flag : Word {
@@ -46,6 +50,8 @@ private:
 public:
     Registers();
     Word get(const Register r) const;
+    Byte getHigh(const Register r) const;
+    Byte getLow(const Register r) const;
     void set(const Register r, const Word value);
     inline bool getFlag(const Flag flag) const { return reg(REG_FLAGS) & flag; }
     inline void setFlag(const Flag flag, const bool val) { 

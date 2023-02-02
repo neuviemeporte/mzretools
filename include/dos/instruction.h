@@ -265,8 +265,7 @@ public:
     InstructionMatch match(const Instruction &other);
     void load(const Byte *data);
     Word relativeOffset() const;
-    // TODO: make this more sophisticated, not every instruction with a register operand changes its value
-    Register touchedReg() const { return op1.regId(); }
+    Register touchedReg() const;
 
 private:
     OperandType getModrmOperand(const Byte modrm, const ModrmOperand op);

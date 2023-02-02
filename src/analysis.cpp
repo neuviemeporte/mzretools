@@ -143,59 +143,80 @@ void RoutineMap::addBlock(const Block &b, const int id) {
     }
 }
 
-Executable::Executable(const MzImage &mz) : entrypoint(mz.entrypoint()), reloc(mz.loadSegment())  {
+Executable::Executable(const MzImage &mz) : entrypoint(mz.entrypoint()), stack(mz.stackPointer()), reloc(mz.loadSegment())  {
     const Byte *data = mz.loadModuleData();
     copy(data, data + mz.loadModuleSize(), std::back_inserter(code));
 }
 
-class RegisterState {
-private:
-    static constexpr Word WORD_KNOWN = 0xffff;
-    static constexpr Word BYTE_KNOWN = 0xff;
-    Registers regs_;
-    Registers known_;
+RegisterState::RegisterState() {
+    for (int i = REG_AL; i < REG_ALL; ++i) {
+        Register r = (Register)i;
+        regs_.set(r, 0);
+        known_.set(r, 0);
+    }
+}
 
-    void setState(const Register r, const Word value, const bool known) {
-        if (regIsWord(r)) {
-            regs_.set(r, value);
-            known_.set(r, known ? WORD_KNOWN : 0);
-        }
+bool RegisterState::isKnown(const Register r) const {
+    if (regIsWord(r)) return known_.get(r) == WORD_KNOWN;
+    else return known_.get(r) == BYTE_KNOWN;
+}
+
+Word RegisterState::getValue(const Register r) const {
+    if (isKnown(r)) return regs_.get(r);
+    else return 0;
+}
+
+void RegisterState::setValue(const Register r, const Word value) {
+    setState(r, value, true);
+}
+
+void RegisterState::setUnknown(const Register r) {
+    setState(r, 0, false);
+}
+
+string RegisterState::stateString(const Register r) const {
+    if (regIsWord(r))
+        return (isKnown(r) ? hexVal(regs_.get(r), false, true) : "????");
+    else
+        return (isKnown(r) ? hexVal(static_cast<Byte>(regs_.get(r)), false, true) : "??");
+}
+
+string RegisterState::regString(const Register r) const {
+    string ret = regName(r) + " = ";
+    if (regIsGeneral(r)) {
+        if (isKnown(r)) ret += hexVal(regs_.get(r), false, true);
         else {
-            regs_.set(r, value);
-            known_.set(r, known ? BYTE_KNOWN : 0);            
+            ret += stateString(regHigh(r));
+            ret += stateString(regLow(r));
         }
     }
-public:
-    bool isKnown(const Register r) const {
-        if (regIsWord(r)) return known_.get(r) == WORD_KNOWN;
-        else return known_.get(r) == BYTE_KNOWN;
+    else ret += stateString(r);
+    return ret;
+}
+
+string RegisterState::toString() const {
+    ostringstream str;
+    str << std::hex 
+        << regString(REG_AX) << ", " << regString(REG_BX) << ", "
+        << regString(REG_CX) << ", " << regString(REG_DX) << endl
+        << regString(REG_SI) << ", " << regString(REG_DI) << ", "
+        << regString(REG_BP) << ", " << regString(REG_SP) << endl
+        << regString(REG_CS) << ", " << regString(REG_DS) << ", "
+        << regString(REG_SS) << ", " << regString(REG_ES) << endl
+        << regString(REG_IP) << ", " << regString(REG_FLAGS);
+    return str.str();
+}  
+
+void RegisterState::setState(const Register r, const Word value, const bool known) {
+    if (regIsWord(r)) {
+        regs_.set(r, value);
+        known_.set(r, known ? WORD_KNOWN : 0);
     }
-    Word getValue(const Register r) const {
-        if (isKnown(r)) return regs_.get(r);
-        else return 0;
+    else {
+        regs_.set(r, value);
+        known_.set(r, known ? BYTE_KNOWN : 0);
     }
-    void setValue(const Register r, const Word value) {
-        setState(r, value, true);
-    }
-    void setUnknown(const Register r) {
-        setState(r, 0, false);
-    }
-    string getString(const Register r) {
-        return regName(r) + " = " + (isKnown(r) ? hexVal(regs_.get(r)) : "?     ");
-    }
-    string dump() {
-        ostringstream str;
-        str << std::hex 
-            << getString(REG_AX) << ", " << getString(REG_BX) << ", "
-            << getString(REG_CX) << ", " << getString(REG_DX) << endl
-            << getString(REG_SI) << ", " << getString(REG_DI) << ", "
-            << getString(REG_BP) << ", " << getString(REG_SP) << endl
-            << getString(REG_CS) << ", " << getString(REG_DS) << ", "
-            << getString(REG_SS) << ", " << getString(REG_ES) << endl
-            << getString(REG_IP) << ", " << getString(REG_FLAGS);
-        return str.str();   
-    }
-};
+}
 
 struct SearchPoint {
     Address address;
@@ -249,7 +270,7 @@ public:
     }
 
     bool hasPoint(const Address &dest, const bool call) {
-        SearchPoint findme(dest, 0, call);
+        SearchPoint findme(dest, 0, call, RegisterState());
         const auto it = find_if(sq.begin(), sq.end(), [&](const SearchPoint &p){
             // debug(p.toString() + " == " + findme.toString() + " ?");
             return p.match(findme);
@@ -337,7 +358,7 @@ public:
 };
 
 // explore the code without actually executing instructions, discover routine boundaries
-// TODO: trace modifications to CS, support multiple code segments
+// TODO: support multiple code segments
 // TODO: identify routines through signatures generated from OMF libraries
 // TODO: trace usage of bp register (sub/add) to determine stack frame size of routines
 // TODO: store references to potential jump tables (e.g. jmp cs:[bx+0xc08]), if unclaimed after initial search, try treating entries as pointers and run second search before coalescing blocks?
@@ -346,10 +367,14 @@ RoutineMap findRoutines(const Executable &exe) {
     const Size codeSize = exe.code.size();
     const Address entrypoint = exe.entrypoint;
     const Block codeExtents = Block({entrypoint.segment, 0}, Address(SEG_OFFSET(entrypoint.segment) + codeSize));
+    RegisterState initRegs;
+    initRegs.setValue(REG_CS, entrypoint.segment);
+    initRegs.setValue(REG_IP, entrypoint.offset);
+    initRegs.setValue(REG_SS, exe.stack.segment);
+    initRegs.setValue(REG_SP, exe.stack.offset);
+    debug("initial register values:\n"s + initRegs.toString());
     // queue for BFS search
-    SearchQueue searchQ(codeSize, SearchPoint(entrypoint, 1, true));
-    Byte memByte;
-    Word memWord;
+    SearchQueue searchQ(codeSize, SearchPoint(entrypoint, 1, true, initRegs));
 
     info("Analyzing code in range " + codeExtents);
     // iterate over entries in the search queue
@@ -373,13 +398,13 @@ RoutineMap findRoutines(const Executable &exe) {
             }
             const Offset instrOffs = csip.toLinear();
             Instruction i(csip, code + instrOffs);
-            //analysisMessage("Instruction at offset "s + hexVal(instrOffs) + ": " + i.toString());
-            // cpuMessage(regs_.csip().toString() +  ": opcode " + hexVal(opcode_) + ", instrLen = " + to_string(instrLen));
-            // mark memory map items corresponding to the current instruction as belonging to the current routine
-            searchQ.markRoutine(instrOffs, i.length);
             Address jumpAddr = csip;
             bool call = false;
             Register touchReg = REG_NONE;
+            Word memWord;
+            Byte memByte;
+            // mark memory map items corresponding to the current instruction as belonging to the current routine
+            searchQ.markRoutine(instrOffs, i.length);
             // interpret the instruction
             switch (i.iclass) {
             // jumps
@@ -504,7 +529,7 @@ RoutineMap findRoutines(const Executable &exe) {
                     }
                     if (set) {
                         searchQ.message(csip, "encountered move to register: "s + i.toString());
-                        debug(regs.dump());
+                        debug(regs.toString());
                     }
                 }
                 break;
@@ -513,7 +538,7 @@ RoutineMap findRoutines(const Executable &exe) {
                 if (touchReg != REG_NONE) {
                     debug("Instruction "s + i.toString() + " modified register " + regName(touchReg));
                     regs.setUnknown(touchReg);
-                    debug(regs.dump());
+                    debug(regs.toString());
                 }
             } // switch on instruction class
 

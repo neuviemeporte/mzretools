@@ -287,6 +287,26 @@ Word Instruction::relativeOffset() const {
     return relative;
 }
 
+// lookup table for which instructions modify their first operand
+// 0: doesn't modify any regs, 1: modifies 1st operand, 2: modifies both operands, 3: special case, implicit registers
+static const int OPERAND_MODIFIED[] = {
+    //INS_ERR   INS_ADD      INS_PUSH    INS_POP    INS_OR     INS_ADC    INS_SBB     INS_AND    INS_DAA    INS_SUB   INS_DAS       INS_XOR   INS_AAA    INS_CMP   INS_AAS    INS_INC   INS_DEC
+    0,          1,           0,          1,         1,         1,         1,          1,         0,         1,        0,            1,        3,         0,        0,         1,        1,
+    //INS_JMP   INS_JMP_FAR  INS_TEST    INS_XCHG   INS_MOV    INS_LEA    INS_NOP     INS_CBW    INS_CWD    INS_CALL  INS_CALL_FAR  INS_WAIT  INS_PUSHF  INS_POPF  INS_SAHF   INS_LAHF  INS_MOVSB
+    0,          0,           0,          2,         1,         1,         0,          0,         0,         0,        0,            0,        0,         2,        2,         2,        2, 
+    //INS_MOVSW INS_CMPSB    INS_CMPSW   INS_STOSB  INS_STOSW  INS_LODSB  INS_LODSW   INS_SCASB  INS_SCASW  INS_RET   INS_LES       INS_LDS   INS_RETF   INS_INT   INS_INTO   INS_IRET  INS_AAM
+
+    //INS_AAD   INS_XLAT     INS_LOOPNZ  INS_LOOPZ  INS_LOOP   INS_IN     INS_OUT     INS_LOCK   INS_REPNZ  INS_REPZ  INS_HLT       INS_CMC   INS_CLC    INS_STC   INS_CLI    INS_STI   INS_CLD
+    //INS_ST    INS_ROL      INS_ROR     INS_RCL    INS_RCR    INS_SHL    INS_SHR     INS_SAR    INS_NOT    INS_NEG   INS_MUL       INS_IMUL  INS_DIV    INS_IDIV
+};
+
+Register Instruction::touchedReg() const {
+    const int touch = OPERAND_MODIFIED[iclass];
+    if (touch == 0) return REG_NONE;
+    else if (touch == 1) return op1.regId(); 
+    return op1.regId(); 
+}
+
 static const char* INS_NAME[] = {
     "???", "add", "push", "pop", "or", "adc", "sbb", "and", "daa", "sub", "das", "xor", "aaa", "cmp", "aas", "inc", "dec", "jmp", "jmp far", "test", "xchg", "mov", "lea", "nop", "cbw", "cwd",
     "call", "call far", "wait", "pushf", "popf", "sahf", "lahf", "movsb", "movsw", "cmpsb", "cmpsw", "stosb", "stosw", "lodsb", "lodsw", "scasb", "scasw", "ret", "les", "lds", "retf", "int",
