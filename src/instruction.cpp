@@ -289,22 +289,89 @@ Word Instruction::relativeOffset() const {
 
 // lookup table for which instructions modify their first operand
 // 0: doesn't modify any regs, 1: modifies 1st operand, 2: modifies both operands, 3: special case, implicit registers
+// TODO: ret accepts operand?
+// TODO: doesn't include flags register
 static const int OPERAND_MODIFIED[] = {
     //INS_ERR   INS_ADD      INS_PUSH    INS_POP    INS_OR     INS_ADC    INS_SBB     INS_AND    INS_DAA    INS_SUB   INS_DAS       INS_XOR   INS_AAA    INS_CMP   INS_AAS    INS_INC   INS_DEC
-    0,          1,           0,          1,         1,         1,         1,          1,         0,         1,        0,            1,        3,         0,        0,         1,        1,
+    0,          1,           3,          3,         1,         1,         1,          1,         3,         1,        3,            1,        3,         0,        3,         1,        1,
     //INS_JMP   INS_JMP_FAR  INS_TEST    INS_XCHG   INS_MOV    INS_LEA    INS_NOP     INS_CBW    INS_CWD    INS_CALL  INS_CALL_FAR  INS_WAIT  INS_PUSHF  INS_POPF  INS_SAHF   INS_LAHF  INS_MOVSB
-    0,          0,           0,          2,         1,         1,         0,          0,         0,         0,        0,            0,        0,         2,        2,         2,        2, 
+    0,          0,           3,          2,         1,         1,         0,          3,         3,         0,        0,            0,        3,         3,        3,         3,        2, 
     //INS_MOVSW INS_CMPSB    INS_CMPSW   INS_STOSB  INS_STOSW  INS_LODSB  INS_LODSW   INS_SCASB  INS_SCASW  INS_RET   INS_LES       INS_LDS   INS_RETF   INS_INT   INS_INTO   INS_IRET  INS_AAM
-
+    3,          3,           3,          3,         3,         3,         0,          3,         3,         0,        3,            3,        0,         3,        3,         0,        3, 
     //INS_AAD   INS_XLAT     INS_LOOPNZ  INS_LOOPZ  INS_LOOP   INS_IN     INS_OUT     INS_LOCK   INS_REPNZ  INS_REPZ  INS_HLT       INS_CMC   INS_CLC    INS_STC   INS_CLI    INS_STI   INS_CLD
-    //INS_ST    INS_ROL      INS_ROR     INS_RCL    INS_RCR    INS_SHL    INS_SHR     INS_SAR    INS_NOT    INS_NEG   INS_MUL       INS_IMUL  INS_DIV    INS_IDIV
+    3,          3,           3,          3,         3,         1,         0,          0,         0,         0,        0,            3,        3,         3,        3,         3,        3, 
+    //INS_STD   INS_ROL      INS_ROR     INS_RCL    INS_RCR    INS_SHL    INS_SHR     INS_SAR    INS_NOT    INS_NEG   INS_MUL       INS_IMUL  INS_DIV    INS_IDIV
+    3,          1,           1,          3,         3,         1,         1,          0,         1,         1,        0,            3,        3,         3,
 };
 
-Register Instruction::touchedReg() const {
+// TODO: basically all special cases, refactor this
+vector<Register> Instruction::touchedRegs() const {
     const int touch = OPERAND_MODIFIED[iclass];
-    if (touch == 0) return REG_NONE;
-    else if (touch == 1) return op1.regId(); 
-    return op1.regId(); 
+    vector<Register> ret;
+    if (touch == 0) return { REG_NONE };
+    else if (touch == 1) ret = { op1.regId() }; 
+    else if (touch == 2) ret = { op1.regId(), op2.regId() };
+    else switch(iclass) {
+    case INS_AAA:
+    case INS_AAD:
+    case INS_AAM:
+    case INS_AAS: ret = { REG_AL, REG_AH }; break;
+    case INS_CALL:
+    case INS_CALL_FAR:
+    case INS_INT: ret = { REG_AX, REG_BX, REG_CX, REG_DX, REG_SI, REG_DI, REG_FLAGS }; break;
+    case INS_CBW:
+    case INS_LAHF: ret = { REG_AH }; break;
+    case INS_CMPSB:
+    case INS_CMPSW:
+    case INS_MOVSB:
+    case INS_MOVSW: ret = { REG_SI, REG_DI }; break;
+    case INS_CWD: ret = { REG_DX }; break;
+    case INS_DAA:
+    case INS_DAS: ret = { REG_AL }; break;
+    case INS_DIV:
+    case INS_IDIV:
+        if (op1.size == OPRSZ_BYTE) return { REG_AL, REG_AH };
+        else return { REG_AX, REG_DX };
+        break;
+    case INS_MUL:
+    case INS_IMUL:
+        if (op1.size == OPRSZ_BYTE) return { REG_AX };
+        else return { REG_AX, REG_DX };
+        break;
+    case INS_LDS: ret = { op1.regId(), REG_DS }; break;
+    case INS_LES: ret = { op1.regId(), REG_ES }; break;
+    case INS_LODSB: ret = { REG_AL, REG_SI }; break;
+    case INS_LODSW: ret = { REG_AX, REG_SI }; break;
+    case INS_LOOP:
+    case INS_LOOPZ:
+    case INS_LOOPNZ: ret = { REG_CX }; break;
+    case INS_POP: ret = { op1.regId(), REG_SP }; break;
+    case INS_POPF: ret = { REG_FLAGS, REG_SP }; break;
+    case INS_PUSH:
+    case INS_PUSHF: ret = { REG_SP }; break;
+    case INS_RCL:
+    case INS_RCR: ret = { op1.regId(), REG_FLAGS }; break;
+    case INS_CMC:
+    case INS_CLC:
+    case INS_CLI:
+    case INS_STI:
+    case INS_STC:
+    case INS_CLD:
+    case INS_STD:
+    case INS_TEST:
+    case INS_SAHF: ret = { REG_FLAGS }; break;
+    case INS_SCASB: 
+    case INS_SCASW: ret = { REG_DI, REG_FLAGS }; break;
+    case INS_STOSW:
+    case INS_STOSB: ret = { REG_DI };
+    case INS_XLAT: ret = { REG_AL };
+        break;
+    default:
+        throw CpuError("Unknown instruction class for touched reg: "s + INS_CLASS_ID[iclass]);
+    }
+    if (prefix == PRF_CHAIN_REPNZ || prefix == PRF_CHAIN_REPZ) 
+        ret.push_back(REG_CX);
+    return ret;
 }
 
 static const char* INS_NAME[] = {

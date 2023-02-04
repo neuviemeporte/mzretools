@@ -12,7 +12,6 @@ enum Register {
     REG_SI, REG_DI, REG_BP, REG_SP,
     REG_CS, REG_DS, REG_ES, REG_SS,
     REG_IP, REG_FLAGS,
-    REG_ALL
 };
 
 inline bool regIsByte(const Register reg) { return reg >= REG_AL && reg <= REG_DH; }

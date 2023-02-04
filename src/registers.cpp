@@ -29,13 +29,13 @@ inline Word byteValue(const Word w, const Word s) {
 
 std::string regName(const Register r) {
     static const string regnames[] = {
-        "???", 
+        "NONE", 
         "AL", "AH", "BL", "BH", 
         "CL", "CH", "DL", "DH",
         "AX", "BX", "CX", "DX",
         "SI", "DI", "BP", "SP",
         "CS", "DS", "ES", "SS",
-        "IP", "FLAGS", "***"        
+        "IP", "FLAGS"
     };
     assert(r >= REG_NONE && r <= REG_FLAGS);
     return regnames[r];
@@ -87,8 +87,10 @@ Byte Registers::getLow(const Register r) const {
 }
 
 void Registers::set(const Register r, const Word value) {
-    assert(r > REG_NONE && r <= REG_FLAGS);
-    if (regIsWord(r)) {
+    assert(r >= REG_NONE && r <= REG_FLAGS);
+    if (r == REG_NONE) 
+        return;
+    else if (regIsWord(r)) {
         reg(r) = value;
     }
     else {

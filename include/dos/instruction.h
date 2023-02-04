@@ -7,7 +7,9 @@
 #include "dos/address.h"
 
 #include <string>
+#include <vector>
 
+// TODO: rep and repnz are not used as instructions, but prefixes, remove
 #define INSTRUCTION_CLASS \
     X(INS_ERR) \
     X(INS_ADD) \
@@ -265,7 +267,7 @@ public:
     InstructionMatch match(const Instruction &other);
     void load(const Byte *data);
     Word relativeOffset() const;
-    Register touchedReg() const;
+    std::vector<Register> touchedRegs() const;
 
 private:
     OperandType getModrmOperand(const Byte modrm, const ModrmOperand op);

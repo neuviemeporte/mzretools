@@ -13,6 +13,7 @@
 #include <string>
 #include <cstring>
 #include <list>
+#include <regex>
 
 using namespace std;
 
@@ -45,56 +46,29 @@ string Routine::toString() const {
     return str.str();
 }
 
-// create routine map from IDA .lst file
-// TODO: ida puts the procedure end on the instruction start, get next offset and correct
 RoutineMap::RoutineMap(const std::string &path) {
+    static const regex LSTFILE_RE{".*\\.(lst|LST)"};
     const auto fstat = checkFile(path);
     if (!fstat.exists) throw ArgError("File does not exist: "s + path);
-    debug("Loading IDA routine map from "s + path);
-    ifstream fstr{path};
-    string line, lastAddr;
-    Size lineno = 1;
-    Size routineCount = 0;
-    Address curAddr, endpAddr;
-    while (safeGetline(fstr, line)) {
-        istringstream sstr{line};
-        string token[4];
-        Size tokenno = 0;
-        while (tokenno < 4 && sstr >> token[tokenno]) {
-            tokenno++;
-        }
-        string &addrStr = token[0];
-        if (addrStr.find("seg000") != string::npos) {
-            addrStr = addrStr.substr(2,9);
-            addrStr[0] = '0';
-            curAddr = Address{addrStr};
-        }
-        else {
-            curAddr = Address();
-        }
-
-        // close previous routine if we encountered an endp and the address 
-        if (endpAddr.isValid() && curAddr != endpAddr) {
-            auto &r = routines.back();
-            r.extents.end = curAddr - 1; // go one byte before current address
-            debug("Closing routine "s + r.name + ", id " + to_string(r.id) + " @ " + r.extents.end.toString());
-            endpAddr = Address(); // makes address invalid
-        }
-        // start new routine
-        if (token[2] == "proc") { 
-            routines.emplace_back(Routine(token[1], ++routineCount, curAddr));
-            const auto &r = routines.back();
-            debug("Found start of routine "s + r.name + ", id " + to_string(r.id) + " @ " + r.extents.begin.toString());
-        }
-        // routine end, but IDA places endp at the offset of the beginning of the last instruction, 
-        // and we want the end to include the last instructions' bytes, so just memorize the address and close the routine later
-        else if (token[2] == "endp") { 
-            endpAddr = curAddr;
-            debug("Found end of routine @ " + endpAddr.toString());
-        }
-        lineno++;
-    }
+    smatch match;
+    if (regex_match(path, match, LSTFILE_RE)) loadFromIdaFile(path);
+    else loadFromMapFile(path);
     debug("Done, found "s + to_string(routines.size()) + " routines");
+}
+
+void RoutineMap::sort() {
+    using std::sort;
+    // sort routines by entrypoint
+    sort(routines.begin(), routines.end(), [](const Routine &a, const Routine &b){
+        return a.entrypoint().toLinear() < b.entrypoint().toLinear();
+    });
+
+    // sort chunks within routines by begin address
+    for (auto &r : routines) {
+        sort(r.chunks.begin(), r.chunks.end(), [](const Block &b1, const Block &b2){
+            return b1.begin < b2.begin;
+        });
+    }
 }
 
 void RoutineMap::dump() const {
@@ -143,13 +117,65 @@ void RoutineMap::addBlock(const Block &b, const int id) {
     }
 }
 
+void RoutineMap::loadFromMapFile(const std::string &path) {
+
+}
+
+// create routine map from IDA .lst file
+void RoutineMap::loadFromIdaFile(const std::string &path) {
+    debug("Loading IDA routine map from "s + path);
+    ifstream fstr{path};
+    string line, lastAddr;
+    Size lineno = 1;
+    Size routineCount = 0;
+    Address curAddr, endpAddr;
+    while (safeGetline(fstr, line)) {
+        istringstream sstr{line};
+        string token[4];
+        Size tokenno = 0;
+        while (tokenno < 4 && sstr >> token[tokenno]) {
+            tokenno++;
+        }
+        string &addrStr = token[0];
+        if (addrStr.find("seg000") != string::npos) {
+            addrStr = addrStr.substr(2,9);
+            addrStr[0] = '0';
+            curAddr = Address{addrStr};
+        }
+        else {
+            curAddr = Address();
+        }
+
+        // close previous routine if we encountered an endp and the address 
+        if (endpAddr.isValid() && curAddr != endpAddr) {
+            auto &r = routines.back();
+            r.extents.end = curAddr - 1; // go one byte before current address
+            debug("Closing routine "s + r.name + ", id " + to_string(r.id) + " @ " + r.extents.end.toString());
+            endpAddr = Address(); // makes address invalid
+        }
+        // start new routine
+        if (token[2] == "proc") { 
+            routines.emplace_back(Routine(token[1], ++routineCount, curAddr));
+            const auto &r = routines.back();
+            debug("Found start of routine "s + r.name + ", id " + to_string(r.id) + " @ " + r.extents.begin.toString());
+        }
+        // routine end, but IDA places endp at the offset of the beginning of the last instruction, 
+        // and we want the end to include the last instructions' bytes, so just memorize the address and close the routine later
+        else if (token[2] == "endp") { 
+            endpAddr = curAddr;
+            debug("Found end of routine @ " + endpAddr.toString());
+        }
+        lineno++;
+    }
+}
+
 Executable::Executable(const MzImage &mz) : entrypoint(mz.entrypoint()), stack(mz.stackPointer()), reloc(mz.loadSegment())  {
     const Byte *data = mz.loadModuleData();
     copy(data, data + mz.loadModuleSize(), std::back_inserter(code));
 }
 
 RegisterState::RegisterState() {
-    for (int i = REG_AL; i < REG_ALL; ++i) {
+    for (int i = REG_AL; i <= REG_FLAGS; ++i) {
         Register r = (Register)i;
         regs_.set(r, 0);
         known_.set(r, 0);
@@ -240,7 +266,7 @@ struct SearchPoint {
 // utility class for keeping track of the queue of potentially interesting locations (jump/call targets), and which instruction bytes have been claimed by a routine
 class SearchQueue {
     // memory map for marking which locations belong to which routines, value of 0 is undiscovered
-    vector<int> visited; // TODO: store addresses from loaded exe in map, otherwise they don't match after analysis done    
+    vector<int> visited; // TODO: store addresses from loaded exe in map, otherwise they don't match after analysis done if exe loaded at segment other than 0 
     list<SearchPoint> sq;
     SearchPoint curSearch;
     int lastRoutineId;
@@ -310,24 +336,12 @@ public:
 
     RoutineMap makeMap() const {
         RoutineMap map;
-        // dump map to file for debugging
-        ofstream mapFile("analysis.map");
-        mapFile << "      ";
-        for (int i = 0; i < 16; ++i) mapFile << hex << setw(5) << setfill(' ') << i << " ";
-        mapFile << endl;
 
         info("Building routine map from analysis results");
         int prev_id = NULL_ROUTINE;
         Offset blockStart = 0;
         for (size_t mapOffset = 0; mapOffset < visited.size(); ++mapOffset) {
             const int id = getRoutine(mapOffset);
-            //debug(hexVal(mapOffset) + ": " + to_string(m));
-            if (mapOffset % 16 == 0) {
-                if (mapOffset != 0) mapFile << endl;
-                mapFile << hex << setw(5) << setfill('0') << mapOffset << " ";
-            }
-            mapFile << dec << setw(5) << setfill(' ') << id << " ";
-
             if (id != prev_id) { // new block begins
                 if (prev_id != NULL_ROUTINE) { // need to close previous block
                     Block block{Address(blockStart), Address(mapOffset - 1)};
@@ -342,18 +356,27 @@ public:
             }
             prev_id = id;
         }
-        info("Found " + to_string(map.routines.size()) + " routines");
-        // sort routines by entrypoint
-        std::sort(map.routines.begin(), map.routines.end(), [](const Routine &a, const Routine &b){
-            return a.entrypoint().toLinear() < b.entrypoint().toLinear();
-        });
-        // sort chunks within routines by begin address
-        for (auto &r : map.routines) {
-            sort(r.chunks.begin(), r.chunks.end(), [](const Block &b1, const Block &b2){
-                return b1.begin < b2.begin;
-            });
-        }
+        info("Found " + to_string(map.size()) + " routines");
+
+        map.sort();
         return map;
+    }
+
+    void dumpMap(const string &path) const {
+        // dump map to file for debugging
+        ofstream mapFile(path);
+        mapFile << "      ";
+        for (int i = 0; i < 16; ++i) mapFile << hex << setw(5) << setfill(' ') << i << " ";
+        mapFile << endl;
+        for (size_t mapOffset = 0; mapOffset < visited.size(); ++mapOffset) {
+            const int id = getRoutine(mapOffset);
+            //debug(hexVal(mapOffset) + ": " + to_string(m));
+            if (mapOffset % 16 == 0) {
+                if (mapOffset != 0) mapFile << endl;
+                mapFile << hex << setw(5) << setfill('0') << mapOffset << " ";
+            }
+            mapFile << dec << setw(5) << setfill(' ') << id << " ";
+        }
     }
 };
 
@@ -398,11 +421,13 @@ RoutineMap findRoutines(const Executable &exe) {
             }
             const Offset instrOffs = csip.toLinear();
             Instruction i(csip, code + instrOffs);
+            regs.setValue(REG_CS, csip.segment);
+            regs.setValue(REG_IP, csip.offset);
             Address jumpAddr = csip;
             bool call = false;
-            Register touchReg = REG_NONE;
             Word memWord;
             Byte memByte;
+            vector<Register> touchedRegs;
             // mark memory map items corresponding to the current instruction as belonging to the current routine
             searchQ.markRoutine(instrOffs, i.length);
             // interpret the instruction
@@ -534,10 +559,12 @@ RoutineMap findRoutines(const Executable &exe) {
                 }
                 break;
             default:
-                touchReg = i.touchedReg();
-                if (touchReg != REG_NONE) {
-                    debug("Instruction "s + i.toString() + " modified register " + regName(touchReg));
-                    regs.setUnknown(touchReg);
+                touchedRegs = i.touchedRegs();
+                if (!touchedRegs.empty()) {
+                    for (Register r : touchedRegs) {
+                        debug("Instruction "s + i.toString() + " modified register " + regName(r));
+                        regs.setUnknown(r);
+                    }
                     debug(regs.toString());
                 }
             } // switch on instruction class

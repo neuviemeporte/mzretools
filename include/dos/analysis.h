@@ -23,14 +23,23 @@ struct Routine {
     std::string toString() const;
 };
 
-struct RoutineMap {
+class RoutineMap {
     std::vector<Routine> routines;
+
+public:
     RoutineMap() {}
     RoutineMap(const std::string &path);
+
+    Size size() const { return routines.size(); }
     bool empty() const { return routines.empty(); }
-    void dump() const;
     Size match(const RoutineMap &other) const;
     void addBlock(const Block &b, const int id);
+    void sort();
+    void dump() const;
+
+private:
+    void loadFromMapFile(const std::string &path);
+    void loadFromIdaFile(const std::string &path);
 };
 
 struct Executable {
