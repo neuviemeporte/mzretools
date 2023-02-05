@@ -77,6 +77,18 @@ std::ostream& operator<<(std::ostream &os, const Address &arg) {
     return os << arg.toString();
 }
 
+Block::Block(const std::string &blockStr) {
+    static const regex BLOCK_RE{"([0-9a-fA-F]{1,6})-([0-9a-fA-F]{1,6})"};
+    smatch match;
+    if (!regex_match(blockStr, match, BLOCK_RE))
+        throw ArgError("Invalid block string: "s + blockStr);
+    const Offset 
+        beginVal = stoi(match.str(1), nullptr, 16),
+        endVal   = stoi(match.str(2), nullptr, 16);
+    begin = Address{beginVal};
+    end = Address{endVal};
+}
+
 Block::Block(const std::string &from, const std::string &to) {
     begin = Address{from};
     smatch match;
@@ -95,16 +107,17 @@ Block::Block(const std::string &from, const std::string &to) {
         throw ArgError("Invalid memory block range");
 }
 
-std::string Block::toString(const bool linear) const {
+std::string Block::toString(const bool linear, const bool showSize) const {
     if (!isValid()) return "[invalid]";
     ostringstream str;
     if (!linear) str << begin.toString(true) << "-" << end.toString(true);
     else str << hexVal(begin.toLinear(), false, OFFSET_STRLEN) << "-" << hexVal(end.toLinear(), false, OFFSET_STRLEN);
-    str << "/" << hex << setw(OFFSET_STRLEN) << setfill('0') << size();
+    if (showSize) str << "/" << hex << setw(OFFSET_STRLEN) << setfill('0') << size();
     return str.str();
 }
 
 bool Block::intersects(const Block &other) const {
+    if (!isValid()) return false;
     const Offset 
         maxBegin = std::max(begin.toLinear(), other.begin.toLinear()),
         minEnd   = std::min(end.toLinear(), other.end.toLinear());

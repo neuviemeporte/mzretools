@@ -57,12 +57,13 @@ struct Block {
     Block(const Address &begin, const Address &end) : begin(begin), end(end) {}
     Block(const Address &begin) : Block(begin, begin) {}
     Block(const Offset begin, const Offset end) : Block(Address{begin}, Address{end}) {}
+    Block(const std::string &blockStr);
     Block(const std::string &from, const std::string &to);
     Block() : Block(MEM_TOTAL - 1, 0) {} // null block
 
     bool operator==(const Block &arg) const { return begin == arg.begin && end == arg.end; }
 
-    std::string toString(const bool linear = false) const;
+    std::string toString(const bool linear = false, const bool showSize = true) const;
     Size size() const { assert(isValid()); return end - begin; }
     bool isValid() const { return begin <= end; }
     bool contains(const Address &addr) const { return addr.toLinear() >= begin.toLinear() && addr.toLinear() <= end.toLinear(); }

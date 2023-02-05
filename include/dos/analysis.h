@@ -19,11 +19,12 @@ struct Routine {
     Routine() : id(NULL_ROUTINE), stackSize(0) {}
     Routine(const std::string &name, const int id, const Block &extents) : name(name), id(id), extents(extents), stackSize(0) {}
     Address entrypoint() const { return extents.begin; }
-    bool contains(const Address &addr) const;
-    std::string toString() const;
+    bool colides(const Block &block) const;
+    std::string toString(const bool showChunks = true) const;
 };
 
 class RoutineMap {
+    friend class SystemTest;
     std::vector<Routine> routines;
 
 public:
@@ -34,7 +35,9 @@ public:
     bool empty() const { return routines.empty(); }
     Size match(const RoutineMap &other) const;
     void addBlock(const Block &b, const int id);
+    bool colidesBlock(const Block &b) const;
     void sort();
+    void save(const std::string &path) const;
     void dump() const;
 
 private:

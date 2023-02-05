@@ -147,3 +147,25 @@ TEST_F(MemoryTest, Alloc) {
     mem.freeBlock(avail);
     ASSERT_EQ(mem.availableBlock(), avail);
 }
+
+TEST_F(MemoryTest, BlockIntersect) {
+    Block a(100, 200);
+
+    Block b(100, 200);
+    ASSERT_TRUE(b.intersects(a));
+
+    b = Block(125, 175);
+    ASSERT_TRUE(b.intersects(a));
+
+    b = Block(50, 150);
+    ASSERT_TRUE(b.intersects(a));
+
+    b = Block(150, 250);
+    ASSERT_TRUE(b.intersects(a));
+
+    b = Block(10, 75);
+    ASSERT_FALSE(b.intersects(a));
+
+    b = Block(210, 275);
+    ASSERT_FALSE(b.intersects(a));
+}

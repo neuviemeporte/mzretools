@@ -21,6 +21,8 @@ protected:
             TRACELN(sys.cpuInfo());
         }
     }
+
+    auto& getRoutines(RoutineMap &rm) { return rm.routines; }
 };
 
 TEST_F(SystemTest, DISABLED_HelloWorld) {
@@ -117,6 +119,37 @@ TEST_F(SystemTest, FindRoutines) {
     const Size matchCount = idaMap.match(discoveredMap);
     TRACELN("Found matching " << matchCount << " routines out of " << idaMap.size());
     ASSERT_GE(matchCount, 34); // not all 54 functions that ida finds can be identified for now
+    discoveredMap.save("hello.map");
+    RoutineMap reloadMap("hello.map");
+    ASSERT_EQ(reloadMap.size(), discoveredMap.size());
+}
+
+TEST_F(SystemTest, RoutineMapCollision) {
+    const string path = "bad.map";
+    RoutineMap rm;
+    Block b1{100, 200}, b2{150, 250}, b3{300, 400};
+    Routine r1{"r1", 1, b1},  r2{"r2", 2, b2}, r3{"r3", 3, b3};
+    auto &rv = getRoutines(rm);
+
+    TRACELN("--- testing coliding routine extents");
+    rv = { r1, r2 };
+    rm.dump();
+    rm.save(path);
+    ASSERT_THROW(rm = RoutineMap{path}, AnalysisError);
+
+    TRACELN("--- testing coliding routine extent with chunk");
+    rv = { r1, r3 };
+    rv.front().chunks.push_back(b2);
+    rm.dump();
+    rm.save(path);
+    ASSERT_THROW(rm = RoutineMap{path}, AnalysisError);
+
+    TRACELN("--- testing no colision");
+    rv = { r1, r3 };
+    rm.dump();
+    rm.save(path);
+    rm = RoutineMap{path};
+    ASSERT_EQ(rm.size(), 2);
 }
 
 TEST_F(SystemTest, DISABLED_CodeCompare) {

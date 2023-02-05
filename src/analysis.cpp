@@ -29,19 +29,27 @@ static void error(const string &msg) {
     output(msg, LOG_ANALYSIS, LOG_ERROR);
 }
 
-bool Routine::contains(const Address &addr) const {
-    if (extents.contains(addr)) return true;
+bool Routine::colides(const Block &block) const {
+    if (extents.intersects(block)) {
+        debug("Block "s + block.toString() + " colides with extents of routine " + toString(false));
+        return true;
+    }
     for (const auto &c : chunks) {
-        if (c.contains(addr)) return true;
+        if (c.intersects(block)) {
+            debug("Block "s + block.toString() + " colides with chunk " + c.toString() + " of routine " + toString(false));
+            return true;
+        }
     }
     return false;
 }
 
-string Routine::toString() const {
+string Routine::toString(const bool showChunks) const {
     ostringstream str;
     str << extents.toString(true) << ": " << name << " / " << to_string(id);
-    for (const auto &c : chunks) {
-        str << endl << "\tfunction chunk: " << c.toString(true);
+    if (showChunks) {
+        for (const auto &c : chunks) {
+            str << endl << "\tfunction chunk: " << c.toString(true);
+        }
     }
     return str.str();
 }
@@ -54,33 +62,6 @@ RoutineMap::RoutineMap(const std::string &path) {
     if (regex_match(path, match, LSTFILE_RE)) loadFromIdaFile(path);
     else loadFromMapFile(path);
     debug("Done, found "s + to_string(routines.size()) + " routines");
-}
-
-void RoutineMap::sort() {
-    using std::sort;
-    // sort routines by entrypoint
-    sort(routines.begin(), routines.end(), [](const Routine &a, const Routine &b){
-        return a.entrypoint().toLinear() < b.entrypoint().toLinear();
-    });
-
-    // sort chunks within routines by begin address
-    for (auto &r : routines) {
-        sort(r.chunks.begin(), r.chunks.end(), [](const Block &b1, const Block &b2){
-            return b1.begin < b2.begin;
-        });
-    }
-}
-
-void RoutineMap::dump() const {
-    if (empty()) {
-        info("--- Empty routine map --- ");
-        return;
-    }
-
-    // display routines
-    for (const auto &r : routines) {
-        info(r.toString());
-    }
 }
 
 Size RoutineMap::match(const RoutineMap &other) const {
@@ -104,6 +85,10 @@ Size RoutineMap::match(const RoutineMap &other) const {
 
 // register a block either as routine main body, or chunk
 void RoutineMap::addBlock(const Block &b, const int id) {
+    if (colidesBlock(b)) {
+        debug("Unable to add coliding block "s + b.toString() + " to routine map");
+        return;
+    }
     auto existingRoutine = find_if(routines.begin(), routines.end(), [id](const Routine &r){
         return r.id == id;
     });
@@ -117,11 +102,92 @@ void RoutineMap::addBlock(const Block &b, const int id) {
     }
 }
 
-void RoutineMap::loadFromMapFile(const std::string &path) {
+// check if any of the extents or chunks of routines in the map colides (contains or intersects) with a block
+bool RoutineMap::colidesBlock(const Block &b) const {
+    const auto &found = find_if(routines.begin(), routines.end(), [&b](const Routine &r){
+        return r.colides(b);
+    });
+    return found != routines.end();
+}
 
+void RoutineMap::sort() {
+    using std::sort;
+    // sort routines by entrypoint
+    sort(routines.begin(), routines.end(), [](const Routine &a, const Routine &b){
+        return a.entrypoint().toLinear() < b.entrypoint().toLinear();
+    });
+
+    // sort chunks within routines by begin address
+    for (auto &r : routines) {
+        sort(r.chunks.begin(), r.chunks.end(), [](const Block &b1, const Block &b2){
+            return b1.begin < b2.begin;
+        });
+    }
+}
+
+void RoutineMap::save(const std::string &path) const {
+    if (empty()) return;
+    info("Saving routine map to "s + path);
+    ofstream file{path};
+    for (const auto &r : routines) {
+        file << r.name << ": " << r.extents.toString(true, false);
+        for (const auto &c : r.chunks) {
+            file << " " << c.toString(true, false);
+        }
+        file << endl;
+    }
+}
+
+void RoutineMap::dump() const {
+    if (empty()) {
+        info("--- Empty routine map --- ");
+        return;
+    }
+
+    // display routines
+    for (const auto &r : routines) {
+        info(r.toString());
+    }
+}
+
+void RoutineMap::loadFromMapFile(const std::string &path) {
+    debug("Loading routine map from "s + path);
+    ifstream mapFile{path};
+    string line, token;
+    Size lineno = 0;
+    bool colideOk = true;
+    while (safeGetline(mapFile, line) && colideOk) {
+        lineno++;
+        istringstream sstr{line};
+        int tokenno = 0;
+        Routine r;
+        while (sstr >> token) {
+            tokenno++;
+            if (tokenno == 1) { // routine name
+                if (token.back() != ':') 
+                    throw AnalysisError("line "s + to_string(lineno) + ": invalid routine name string: '"s + token + "'");
+                r.name = token.substr(0, token.size() - 1);
+            }
+            else {
+                const Block block{token};
+                if (colidesBlock(block) || r.colides(block))
+                    throw AnalysisError("line "s + to_string(lineno) + ": block " + block.toString() + " colides with another routine or chunk in routine map");
+                if (tokenno == 2) // routine extents
+                    r.extents = block;
+                else // chunks (optional)
+                    r.chunks.push_back(block);
+            } 
+        }
+        if (r.extents.isValid()) {
+            r.id = size() + 1;
+            debug("routine: "s + r.toString());
+            routines.push_back(r);
+        }
+    }
 }
 
 // create routine map from IDA .lst file
+// TODO: add collision checks
 void RoutineMap::loadFromIdaFile(const std::string &path) {
     debug("Loading IDA routine map from "s + path);
     ifstream fstr{path};
