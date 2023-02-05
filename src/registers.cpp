@@ -19,7 +19,7 @@ static const Word BYTE_SHIFT[]      = {     0xff, BYTE_LOW, BYTE_HIGH, BYTE_LOW,
 
 inline Word byteMask(const Word w, const Word s) {
     Word ret = w & (0xff << s);
-    debug("masking "s + hexVal(w) + " by " + to_string(s) + " = " + hexVal(ret));
+    //debug("masking "s + hexVal(w) + " by " + to_string(s) + " = " + hexVal(ret));
     return ret;
 }
 

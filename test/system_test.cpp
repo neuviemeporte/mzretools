@@ -109,19 +109,30 @@ TEST_F(SystemTest, RoutineMap) {
 }
 
 TEST_F(SystemTest, FindRoutines) {
+    // load map from IDA listing
     const RoutineMap idaMap{"../bin/hello.lst"};
+    const Size idaMatchCount = 35; // not all 54 routines that ida finds can be identified for now
+
     // test discovery of the routine map    
     MzImage mz{"bin/hello.exe"};
     mz.load(0x0);
     RoutineMap discoveredMap = findRoutines(Executable{mz});
     discoveredMap.dump();
+    
     // compare against ida map
-    const Size matchCount = idaMap.match(discoveredMap);
+    Size matchCount = idaMap.match(discoveredMap);
     TRACELN("Found matching " << matchCount << " routines out of " << idaMap.size());
     ASSERT_GE(matchCount, 34); // not all 54 functions that ida finds can be identified for now
+    
+    // save to file and reload
     discoveredMap.save("hello.map");
     RoutineMap reloadMap("hello.map");
     ASSERT_EQ(reloadMap.size(), discoveredMap.size());
+
+    // check matching in the opposite direction
+    matchCount = discoveredMap.match(idaMap);
+    TRACELN("Found matching " << matchCount << " routines out of " << discoveredMap.size());
+    ASSERT_GE(matchCount, idaMatchCount);
 }
 
 TEST_F(SystemTest, RoutineMapCollision) {

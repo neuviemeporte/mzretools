@@ -403,6 +403,7 @@ TEST_F(CpuTest, Instruction) {
     0x0B, 0xA4, 0x0B, 0x83, // or sp,[si-0x7cf5]
     0xff, 0xe1, // jmp cx
     0x26, 0x8e, 0x06, 0x2c, 0x00, // mov es, es:[0x2c]
+    0xa2, 0xce, 0x00, // mov [0xce],al
     };
     const std::string instructions[] = {
         "push es",
@@ -419,10 +420,11 @@ TEST_F(CpuTest, Instruction) {
         "ror byte [bp+si], 1",
         "or sp, [si-0x7cf5]",
         "jmp cx",
-        "mov es, es:[0x2c]"
+        "mov es, es:[0x2c]",
+        "mov [0xce], al",
     };
     const Size lengths[] = {
-        1, 1, 3, 2, 5, 5, 2, 2, 4, 3, 2, 2, 4, 2, 5,
+        1, 1, 3, 2, 5, 5, 2, 2, 4, 3, 2, 2, 4, 2, 5, 3,
     };
     const int icount = sizeof(lengths) / sizeof(Size);
 
