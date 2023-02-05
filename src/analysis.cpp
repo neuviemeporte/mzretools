@@ -451,16 +451,15 @@ public:
 // TODO: identify routines through signatures generated from OMF libraries
 // TODO: trace usage of bp register (sub/add) to determine stack frame size of routines
 // TODO: store references to potential jump tables (e.g. jmp cs:[bx+0xc08]), if unclaimed after initial search, try treating entries as pointers and run second search before coalescing blocks?
-RoutineMap findRoutines(const Executable &exe) {
-    const Byte *code = exe.code.data();
-    const Size codeSize = exe.code.size();
-    const Address entrypoint = exe.entrypoint;
+RoutineMap Executable::findRoutines() const {
+    const Byte *codeData = code.data();
+    const Size codeSize = code.size();
     const Block codeExtents = Block({entrypoint.segment, 0}, Address(SEG_OFFSET(entrypoint.segment) + codeSize));
     RegisterState initRegs;
     initRegs.setValue(REG_CS, entrypoint.segment);
     initRegs.setValue(REG_IP, entrypoint.offset);
-    initRegs.setValue(REG_SS, exe.stack.segment);
-    initRegs.setValue(REG_SP, exe.stack.offset);
+    initRegs.setValue(REG_SS, stack.segment);
+    initRegs.setValue(REG_SP, stack.offset);
     debug("initial register values:\n"s + initRegs.toString());
     // queue for BFS search
     SearchQueue searchQ(codeSize, SearchPoint(entrypoint, 1, true, initRegs));
@@ -486,7 +485,7 @@ RoutineMap findRoutines(const Executable &exe) {
                 return {};
             }
             const Offset instrOffs = csip.toLinear();
-            Instruction i(csip, code + instrOffs);
+            Instruction i(csip, codeData + instrOffs);
             regs.setValue(REG_CS, csip.segment);
             regs.setValue(REG_IP, csip.offset);
             Address jumpAddr = csip;
@@ -551,7 +550,7 @@ RoutineMap findRoutines(const Executable &exe) {
                     Address memAddr{regs.getValue(REG_DS), i.op1.immval.u16};
                     if (codeExtents.contains(memAddr)) {
                         searchQ.message(csip, "encountered near call through mem pointer to "s + jumpAddr.toString());
-                        memcpy(&memWord, code + memAddr.toLinear(), sizeof(Word));
+                        memcpy(&memWord, codeData + memAddr.toLinear(), sizeof(Word));
                         jumpAddr.offset = memWord;
                         call = true;
                     }
@@ -605,13 +604,13 @@ RoutineMap findRoutines(const Executable &exe) {
                         if (codeExtents.contains(memAddr)) switch(i.op2.size) {
                         case OPRSZ_BYTE:
                             assert(memAddr.toLinear() < codeSize);
-                            memByte = code[memAddr.toLinear()];
+                            memByte = codeData[memAddr.toLinear()];
                             regs.setValue(dest, memByte); 
                             set = true;
                             break;
                         case OPRSZ_WORD:
                             assert(memAddr.toLinear() < codeSize);
-                            memcpy(&memWord, code + memAddr.toLinear(), sizeof(Word));
+                            memcpy(&memWord, codeData + memAddr.toLinear(), sizeof(Word));
                             regs.setValue(dest, memWord);
                             set = true;
                             break;
@@ -653,6 +652,8 @@ RoutineMap findRoutines(const Executable &exe) {
     // find runs of undiscovered bytes surrounded by bytes discovered as belonging to the same routine and coalesce them with the routine
     // TODO: those areas are still practically undiscovered as we did not pass over their instructions, so we are missing paths leading from there,
     // perhaps a second pass over that area could discover more stuff? Need to be careful not to treat inline data as code though.
+    // TODO: the first location marked with a new routine ID is always marked as that routine's entrypoint, but it might not been have the target of a call, 
+    // some functions jump to an earlier location and that location will be misattributed as the entrypoint when coalescing blocks here
     for (size_t mapOffset = codeExtents.begin.toLinear(); mapOffset < codeExtents.end.toLinear(); ++mapOffset) {
         const int m = searchQ.getRoutine(mapOffset);
         if (m == NULL_ROUTINE && (prev != NULL_ROUTINE || mapOffset == 0))  {
@@ -681,154 +682,6 @@ struct RoutinePair {
     }
 };
 
-// TODO: implement operand correction for jmp, implement jmp around invalid code
-bool compareCode(const Executable &base, const Executable &object) {
-    const Byte 
-        *bCode = base.code.data(),
-        *oCode = object.code.data();
-    const Size
-        bSize = base.code.size(),
-        oSize = object.code.size();
-    Address
-        bAddr = base.entrypoint,
-        oAddr = object.entrypoint;
-    list<RoutinePair> searchQ;
-    vector<bool> visited(bSize, false);
-    RoutinePair curRoutine{"start_"s + hexVal(base.entrypoint.toLinear(), false), 0, base.entrypoint, object.entrypoint};
-    info("Starting in routine "s + curRoutine.toString());
-
-    Size routineCount = 1;
-    // TODO: check if address already visited, could encounter the same address again after it was already popped
-    auto addCall = [&](const Address &a1, const Address &a2) {
-        if (visited.at(a1.toLinear())) {
-            info("Address "s + a1.toString() + " already visited");
-            return;
-        }
-        auto found = find_if(searchQ.begin(), searchQ.end(), [&](const RoutinePair &arg){
-            return arg.r1.entrypoint() == a1;
-        });
-        if (found != searchQ.end()) {
-            assert(found->r2.entrypoint() == a2);
-            info("Call to address "s + a1.toString() + " already present in search queue");
-            return;
-        }
-        int lastId = 0;
-        if (!searchQ.empty()) lastId = searchQ.back().r1.id;
-        RoutinePair call{"routine_"s + hexVal(a1.toLinear(), false), ++lastId, a1, a2};
-        info("Adding routine "s + call.toString() + " to search queue, size = " + to_string(searchQ.size()));
-        searchQ.push_back(call);
-        routineCount++;
-    };
-
-    // keep comparing instructions between the two executables (base and object) until a mismatch is found
-    bool done = false;
-    while (!done) {
-        const Offset 
-            bOffset = bAddr.toLinear(),
-            oOffset = oAddr.toLinear();
-        if (visited.at(bOffset)) {
-            error("Address "s + bAddr.toString() + " already visited");
-            return false;
-        }
-        if (bOffset >= bSize) {
-            error("Passed base code boundary: "s + hexVal(bOffset));
-            return false;
-        }
-        if (oOffset >= oSize) {
-            error("Passed object code boundary: "s + hexVal(oOffset));
-            return false;
-        }
-
-        Instruction bi{bAddr, bCode + bOffset}, oi{oAddr, oCode + oOffset};
-        // mark instruction bytes as visited
-        fill(visited.begin() + bOffset, visited.begin() + bOffset + bi.length, true);
-        const InstructionMatch imatch = oi.match(bi);
-        debug(hexVal(bOffset) + ": " + bi.toString() + " -> " + hexVal(oOffset) + ": " + oi.toString() + " [" + to_string(imatch) + "]");
-        switch (imatch) {
-        case INS_MATCH_FULL:
-            break;
-        case INS_MATCH_DIFFOP1:
-        case INS_MATCH_DIFFOP2:
-            info("Operand difference at offset "s + hexVal(bOffset) + " in base executable; has '" + bi.toString() 
-                + "' as opposed to '" + oi.toString() + "' at offset " + hexVal(oOffset) + " in object executable");        
-            break;
-        case INS_MATCH_MISMATCH:
-            info("Instruction mismatch at offset "s + hexVal(bOffset) + " in base executable; has '" + bi.toString() 
-                + "' as opposed to '" + oi.toString() + "' at offset " + hexVal(oOffset) + " in object executable");
-            return false;
-        default:
-            error("Invalid instruction match result: "s + to_string(imatch));
-            return false;
-        }
-
-        bool jump = false;
-        switch (bi.iclass) {
-        case INS_JMP:
-            if (opcodeIsConditionalJump(bi.opcode)) break;
-            else {
-                info("Encountered unconditional near jump to "s + bi.op1.toString() + " / " + oi.op1.toString());
-                Address jumpAddr(bAddr.segment, bi.relativeOffset());
-                if (visited.at(jumpAddr.toLinear())) { 
-                    info("Address "s + jumpAddr.toString() + " already visited");
-                    break;
-                }
-                switch (bi.op1.type) {
-                case OPR_IMM16:
-                    jump = true;
-                    bAddr = jumpAddr;
-                    oAddr.offset = oi.relativeOffset();
-                    break;
-                default:
-                    info("Unknown jump target of type "s + to_string(bi.op1.type) + ": " + bi.op1.toString() + ", ignoring");
-                }
-            }
-            break;
-        case INS_JMP_FAR:
-            error("Far jump not implemented");
-            break;
-        case INS_CALL:
-            info("Encountered near call to "s + bi.op1.toString() + " / " + oi.op1.toString());
-            assert(oi.op1.type == bi.op1.type);
-            switch (bi.op1.type) {
-            case OPR_IMM16:
-                addCall(Address{bAddr.segment, bi.relativeOffset()}, Address{oAddr.segment, oi.relativeOffset()});
-                break;
-            default:
-                info("Unknown call target of type "s + to_string(bi.op1.type) + ": " + bi.op1.toString() + ", ignoring");
-            }
-            break;
-        case INS_CALL_FAR:
-            error("Far call not implemented");
-            break;
-        case INS_RET:
-        case INS_RETF:
-        case INS_IRET:
-            info("--- Encountered return from routine "s + curRoutine.toString());
-            if (searchQ.empty()) {
-                info("Nothing left on the search stack, concluding comparison");
-                done = true;
-            }
-            else {
-                curRoutine = searchQ.front();
-                searchQ.pop_front();
-                info("--- Proceeding to routine " + curRoutine.toString() + ", queue size = " + to_string(searchQ.size()));
-                jump = true;
-                bAddr = curRoutine.r1.entrypoint();
-                oAddr = curRoutine.r2.entrypoint();
-            }
-            break;
-        default: 
-            // normal instruction
-            break;
-        }
-
-        // move to the next instruction pair
-        if (!jump) {
-            bAddr += bi.length;
-            oAddr += oi.length;
-        }
-    }
-
-    info("Identified and compared "s + to_string(routineCount) + " routines");
+bool Executable::compareCode(const Executable &other) const {
     return true;
 }

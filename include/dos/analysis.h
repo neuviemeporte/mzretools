@@ -51,6 +51,8 @@ struct Executable {
     Address stack;
     Word reloc;
     explicit Executable(const MzImage &mz);
+    RoutineMap findRoutines() const;
+    bool compareCode(const Executable &other) const;
 };
 
 class RegisterState {
@@ -73,8 +75,5 @@ private:
     void setState(const Register r, const Word value, const bool known);
     std::string stateString(const Register r) const;
 };
-
-RoutineMap findRoutines(const Executable &exe);
-bool compareCode(const Executable &base, const Executable &object);
 
 #endif // ANALYSIS_H

@@ -116,7 +116,8 @@ TEST_F(SystemTest, FindRoutines) {
     // test discovery of the routine map    
     MzImage mz{"bin/hello.exe"};
     mz.load(0x0);
-    RoutineMap discoveredMap = findRoutines(Executable{mz});
+    Executable exe{mz};
+    RoutineMap discoveredMap = exe.findRoutines();
     discoveredMap.dump();
     
     // compare against ida map
@@ -163,11 +164,11 @@ TEST_F(SystemTest, RoutineMapCollision) {
     ASSERT_EQ(rm.size(), 2);
 }
 
-TEST_F(SystemTest, DISABLED_CodeCompare) {
+TEST_F(SystemTest, CodeCompare) {
     MzImage mz{"bin/hello.exe"};
     mz.load(0);
     Executable e1{mz}, e2{mz};
-    ASSERT_TRUE(compareCode(e1, e2));
+    ASSERT_TRUE(e1.compareCode(e2));
 }
 
 TEST_F(SystemTest, SignedHex) {
