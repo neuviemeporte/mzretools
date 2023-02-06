@@ -31,6 +31,11 @@ public:
     RoutineMap() {}
     RoutineMap(const std::string &path);
 
+    Routine getRoutine(const Size routineId) const { 
+        if ((routineId - 1) < size())
+            return routines.at(routineId - 1);  
+        else return {};
+    }
     Size size() const { return routines.size(); }
     bool empty() const { return routines.empty(); }
     Size match(const RoutineMap &other) const;
@@ -50,11 +55,13 @@ struct Executable {
     Address entrypoint;
     Address stack;
     Word reloc;
+    RoutineMap map;
     explicit Executable(const MzImage &mz);
-    RoutineMap findRoutines() const;
+    void findRoutines();
     bool compareCode(const Executable &other) const;
 };
 
+// TODO: implement calculation of memory offsets based on register values from instruction operand type enum, allow for unknown values
 class RegisterState {
 private:
     static constexpr Word WORD_KNOWN = 0xffff;

@@ -117,8 +117,10 @@ TEST_F(SystemTest, FindRoutines) {
     MzImage mz{"bin/hello.exe"};
     mz.load(0x0);
     Executable exe{mz};
-    RoutineMap discoveredMap = exe.findRoutines();
+    exe.findRoutines();
+    const RoutineMap &discoveredMap = exe.map;
     discoveredMap.dump();
+    ASSERT_FALSE(discoveredMap.empty());
     
     // compare against ida map
     Size matchCount = idaMap.match(discoveredMap);
@@ -168,6 +170,7 @@ TEST_F(SystemTest, CodeCompare) {
     MzImage mz{"bin/hello.exe"};
     mz.load(0);
     Executable e1{mz}, e2{mz};
+    e1.map = RoutineMap{"hello.map"};
     ASSERT_TRUE(e1.compareCode(e2));
 }
 

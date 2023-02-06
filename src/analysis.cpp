@@ -343,10 +343,8 @@ public:
     }
     Size size() const { return sq.size(); }
     bool empty() const { return sq.empty(); }
-    void message(const Address &a, const string &msg, const LogPriority pri = LOG_VERBOSE) {
-        output("[r"s + to_string(curSearch.routineId) + "/q" + to_string(size()) + "]: " + a.toString() + ": " + msg, LOG_ANALYSIS, pri);
-    }
-    int getRoutine(const Offset off) const { return visited.at(off); }
+    string statusString() const { return "[r"s + to_string(curSearch.routineId) + "/q" + to_string(size()) + "]"; } 
+    int getRoutineId(const Offset off) const { return visited.at(off); }
 
     void markRoutine(const Offset off, const Size length, int id = NULL_ROUTINE) {
         if (id == NULL_ROUTINE) id = curSearch.routineId;
@@ -378,15 +376,15 @@ public:
     void savePoint(const Address &src, const Address &dest, const bool isCall, const RegisterState &regs) {
         const Offset destOff = dest.toLinear();
         assert(destOff < visited.size());
-        const int destId = getRoutine(destOff);
+        const int destId = getRoutineId(destOff);
         if (isCall) { 
             // function call, create new routine at destination if either not visited, 
             // or visited but previous location is marked with the same routine id as the call location, 
             // meaning this was not discovered as a routine entrypoint and this call now takes precedence and will replace it
-            if ((destId == NULL_ROUTINE || (destOff > 0 && getRoutine(destOff - 1) == destId)) && !hasPoint(dest, isCall)) {
+            if ((destId == NULL_ROUTINE || (destOff > 0 && getRoutineId(destOff - 1) == destId)) && !hasPoint(dest, isCall)) {
                 lastRoutineId++;
                 if (destId == NULL_ROUTINE) debug("call destination not belonging to any routine, saving as search point for new routine " + to_string(lastRoutineId));
-                else debug("call destination internal to routine " + to_string(destId) + ", saving as search point for new routine " + to_string(lastRoutineId));
+                else debug("call destination belonging to routine " + to_string(destId) + ", saving as search point for new routine " + to_string(lastRoutineId));
                 sq.emplace_front(SearchPoint(dest, lastRoutineId, true, regs));
             }
         }
@@ -407,7 +405,7 @@ public:
         int prev_id = NULL_ROUTINE;
         Offset blockStart = 0;
         for (size_t mapOffset = 0; mapOffset < visited.size(); ++mapOffset) {
-            const int id = getRoutine(mapOffset);
+            const int id = getRoutineId(mapOffset);
             if (id != prev_id) { // new block begins
                 if (prev_id != NULL_ROUTINE) { // need to close previous block
                     Block block{Address(blockStart), Address(mapOffset - 1)};
@@ -435,7 +433,7 @@ public:
         for (int i = 0; i < 16; ++i) mapFile << hex << setw(5) << setfill(' ') << i << " ";
         mapFile << endl;
         for (size_t mapOffset = 0; mapOffset < visited.size(); ++mapOffset) {
-            const int id = getRoutine(mapOffset);
+            const int id = getRoutineId(mapOffset);
             //debug(hexVal(mapOffset) + ": " + to_string(m));
             if (mapOffset % 16 == 0) {
                 if (mapOffset != 0) mapFile << endl;
@@ -451,7 +449,7 @@ public:
 // TODO: identify routines through signatures generated from OMF libraries
 // TODO: trace usage of bp register (sub/add) to determine stack frame size of routines
 // TODO: store references to potential jump tables (e.g. jmp cs:[bx+0xc08]), if unclaimed after initial search, try treating entries as pointers and run second search before coalescing blocks?
-RoutineMap Executable::findRoutines() const {
+void Executable::findRoutines() {
     const Byte *codeData = code.data();
     const Size codeSize = code.size();
     const Block codeExtents = Block({entrypoint.segment, 0}, Address(SEG_OFFSET(entrypoint.segment) + codeSize));
@@ -464,14 +462,18 @@ RoutineMap Executable::findRoutines() const {
     // queue for BFS search
     SearchQueue searchQ(codeSize, SearchPoint(entrypoint, 1, true, initRegs));
 
+    auto searchMessage = [](const Address &a, const string &msg) {
+        output(a.toString() + ": " + msg, LOG_ANALYSIS, LOG_DEBUG);
+    };
+
     info("Analyzing code in range " + codeExtents);
     // iterate over entries in the search queue
     while (!searchQ.empty()) {
         // get a location from the queue and jump to it
         const SearchPoint search = searchQ.nextPoint();
         Address csip = search.address;
-        const int rid = searchQ.getRoutine(csip.toLinear());
-        searchQ.message(csip, "starting search at new location, call: "s + to_string(search.isCall));
+        const int rid = searchQ.getRoutineId(csip.toLinear());
+        searchMessage(csip, "starting search at new location, call: "s + to_string(search.isCall) + ", queue: " + searchQ.statusString());
         if (rid != NULL_ROUTINE && !search.isCall) {
             debug("location already claimed by routine "s + to_string(rid) + " and search point did not originate from a call, skipping");
             continue;
@@ -481,8 +483,8 @@ RoutineMap Executable::findRoutines() const {
         // iterate over instructions at current search location in a linear fashion, until an unconditional jump or return encountered
         while (scan) {
             if (!codeExtents.contains(csip)) {
-                searchQ.message(csip, "ERROR: advanced past loaded code extents", LOG_ERROR);
-                return {};
+                error("Advanced past loaded code extents: "s + csip.toString());
+                return;
             }
             const Offset instrOffs = csip.toLinear();
             Instruction i(csip, codeData + instrOffs);
@@ -502,18 +504,18 @@ RoutineMap Executable::findRoutines() const {
                 // conditional jump, put destination into search queue to check out later
                 if (opcodeIsConditionalJump(i.opcode)) {
                     jumpAddr.offset = i.relativeOffset();
-                    searchQ.message(csip, "encountered conditional near jump to "s + jumpAddr.toString());
+                    searchMessage(csip, "encountered conditional near jump to "s + jumpAddr.toString());
                 }
                 else switch (i.opcode) {
                 // unconditional jumps, cannot continue at current location, need to jump now
                 case OP_JMP_Jb: 
                 case OP_JMP_Jv: 
                     jumpAddr.offset = i.relativeOffset();
-                    searchQ.message(csip, "encountered unconditional near jump to "s + jumpAddr.toString());
+                    searchMessage(csip, "encountered unconditional near jump to "s + jumpAddr.toString());
                     scan = false;
                     break;
                 case OP_GRP5_Ev:
-                    searchQ.message(csip, "unknown near jump target: "s + i.toString());
+                    searchMessage(csip, "unknown near jump target: "s + i.toString());
                     break; 
                 default: 
                     throw AnalysisError("Unsupported jump opcode: "s + hexVal(i.opcode));
@@ -522,59 +524,59 @@ RoutineMap Executable::findRoutines() const {
             case INS_JMP_FAR:
                 if (i.op1.type == OPR_IMM32) {
                     jumpAddr = Address{i.op1.immval.u32}; 
-                    searchQ.message(csip, "encountered unconditional far jump to "s + jumpAddr.toString());
+                    searchMessage(csip, "encountered unconditional far jump to "s + jumpAddr.toString());
                     scan = false;
                 }
-                else searchQ.message(csip, "unknown far jump target: "s + i.toString());
+                else searchMessage(csip, "unknown far jump target: "s + i.toString());
                 break;
             // loops
             case INS_LOOP:
             case INS_LOOPNZ:
             case INS_LOOPZ:
                 jumpAddr.offset = i.relativeOffset();
-                searchQ.message(csip, "encountered loop to "s + jumpAddr.toString());
+                searchMessage(csip, "encountered loop to "s + jumpAddr.toString());
                 break;
             // calls
             case INS_CALL:
                 if (i.op1.type == OPR_IMM16) {
                     jumpAddr.offset = i.relativeOffset();
-                    searchQ.message(csip, "encountered near call to "s + jumpAddr.toString());
+                    searchMessage(csip, "encountered near call to "s + jumpAddr.toString());
                     call = true;
                 }
                 else if (operandIsReg(i.op1.type) && regs.isKnown(i.op1.regId())) {
                     jumpAddr.offset = regs.getValue(i.op1.regId());
-                    searchQ.message(csip, "encountered near call through register to "s + jumpAddr.toString());
+                    searchMessage(csip, "encountered near call through register to "s + jumpAddr.toString());
                     call = true;
                 }
                 else if (operandIsMemImmediate(i.op1.type) && regs.isKnown(REG_DS)) {
                     Address memAddr{regs.getValue(REG_DS), i.op1.immval.u16};
                     if (codeExtents.contains(memAddr)) {
-                        searchQ.message(csip, "encountered near call through mem pointer to "s + jumpAddr.toString());
+                        searchMessage(csip, "encountered near call through mem pointer to "s + jumpAddr.toString());
                         memcpy(&memWord, codeData + memAddr.toLinear(), sizeof(Word));
                         jumpAddr.offset = memWord;
                         call = true;
                     }
                     else debug("call destination address outside code extents: " + memAddr.toString());
                 }
-                else searchQ.message(csip, "unknown near call target: "s + i.toString());
+                else searchMessage(csip, "unknown near call target: "s + i.toString());
                 break;
             case INS_CALL_FAR:
                 if (i.op1.type == OPR_IMM32) {
                     jumpAddr = Address(i.op1.immval.u32);
-                    searchQ.message(csip, "encountered far call to "s + jumpAddr.toString());
+                    searchMessage(csip, "encountered far call to "s + jumpAddr.toString());
                     call = true;
                 }
-                else searchQ.message(csip, "unknown far call target: "s + i.toString());
+                else searchMessage(csip, "unknown far call target: "s + i.toString());
                 break;
             // returns
             case INS_RET:
             case INS_RETF:
             case INS_IRET:
-                searchQ.message(csip, "returning from routine");
+                searchMessage(csip, "returning from routine");
                 scan = false;
                 break;
             // track some movs to be able to infer jump/call destinations from register values
-            // TODO: store regs' values and known/unknown state in queue with SearchPoint, pop when searching at new location
+            // TODO: use a Cpu instance, evaluate arithmetic instructions to harvest more reg values than only from mov
             case INS_MOV:
                 if (operandIsReg(i.op1.type)) {
                     const Register dest = i.op1.regId();
@@ -615,10 +617,10 @@ RoutineMap Executable::findRoutines() const {
                             set = true;
                             break;
                         }
-                        else debug("mov source address outside code extents: " + memAddr.toString());
+                        else searchMessage(csip, "mov source address outside code extents: " + memAddr.toString());
                     }
                     if (set) {
-                        searchQ.message(csip, "encountered move to register: "s + i.toString());
+                        searchMessage(csip, "encountered move to register: "s + i.toString());
                         debug(regs.toString());
                     }
                 }
@@ -627,7 +629,7 @@ RoutineMap Executable::findRoutines() const {
                 touchedRegs = i.touchedRegs();
                 if (!touchedRegs.empty()) {
                     for (Register r : touchedRegs) {
-                        debug("Instruction "s + i.toString() + " modified register " + regName(r));
+                        searchMessage(csip, "instruction "s + i.toString() + " modified register " + regName(r));
                         regs.setUnknown(r);
                     }
                     debug(regs.toString());
@@ -637,7 +639,7 @@ RoutineMap Executable::findRoutines() const {
             // if the processed instruction was a jump or a call, store its destination in the search queue
             if (jumpAddr != csip) {
                 if (codeExtents.contains(jumpAddr)) searchQ.savePoint(csip, jumpAddr, call, regs);
-                else debug("search point destination outside code boundaries: "s + jumpAddr.toString());
+                else searchMessage(csip, "search point destination outside code boundaries: "s + jumpAddr.toString());
             } 
             // advance to next instruction
             csip.offset += i.length;
@@ -653,9 +655,11 @@ RoutineMap Executable::findRoutines() const {
     // TODO: those areas are still practically undiscovered as we did not pass over their instructions, so we are missing paths leading from there,
     // perhaps a second pass over that area could discover more stuff? Need to be careful not to treat inline data as code though.
     // TODO: the first location marked with a new routine ID is always marked as that routine's entrypoint, but it might not been have the target of a call, 
-    // some functions jump to an earlier location and that location will be misattributed as the entrypoint when coalescing blocks here
+    // some functions jump to an earlier location and that location will be misattributed as the entrypoint when coalescing blocks here 
+    // - implement separate code and data chunks for a routine, make the 'extents' be the largest coalesced blocks that only gets used for comparison with ida,
+    // and never go intepreting nonreachable instructions, improve reachability if necessary.
     for (size_t mapOffset = codeExtents.begin.toLinear(); mapOffset < codeExtents.end.toLinear(); ++mapOffset) {
-        const int m = searchQ.getRoutine(mapOffset);
+        const int m = searchQ.getRoutineId(mapOffset);
         if (m == NULL_ROUTINE && (prev != NULL_ROUTINE || mapOffset == 0))  {
             undiscoveredBlock = Block{Address{mapOffset}}; // start new undiscovered block
             undiscoveredPrev = prev; // store id of routine preceeding the new block
@@ -669,7 +673,7 @@ RoutineMap Executable::findRoutines() const {
     }
 
     // iterate over discovered memory map again and create routine map
-    return searchQ.makeMap();
+    map = searchQ.makeMap();
 }
 
 struct RoutinePair {
@@ -683,5 +687,17 @@ struct RoutinePair {
 };
 
 bool Executable::compareCode(const Executable &other) const {
+    if (map.empty()) {
+        throw AnalysisError("Unable to compare executables, routine map is empty");
+    }
+    const Byte 
+        *refCode = code.data(),
+        *cmpCode = other.code.data();
+    const Size 
+        refCodeSize = code.size(),
+        cmpCodeSize = other.code.size();
+//    const Block refCodeExtents = Block({entrypoint.segment, 0}, Address(SEG_OFFSET(entrypoint.segment) + codeSize));
+
+  //  for (Size rid = 1)
     return true;
 }
