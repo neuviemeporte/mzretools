@@ -162,10 +162,10 @@ TEST_F(SystemTest, FindRoutines) {
     discoveredMap.dump();
     ASSERT_FALSE(discoveredMap.empty());
 
-    // load map from IDA listing
+    // create map from IDA listing
     const RoutineMap idaMap{"../bin/hello.lst"};
-    const Size idaMatchCount = 35; // not all 54 routines that ida finds can be identified for now    
-    // compare against ida map
+    const Size idaMatchCount = 36; // not all 54 routines that ida finds can be identified for now    
+    // compare our map against IDA map
     Size matchCount = idaMap.match(discoveredMap);
     TRACELN("Found matching " << matchCount << " routines out of " << idaMap.size());
     ASSERT_GE(matchCount, idaMatchCount);
@@ -175,7 +175,7 @@ TEST_F(SystemTest, FindRoutines) {
     RoutineMap reloadMap("hello.map");
     ASSERT_EQ(reloadMap.size(), discoveredMap.size());
 
-    // check matching in the opposite direction
+    // check matching in the opposite direction, should be the same
     matchCount = reloadMap.match(idaMap);
     TRACELN("Found matching " << matchCount << " routines out of " << discoveredMap.size());
     ASSERT_GE(matchCount, idaMatchCount);
@@ -196,7 +196,7 @@ TEST_F(SystemTest, RoutineMapCollision) {
 
     TRACELN("--- testing coliding routine extent with chunk");
     rv = { r1, r3 };
-    rv.front().reachable.push_back(b2);
+    rv.back().reachable.push_back(b2);
     rm.dump();
     rm.save(path);
     ASSERT_THROW(rm = RoutineMap{path}, AnalysisError);

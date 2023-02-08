@@ -36,7 +36,20 @@ bool Routine::isUnreachable(const Block &b) const {
     return std::find(unreachable.begin(), unreachable.end(), b) != unreachable.end();
 }
 
-bool Routine::colides(const Block &block) const {
+Block Routine::mainBlock() const {
+    const Address ep = entrypoint();
+    const auto found = std::find_if(reachable.begin(), reachable.end(), [&ep](const Block &b){
+        return b.begin == ep;
+    });
+    if (found != reachable.end()) return *found;
+    return {};
+}
+
+bool Routine::colides(const Block &block, const bool checkExtents) const {
+    if (checkExtents && extents.intersects(block)) {
+        debug("Block "s + block.toString() + " colides with extents of routine " + toString(false));
+        return true;
+    }    
     for (const auto &b : reachable) {
         if (b.intersects(block)) {
             debug("Block "s + block.toString() + " colides with reachable block " + b.toString() + " of routine " + toString(false));
@@ -55,7 +68,7 @@ bool Routine::colides(const Block &block) const {
 string Routine::toString(const bool showChunks) const {
     ostringstream str;
     str << extents.toString(true) << ": " << name;
-    if (!showChunks) return str.str();
+    if (!showChunks || extents == mainBlock()) return str.str();
 
     auto blocks = sortedBlocks();
     for (const auto &b : blocks) {
@@ -149,7 +162,7 @@ Size RoutineMap::match(const RoutineMap &other) const {
         bool routineMatch = false;
         for (const auto &ro : other.routines) {
             if (r.extents == ro.extents) {
-                debug("Found routine match for "s + r.toString() + " with " + ro.toString(false));
+                debug("Found routine match for "s + r.toString(false) + " with " + ro.toString(false));
                 routineMatch = true;
                 matchCount++;
                 break;
@@ -275,7 +288,7 @@ void RoutineMap::loadFromMapFile(const std::string &path) {
                 const Block block{token.substr(1, token.size() - 1)};
                 // check block for collisions agains rest of routines already in the map as well as the currently built routine
                 Routine colideRoutine = colidesBlock(block);
-                if (!colideRoutine.isValid() && r.colides(block)) 
+                if (!colideRoutine.isValid() && r.colides(block, false)) 
                     colideRoutine = r;
                 if (colideRoutine.isValid())
                     throw AnalysisError("line "s + to_string(lineno) + ": block " + block.toString() + " colides with routine " + colideRoutine.toString(false));
@@ -429,6 +442,7 @@ string SearchPoint::toString() const {
 SearchQueue::SearchQueue(const Size codeSize, const SearchPoint &seed) : visited(codeSize, NULL_ROUTINE) {
     queue.push_front(seed);
     start = seed.address;
+    entrypoints.push_back(start);
 }
 
 string SearchQueue::statusString() const { 

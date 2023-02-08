@@ -91,7 +91,8 @@ struct Routine {
     bool isValid() const { return extents.isValid(); }
     bool isReachable(const Block &b) const;
     bool isUnreachable(const Block &b) const;
-    bool colides(const Block &block) const;
+    Block mainBlock() const;
+    bool colides(const Block &block, const bool checkExtents = true) const;
     std::string toString(const bool showChunks = true) const;
     std::vector<Block> sortedBlocks() const;
 };
