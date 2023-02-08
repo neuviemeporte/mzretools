@@ -77,23 +77,28 @@ TEST_F(MemoryTest, Advance) {
 }
 
 TEST_F(MemoryTest, Block) {
-    Block a{10, 20}, b{15,30}, c{30,40}, d{15,17}, e{20,50};
+    const Block a{10, 20}, b{15,30}, c{30,40}, d{15,17}, e{20,50}, f{0x12, 0x12}, g{0x13, 0x13};
     ASSERT_TRUE(a.isValid());
     ASSERT_TRUE(b.isValid());
     ASSERT_TRUE(c.isValid());
     ASSERT_TRUE(d.isValid());
     // adjacent
+    ASSERT_EQ(f.coalesce(g), Block(0x12,0x13));
+    // intersect by 1
     ASSERT_EQ(a.coalesce(e), Block(10,50));
     ASSERT_EQ(e.coalesce(a), Block(10,50));
-    // partial
+    // intersect by more than 1
     ASSERT_EQ(a.coalesce(b), Block(10,30));
     ASSERT_EQ(b.coalesce(a), Block(10,30));
     // inclusion
     ASSERT_EQ(a.coalesce(d), Block(10,20));
     ASSERT_EQ(d.coalesce(a), Block(10,20));
+    // equality
+    ASSERT_EQ(a.coalesce(a), a);
+    ASSERT_EQ(f.coalesce(f), f);
     // disjoint
-    ASSERT_FALSE(a.coalesce(c).isValid());
-    ASSERT_FALSE(c.coalesce(a).isValid());
+    ASSERT_EQ(a.coalesce(c), a);
+    ASSERT_EQ(c.coalesce(a), c);
 
     // from string
     Block s1{"1234:100", "1234:200"};

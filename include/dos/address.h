@@ -16,6 +16,7 @@ inline Offset SEG_OFFSET(const Word seg) { return static_cast<Offset>(seg) << SE
 inline Size BYTES_TO_PARA(const Size bytes) { return bytes / PARAGRAPH_SIZE + (bytes % PARAGRAPH_SIZE ? 1 : 0); }
 inline const Word* WORD_PTR(const Byte* buf, const Offset off = 0) { return reinterpret_cast<const Word*>(buf + off); }
 
+// A segmented address
 struct Address {
     Word segment, offset;
     Address(const Word segment, const Word offset) : segment(segment), offset(offset) {}
@@ -27,6 +28,7 @@ struct Address {
     bool operator==(const Address &arg) const { return toLinear() == arg.toLinear(); }
     bool operator!=(const Address &arg) const { return !(*this == arg); }
     bool operator<(const Address &arg) const { return toLinear() < arg.toLinear(); }
+    bool operator>(const Address &arg) const { return toLinear() > arg.toLinear(); }
     bool operator<=(const Address &arg) const { return toLinear() <= arg.toLinear(); }
     bool operator>=(const Address &arg) const { return toLinear() >= arg.toLinear(); }
     // TODO: handle overflow
@@ -52,25 +54,30 @@ struct Address {
 std::ostream& operator<<(std::ostream &os, const Address &arg);
 inline std::string operator+(const std::string &str, const Address &arg) { return str + arg.toString(); }
 
+// An address range
 struct Block {
     Address begin, end;
     Block(const Address &begin, const Address &end) : begin(begin), end(end) {}
     Block(const Address &begin) : Block(begin, begin) {}
     Block(const Offset begin, const Offset end) : Block(Address{begin}, Address{end}) {}
+    Block(const Offset begin) : Block(Address(begin)) {}
     Block(const std::string &blockStr);
     Block(const std::string &from, const std::string &to);
-    Block() : Block(MEM_TOTAL - 1, 0) {} // null block
+    Block() : Block(MEM_TOTAL - 1, 0) {} // invalid block
 
     bool operator==(const Block &arg) const { return begin == arg.begin && end == arg.end; }
+    bool operator<(const Block &arg) const { return begin < arg.begin; }
 
     std::string toString(const bool linear = false, const bool showSize = true) const;
     Size size() const { assert(isValid()); return end - begin; }
     bool isValid() const { return begin <= end; }
-    bool contains(const Address &addr) const { return addr.toLinear() >= begin.toLinear() && addr.toLinear() <= end.toLinear(); }
+    bool contains(const Address &addr) const { return addr >= begin && addr <= end; }
     bool intersects(const Block &other) const;
+    bool adjacent(const Block &other) const;
 
     void relocate(const SWord reloc) { begin.relocate(reloc); end.relocate(reloc); }
     void rebase(const Word base) { begin.rebase(base); end.rebase(base); }
+    void coalesce(const Block &other);
     Block coalesce(const Block &other) const;
 };
 std::ostream& operator<<(std::ostream &os, const Block &arg);

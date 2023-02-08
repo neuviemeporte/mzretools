@@ -116,20 +116,34 @@ std::string Block::toString(const bool linear, const bool showSize) const {
     return str.str();
 }
 
+// check if blocks overlap each other (by at least one byte)
 bool Block::intersects(const Block &other) const {
     if (!isValid()) return false;
-    const Offset 
-        maxBegin = std::max(begin.toLinear(), other.begin.toLinear()),
-        minEnd   = std::min(end.toLinear(), other.end.toLinear());
-    return (maxBegin <= minEnd);
+    const Address
+        maxBegin = std::max(begin, other.begin),
+        minEnd   = std::min(end, other.end);
+    return maxBegin <= minEnd;
+}
+
+// check if blocks are right next to each other (but disjoint)
+bool Block::adjacent(const Block &other) const {
+    if (!isValid()) return false;
+    const Address
+        maxBegin = std::max(begin, other.begin),
+        minEnd   = std::min(end, other.end);
+    return (maxBegin > minEnd) && (maxBegin - minEnd == 1);
+}
+
+void Block::coalesce(const Block &other) {
+    if (!intersects(other) && !adjacent(other)) return;
+    begin = std::min(begin, other.begin);
+    end = std::max(end, other.end);
 }
 
 Block Block::coalesce(const Block &other) const {
-    if (!intersects(other)) return {};
-    return { 
-        std::min(begin.toLinear(), other.begin.toLinear()),
-        std::max(end.toLinear(), other.end.toLinear())
-     };
+    Block ret = *this;
+    ret.coalesce(other);
+    return ret;
 }
 
 std::ostream& operator<<(std::ostream &os, const Block &arg) {

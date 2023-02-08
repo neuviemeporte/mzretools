@@ -17,12 +17,17 @@ protected:
 
 protected:
     void TearDown() override {
-        if (HasFailure()) {
-            TRACELN(sys.cpuInfo());
-        }
+        // if (HasFailure()) {
+        //     TRACELN(sys.cpuInfo());
+        // }
     }
 
+    // access to private fields
     auto& getRoutines(RoutineMap &rm) { return rm.routines; }
+    auto emptyRoutineMap() { return RoutineMap(); }
+    auto emptySearchQueue() { return SearchQueue(); }
+    auto& sqVisited(SearchQueue &sq) { return sq.visited; }
+    auto& sqEntrypoints(SearchQueue &sq) { return sq.entrypoints; }
 };
 
 TEST_F(SystemTest, DISABLED_HelloWorld) {
@@ -106,26 +111,64 @@ TEST_F(SystemTest, RoutineMap) {
     const Size routineCount = matchMap.size();
     const Size matchCount = idaMap.match(matchMap);
     ASSERT_EQ(matchCount, routineCount);
+
+}
+
+TEST_F(SystemTest, RoutineMapFromQueue) {
+    // test routine map generation from contents of a search queue
+    SearchQueue sq = emptySearchQueue();
+    vector<int> &visited = sqVisited(sq);
+    vector<Address> &entrypoints = sqEntrypoints(sq);
+    //          0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f  10 11 12 13 14 15 16 17
+    visited = { 0, 0, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 2, 2, 0, 0, 1, 1, 3, 0, 3, 3, 3, 0 };
+    entrypoints = { 0x8, 0xc, 0x12 };
+    RoutineMap queueMap{sq};
+    queueMap.dump();
+    ASSERT_EQ(queueMap.size(), 3);
+
+    Routine r1 = queueMap.getRoutine(0);
+    ASSERT_FALSE(r1.name.empty());
+    ASSERT_EQ(r1.extents, Block(0x8, 0xb));
+    ASSERT_EQ(r1.reachable.size(), 3);
+    ASSERT_EQ(r1.reachable.at(0), Block(0x2, 0x4));
+    ASSERT_EQ(r1.reachable.at(1), Block(0x8, 0xb));
+    ASSERT_EQ(r1.reachable.at(2), Block(0x10, 0x11));
+    ASSERT_EQ(r1.unreachable.size(), 1);
+    ASSERT_EQ(r1.unreachable.at(0), Block(0x5, 0x7));
+
+    Routine r2 = queueMap.getRoutine(1);
+    ASSERT_FALSE(r2.name.empty());
+    ASSERT_EQ(r2.extents, Block(0xc, 0xd));
+    ASSERT_EQ(r2.reachable.size(), 1);
+    ASSERT_EQ(r2.reachable.at(0), Block(0xc, 0xd));
+    ASSERT_EQ(r2.unreachable.size(), 0);
+
+    Routine r3 = queueMap.getRoutine(2);
+    ASSERT_FALSE(r3.name.empty());
+    ASSERT_EQ(r3.extents, Block(0x12, 0x16));
+    ASSERT_EQ(r3.reachable.size(), 2);
+    ASSERT_EQ(r3.reachable.at(0), Block(0x12, 0x12));
+    ASSERT_EQ(r3.reachable.at(1), Block(0x14, 0x16));
+    ASSERT_EQ(r3.unreachable.size(), 1);
+    ASSERT_EQ(r3.unreachable.at(0), Block(0x13, 0x13));    
 }
 
 TEST_F(SystemTest, FindRoutines) {
-    // load map from IDA listing
-    const RoutineMap idaMap{"../bin/hello.lst"};
-    const Size idaMatchCount = 35; // not all 54 routines that ida finds can be identified for now
-
-    // test discovery of the routine map    
+    // discover routines inside an executable
     MzImage mz{"bin/hello.exe"};
     mz.load(0x0);
     Executable exe{mz};
-    exe.findRoutines();
-    const RoutineMap &discoveredMap = exe.map;
+    const RoutineMap &discoveredMap = exe.findRoutines();
     discoveredMap.dump();
     ASSERT_FALSE(discoveredMap.empty());
-    
+
+    // load map from IDA listing
+    const RoutineMap idaMap{"../bin/hello.lst"};
+    const Size idaMatchCount = 35; // not all 54 routines that ida finds can be identified for now    
     // compare against ida map
     Size matchCount = idaMap.match(discoveredMap);
     TRACELN("Found matching " << matchCount << " routines out of " << idaMap.size());
-    ASSERT_GE(matchCount, 34); // not all 54 functions that ida finds can be identified for now
+    ASSERT_GE(matchCount, idaMatchCount);
     
     // save to file and reload
     discoveredMap.save("hello.map");
@@ -133,16 +176,16 @@ TEST_F(SystemTest, FindRoutines) {
     ASSERT_EQ(reloadMap.size(), discoveredMap.size());
 
     // check matching in the opposite direction
-    matchCount = discoveredMap.match(idaMap);
+    matchCount = reloadMap.match(idaMap);
     TRACELN("Found matching " << matchCount << " routines out of " << discoveredMap.size());
     ASSERT_GE(matchCount, idaMatchCount);
 }
 
 TEST_F(SystemTest, RoutineMapCollision) {
     const string path = "bad.map";
-    RoutineMap rm;
+    RoutineMap rm = emptyRoutineMap();
     Block b1{100, 200}, b2{150, 250}, b3{300, 400};
-    Routine r1{"r1", 1, b1},  r2{"r2", 2, b2}, r3{"r3", 3, b3};
+    Routine r1{"r1", b1},  r2{"r2", b2}, r3{"r3", b3};
     auto &rv = getRoutines(rm);
 
     TRACELN("--- testing coliding routine extents");
@@ -153,7 +196,7 @@ TEST_F(SystemTest, RoutineMapCollision) {
 
     TRACELN("--- testing coliding routine extent with chunk");
     rv = { r1, r3 };
-    rv.front().chunks.push_back(b2);
+    rv.front().reachable.push_back(b2);
     rm.dump();
     rm.save(path);
     ASSERT_THROW(rm = RoutineMap{path}, AnalysisError);
@@ -170,8 +213,8 @@ TEST_F(SystemTest, CodeCompare) {
     MzImage mz{"bin/hello.exe"};
     mz.load(0);
     Executable e1{mz}, e2{mz};
-    e1.map = RoutineMap{"hello.map"};
-    ASSERT_TRUE(e1.compareCode(e2));
+    auto map = RoutineMap{"hello.map"};
+    ASSERT_TRUE(e1.compareCode(map, e2));
 }
 
 TEST_F(SystemTest, SignedHex) {
