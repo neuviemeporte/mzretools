@@ -1,6 +1,5 @@
 #include "dos/analysis.h"
 #include "dos/opcodes.h"
-#include "dos/instruction.h"
 #include "dos/output.h"
 #include "dos/util.h"
 #include "dos/error.h"
@@ -517,7 +516,7 @@ void SearchQueue::saveJump(const Address &dest, const RegisterState &regs) {
     else if (hasPoint(dest, false))
         debug("Search queue already contains jump to address "s + dest.toString());
     else { // not claimed by any routine and not yet in queue
-        debug("jump destination not belonging to any routine "s + dest.toString() + ", claiming for existing routine " + to_string(curSearch.routineId));
+        debug("jump destination not belonging to any routine, claiming for existing routine " + to_string(curSearch.routineId));
         queue.emplace_front(SearchPoint(dest, curSearch.routineId, false, regs));
     }
 }
@@ -539,9 +538,148 @@ void SearchQueue::dumpVisited(const string &path) const {
     }
 }
 
-Executable::Executable(const MzImage &mz) : entrypoint(mz.entrypoint()), stack(mz.stackPointer()), reloc(mz.loadSegment())  {
+Executable::Executable(const MzImage &mz) : codeSize(0), codeData(nullptr), entrypoint(mz.entrypoint()), stack(mz.stackPointer()), reloc(mz.loadSegment())  {
     const Byte *data = mz.loadModuleData();
     copy(data, data + mz.loadModuleSize(), std::back_inserter(code));
+    codeSize = code.size();
+    codeData = code.data();
+    codeExtents = Block({entrypoint.segment, 0}, Address(SEG_OFFSET(entrypoint.segment) + codeSize));
+}
+
+void Executable::searchMessage(const string &msg) const {
+    output(csip.toString() + ": " + msg, LOG_ANALYSIS, LOG_DEBUG);
+}
+
+Address Executable::jumpDestination(const Instruction &i, const RegisterState &regs) {
+    Address jumpAddr = csip;
+    switch (i.iclass) {
+    case INS_JMP:
+        // conditional jump, put destination into search queue to check out later
+        if (opcodeIsConditionalJump(i.opcode)) {
+            jumpAddr.offset = i.relativeOffset();
+            searchMessage("encountered conditional near jump to "s + jumpAddr.toString());
+        }
+        else switch (i.opcode) {
+        // unconditional jumps, cannot continue at current location, need to jump now
+        case OP_JMP_Jb: 
+        case OP_JMP_Jv: 
+            jumpAddr.offset = i.relativeOffset();
+            searchMessage("encountered unconditional near jump to "s + jumpAddr.toString());
+            break;
+        case OP_GRP5_Ev:
+            searchMessage("unknown near jump target: "s + i.toString());
+            debug(regs.toString());
+            break; 
+        default: 
+            throw AnalysisError("Unsupported jump opcode: "s + hexVal(i.opcode));
+        }
+        break;
+    case INS_JMP_FAR:
+        if (i.op1.type == OPR_IMM32) {
+            jumpAddr = Address{i.op1.immval.u32}; 
+            searchMessage("encountered unconditional far jump to "s + jumpAddr.toString());
+        }
+        else {
+            searchMessage("unknown far jump target: "s + i.toString());
+            debug(regs.toString());
+        }
+        break;
+    // loops
+    case INS_LOOP:
+    case INS_LOOPNZ:
+    case INS_LOOPZ:
+        jumpAddr.offset = i.relativeOffset();
+        searchMessage("encountered loop to "s + jumpAddr.toString());
+        break;
+    // calls
+    case INS_CALL:
+        if (i.op1.type == OPR_IMM16) {
+            jumpAddr.offset = i.relativeOffset();
+            searchMessage("encountered near call to "s + jumpAddr.toString());
+        }
+        else if (operandIsReg(i.op1.type) && regs.isKnown(i.op1.regId())) {
+            jumpAddr.offset = regs.getValue(i.op1.regId());
+            searchMessage("encountered near call through register to "s + jumpAddr.toString());
+        }
+        else if (operandIsMemImmediate(i.op1.type) && regs.isKnown(REG_DS)) {
+            Address memAddr{regs.getValue(REG_DS), i.op1.immval.u16};
+            if (codeExtents.contains(memAddr)) {
+                Word memWord;
+                searchMessage("encountered near call through mem pointer to "s + jumpAddr.toString());
+                memcpy(&memWord, codeData + memAddr.toLinear(), sizeof(Word));
+                jumpAddr.offset = memWord;
+            }
+            else debug("call destination address outside code extents: " + memAddr.toString());
+        }
+        else {
+            searchMessage("unknown near call target: "s + i.toString());
+            debug(regs.toString());
+        } 
+        break;
+    case INS_CALL_FAR:
+        if (i.op1.type == OPR_IMM32) {
+            jumpAddr = Address(i.op1.immval.u32);
+            searchMessage("encountered far call to "s + jumpAddr.toString());
+        }
+        else {
+            searchMessage("unknown far call target: "s + i.toString());
+            debug(regs.toString());
+        }
+        break;
+    default:
+        throw AnalysisError("Instruction is not a jump or call: "s + i.toString());
+    }
+    return jumpAddr;
+}
+
+void Executable::applyMov(const Instruction &i, RegisterState &regs) {
+    if (i.iclass != INS_MOV || !operandIsReg(i.op1.type)) return;
+
+    const Register dest = i.op1.regId();
+    bool set = false;
+    // mov reg, imm
+    if (operandIsImmediate(i.op2.type)) {
+        switch(i.op2.size) {
+        case OPRSZ_BYTE: 
+            regs.setValue(dest, i.op2.immval.u8); 
+            set = true; 
+            break;
+        case OPRSZ_WORD: 
+            regs.setValue(dest, i.op2.immval.u16);
+            set = true; 
+            break;
+        }
+    }
+    // mov reg, reg
+    else if (operandIsReg(i.op2.type) && regs.isKnown(i.op2.regId())) {
+        const Register src = i.op2.regId();
+        regs.setValue(dest, regs.getValue(src));
+        set = true;
+    }
+    // mov reg, mem
+    else if (operandIsMemImmediate(i.op2.type) && regs.isKnown(prefixRegId(i.prefix))) {
+        Address memAddr(regs.getValue(prefixRegId(i.prefix)), i.op2.immval.u16);
+        Word memWord;
+        Byte memByte;
+        if (codeExtents.contains(memAddr)) switch(i.op2.size) {
+        case OPRSZ_BYTE:
+            assert(memAddr.toLinear() < codeSize);
+            memByte = codeData[memAddr.toLinear()];
+            regs.setValue(dest, memByte); 
+            set = true;
+            break;
+        case OPRSZ_WORD:
+            assert(memAddr.toLinear() < codeSize);
+            memcpy(&memWord, codeData + memAddr.toLinear(), sizeof(Word));
+            regs.setValue(dest, memWord);
+            set = true;
+            break;
+        }
+        else searchMessage("mov source address outside code extents: "s + memAddr.toString());
+    }
+    if (set) {
+        searchMessage("encountered move to register: "s + i.toString());
+    }
 }
 
 // explore the code without actually executing instructions, discover routine boundaries
@@ -550,9 +688,6 @@ Executable::Executable(const MzImage &mz) : entrypoint(mz.entrypoint()), stack(m
 // TODO: trace usage of bp register (sub/add) to determine stack frame size of routines
 // TODO: store references to potential jump tables (e.g. jmp cs:[bx+0xc08]), if unclaimed after initial search, try treating entries as pointers and run second search before coalescing blocks?
 RoutineMap Executable::findRoutines() {
-    const Byte *codeData = code.data();
-    const Size codeSize = code.size();
-    const Block codeExtents = Block({entrypoint.segment, 0}, Address(SEG_OFFSET(entrypoint.segment) + codeSize));
     RegisterState initRegs;
     initRegs.setValue(REG_CS, entrypoint.segment);
     initRegs.setValue(REG_IP, entrypoint.offset);
@@ -562,18 +697,14 @@ RoutineMap Executable::findRoutines() {
     // queue for BFS search
     SearchQueue searchQ(codeSize, SearchPoint(entrypoint, 1, true, initRegs));
 
-    auto searchMessage = [](const Address &a, const string &msg) {
-        output(a.toString() + ": " + msg, LOG_ANALYSIS, LOG_DEBUG);
-    };
-
     info("Analyzing code in range " + codeExtents);
     // iterate over entries in the search queue
     while (!searchQ.empty()) {
         // get a location from the queue and jump to it
         const SearchPoint search = searchQ.nextPoint();
-        Address csip = search.address;
+        csip = search.address;
         const int rid = searchQ.getRoutineId(csip.toLinear());
-        searchMessage(csip, "starting search at new location, call: "s + to_string(search.isCall) + ", queue: " + searchQ.statusString());
+        searchMessage("starting search at new location, call: "s + to_string(search.isCall) + ", queue: " + searchQ.statusString());
         if (rid != NULL_ROUTINE && !search.isCall) {
             debug("location already claimed by routine "s + to_string(rid) + " and search point did not originate from a call, skipping");
             continue;
@@ -599,139 +730,37 @@ RoutineMap Executable::findRoutines() {
             switch (i.iclass) {
             // jumps
             case INS_JMP:
-                // conditional jump, put destination into search queue to check out later
-                if (opcodeIsConditionalJump(i.opcode)) {
-                    jumpAddr.offset = i.relativeOffset();
-                    searchMessage(csip, "encountered conditional near jump to "s + jumpAddr.toString());
-                }
-                else switch (i.opcode) {
-                // unconditional jumps, cannot continue at current location, need to jump now
-                case OP_JMP_Jb: 
-                case OP_JMP_Jv: 
-                    jumpAddr.offset = i.relativeOffset();
-                    searchMessage(csip, "encountered unconditional near jump to "s + jumpAddr.toString());
-                    scan = false;
-                    break;
-                case OP_GRP5_Ev:
-                    searchMessage(csip, "unknown near jump target: "s + i.toString());
-                    debug(regs.toString());
-                    break; 
-                default: 
-                    throw AnalysisError("Unsupported jump opcode: "s + hexVal(i.opcode));
-                }
+                jumpAddr = jumpDestination(i, regs);
+                if (jumpAddr != csip)
+                    scan = opcodeIsConditionalJump(i.opcode);
                 break;
             case INS_JMP_FAR:
-                if (i.op1.type == OPR_IMM32) {
-                    jumpAddr = Address{i.op1.immval.u32}; 
-                    searchMessage(csip, "encountered unconditional far jump to "s + jumpAddr.toString());
-                    scan = false;
-                }
-                else {
-                    searchMessage(csip, "unknown far jump target: "s + i.toString());
-                    debug(regs.toString());
-                }
+                jumpAddr = jumpDestination(i, regs);
+                scan = false;
                 break;
             // loops
             case INS_LOOP:
             case INS_LOOPNZ:
             case INS_LOOPZ:
-                jumpAddr.offset = i.relativeOffset();
-                searchMessage(csip, "encountered loop to "s + jumpAddr.toString());
+                jumpAddr = jumpDestination(i, regs);
                 break;
             // calls
             case INS_CALL:
-                if (i.op1.type == OPR_IMM16) {
-                    jumpAddr.offset = i.relativeOffset();
-                    searchMessage(csip, "encountered near call to "s + jumpAddr.toString());
-                    call = true;
-                }
-                else if (operandIsReg(i.op1.type) && regs.isKnown(i.op1.regId())) {
-                    jumpAddr.offset = regs.getValue(i.op1.regId());
-                    searchMessage(csip, "encountered near call through register to "s + jumpAddr.toString());
-                    call = true;
-                }
-                else if (operandIsMemImmediate(i.op1.type) && regs.isKnown(REG_DS)) {
-                    Address memAddr{regs.getValue(REG_DS), i.op1.immval.u16};
-                    if (codeExtents.contains(memAddr)) {
-                        searchMessage(csip, "encountered near call through mem pointer to "s + jumpAddr.toString());
-                        memcpy(&memWord, codeData + memAddr.toLinear(), sizeof(Word));
-                        jumpAddr.offset = memWord;
-                        call = true;
-                    }
-                    else debug("call destination address outside code extents: " + memAddr.toString());
-                }
-                else {
-                    searchMessage(csip, "unknown near call target: "s + i.toString());
-                    debug(regs.toString());
-                } 
-
-                break;
             case INS_CALL_FAR:
-                if (i.op1.type == OPR_IMM32) {
-                    jumpAddr = Address(i.op1.immval.u32);
-                    searchMessage(csip, "encountered far call to "s + jumpAddr.toString());
-                    call = true;
-                }
-                else {
-                    searchMessage(csip, "unknown far call target: "s + i.toString());
-                    debug(regs.toString());
-                }
+                jumpAddr = jumpDestination(i, regs);
+                call = true;
                 break;
             // returns
             case INS_RET:
             case INS_RETF:
             case INS_IRET:
-                searchMessage(csip, "returning from routine");
+                searchMessage("returning from routine");
                 scan = false;
                 break;
             // track some movs to be able to infer jump/call destinations from register values
             // TODO: use a Cpu instance, evaluate arithmetic instructions to harvest more reg values than only from mov
             case INS_MOV:
-                if (operandIsReg(i.op1.type)) {
-                    const Register dest = i.op1.regId();
-                    bool set = false;
-                    // mov reg, imm
-                    if (operandIsImmediate(i.op2.type)) {
-                        switch(i.op2.size) {
-                        case OPRSZ_BYTE: 
-                            regs.setValue(dest, i.op2.immval.u8); 
-                            set = true; 
-                            break;
-                        case OPRSZ_WORD: 
-                            regs.setValue(dest, i.op2.immval.u16);
-                            set = true; 
-                            break;
-                        }
-                    }
-                    // mov reg, reg
-                    else if (operandIsReg(i.op2.type) && regs.isKnown(i.op2.regId())) {
-                        const Register src = i.op2.regId();
-                        regs.setValue(dest, regs.getValue(src));
-                        set = true;
-                    }
-                    // mov reg, mem
-                    else if (operandIsMemImmediate(i.op2.type) && regs.isKnown(prefixRegId(i.prefix))) {
-                        Address memAddr(regs.getValue(prefixRegId(i.prefix)), i.op2.immval.u16);
-                        if (codeExtents.contains(memAddr)) switch(i.op2.size) {
-                        case OPRSZ_BYTE:
-                            assert(memAddr.toLinear() < codeSize);
-                            memByte = codeData[memAddr.toLinear()];
-                            regs.setValue(dest, memByte); 
-                            set = true;
-                            break;
-                        case OPRSZ_WORD:
-                            assert(memAddr.toLinear() < codeSize);
-                            memcpy(&memWord, codeData + memAddr.toLinear(), sizeof(Word));
-                            regs.setValue(dest, memWord);
-                            set = true;
-                            break;
-                        }
-                        else searchMessage(csip, "mov source address outside code extents: " + memAddr.toString());
-                    }
-                    if (set) {
-                        searchMessage(csip, "encountered move to register: "s + i.toString());
-                    }
-                }
+                applyMov(i, regs);
                 break;
             default:
                 touchedRegs = i.touchedRegs();
@@ -742,18 +771,18 @@ RoutineMap Executable::findRoutines() {
                 }
             } // switch on instruction class
 
-            // if the processed instruction was a jump or a call, store its destination in the search queue
+            // if the processed instruction was a jump or a call and the destination could be established, place it in the search queue
             if (jumpAddr != csip) {
                 if (codeExtents.contains(jumpAddr)) {
                     if (call) searchQ.saveCall(jumpAddr, regs);
                     else searchQ.saveJump(jumpAddr, regs);
                 }
-                else searchMessage(csip, "search point destination outside code boundaries: "s + jumpAddr.toString());
+                else searchMessage("search point destination outside code boundaries: "s + jumpAddr.toString());
             } 
             // advance to next instruction
             csip.offset += i.length;
-        } // iterate over instructions
-    } // next address from callstack
+        } // next instructions
+    } // next address from search queue
     info("Done analyzing code");
 
     // iterate over discovered memory map and create routine map

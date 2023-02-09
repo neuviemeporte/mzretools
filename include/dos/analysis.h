@@ -8,6 +8,7 @@
 #include "dos/types.h"
 #include "dos/address.h"
 #include "dos/registers.h"
+#include "dos/instruction.h"
 #include "dos/mz.h"
 
 static constexpr int NULL_ROUTINE = 0;
@@ -130,13 +131,22 @@ private:
 
 struct Executable {
     std::vector<Byte> code;
+    Size codeSize;
+    const Byte *codeData;
+    Block codeExtents;
     Address entrypoint;
-    Address stack;
+    Address csip, stack;
     Word reloc;
-    
+
+public:
     explicit Executable(const MzImage &mz);
     RoutineMap findRoutines();
     bool compareCode(const RoutineMap &map, const Executable &other) const;
+
+private:
+    void searchMessage(const std::string &msg) const;
+    Address jumpDestination(const Instruction &i, const RegisterState &regs);
+    void applyMov(const Instruction &i, RegisterState &regs);
 };
 
 #endif // ANALYSIS_H
