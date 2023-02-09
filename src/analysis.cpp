@@ -68,7 +68,7 @@ bool Routine::colides(const Block &block, const bool checkExtents) const {
 string Routine::toString(const bool showChunks) const {
     ostringstream str;
     str << extents.toString(true) << ": " << name;
-    if (!showChunks || extents == mainBlock()) return str.str();
+    if (!showChunks || isUnchunked()) return str.str();
 
     auto blocks = sortedBlocks();
     for (const auto &b : blocks) {
@@ -93,6 +93,8 @@ std::vector<Block> Routine::sortedBlocks() const {
 }
 
 RoutineMap::RoutineMap(const SearchQueue &sq) {
+    // XXX: debugging purpose only, remove later
+    sq.dumpVisited("search_queue.dump");
     const Size routineCount = sq.routineCount();
     if (routineCount == 0)
         throw AnalysisError("Attempted to create routine map from search queue with no routines");
@@ -106,7 +108,7 @@ RoutineMap::RoutineMap(const SearchQueue &sq) {
     }
 
     prevId = curBlockId = prevBlockId = NULL_ROUTINE;
-    Block b;
+    Block b(0);
     for (Size mapOffset = 0; mapOffset < sq.codeSize(); ++mapOffset) {
         curId = sq.getRoutineId(mapOffset);
         // do nothing as long as the value doesn't change, unless we encounter the routine entrypoint in the middle of a block, in which case we force a block close
@@ -114,7 +116,7 @@ RoutineMap::RoutineMap(const SearchQueue &sq) {
         // value in map changed (or forced block close because of encounterted entrypoint), new block begins
         closeBlock(b, mapOffset, sq); // close old block and attribute to a routine if possible
         // start new block
-        debug(hexVal(mapOffset) + ": starting block for routine " + to_string(curId));
+        debug(hexVal(mapOffset) + ": starting block for routine_" + to_string(curId));
         b = Block(mapOffset);
         curBlockId = curId;
         // last thing to do is memorize current id as previous for discovering when needing to close again
@@ -169,7 +171,7 @@ Size RoutineMap::match(const RoutineMap &other) const {
             }
         }
         if (!routineMatch) {
-            debug("Unable to find match for "s + r.toString());
+            debug("Unable to find match for "s + r.toString(false));
         }
     }
     return matchCount;
@@ -196,7 +198,7 @@ void RoutineMap::closeBlock(Block &b, const Offset off, const SearchQueue &sq) {
         // get handle to matching routine
         assert(curBlockId - 1 < routines.size());
         Routine &r = routines.at(curBlockId - 1);
-        debug("closed reachable block " + b.toString() + " for routine " + to_string(curBlockId));
+        debug("closed reachable block " + b.toString() + " for routine_" + to_string(curBlockId));
         if (sq.isEntrypoint(b.begin)) { // this is the entrypoint block of the routine
             debug("block starts at routine entrypoint");
             assert(!r.extents.isValid());
@@ -212,12 +214,13 @@ void RoutineMap::closeBlock(Block &b, const Offset off, const SearchQueue &sq) {
         // get handle to matching routine
         assert(prevBlockId - 1 < routines.size());
         Routine &r = routines.at(prevBlockId - 1);
-        debug("closed unreachable block " + b.toString() + " for routine " + to_string(prevBlockId));
+        debug("closed unreachable block " + b.toString() + " for routine_" + to_string(prevBlockId));
         r.unreachable.push_back(b);
     }
     else {
         assert(curBlockId == NULL_ROUTINE);
         debug("closed unclaimed block " + b.toString());
+        unclaimed.push_back(b);
     }
     // remember the id of the block we just closed
     prevBlockId = curBlockId;
@@ -226,14 +229,13 @@ void RoutineMap::closeBlock(Block &b, const Offset off, const SearchQueue &sq) {
 void RoutineMap::sort() {
     using std::sort;
     // sort routines by entrypoint
-    std::sort(routines.begin(), routines.end(), [](const Routine &a, const Routine &b){
-        return a.entrypoint() < b.entrypoint();
-    });
-
-    // sort chunks within routines by begin address
+    std::sort(routines.begin(), routines.end());
+    // sort unclaimed blocks by block start
+    std::sort(unclaimed.begin(), unclaimed.end());
+    // sort blocks within routines by block start
     for (auto &r : routines) {
-        sort(r.reachable.begin(), r.reachable.end());
-        sort(r.unreachable.begin(), r.unreachable.end());
+        std::sort(r.reachable.begin(), r.reachable.end());
+        std::sort(r.unreachable.begin(), r.unreachable.end());
     }
 }
 
@@ -254,15 +256,24 @@ void RoutineMap::save(const std::string &path) const {
     }
 }
 
+// TODO: implement a print mode of all blocks (reachable, unreachable, unclaimed) printed linearly, not grouped under routines
 void RoutineMap::dump() const {
     if (empty()) {
         info("--- Empty routine map");
         return;
     }
 
+    vector<Routine> printRoutines = routines;
+    // create fake "routines" representing unclaimed blocks for the purpose of printing
+    Size unclaimedIdx = 0;
+    for (const Block &b : unclaimed) {
+        printRoutines.emplace_back(Routine{"unclaimed_"s + to_string(++unclaimedIdx), b});
+    }
+    std::sort(printRoutines.begin(), printRoutines.end());
+
     // display routines
     info("--- Routine map containing "s + to_string(routines.size()) + " routines");
-    for (const auto &r : routines) {
+    for (const auto &r : printRoutines) {
         info(r.toString(true));
     }
 }
@@ -603,6 +614,7 @@ RoutineMap Executable::findRoutines() {
                     break;
                 case OP_GRP5_Ev:
                     searchMessage(csip, "unknown near jump target: "s + i.toString());
+                    debug(regs.toString());
                     break; 
                 default: 
                     throw AnalysisError("Unsupported jump opcode: "s + hexVal(i.opcode));
@@ -614,7 +626,10 @@ RoutineMap Executable::findRoutines() {
                     searchMessage(csip, "encountered unconditional far jump to "s + jumpAddr.toString());
                     scan = false;
                 }
-                else searchMessage(csip, "unknown far jump target: "s + i.toString());
+                else {
+                    searchMessage(csip, "unknown far jump target: "s + i.toString());
+                    debug(regs.toString());
+                }
                 break;
             // loops
             case INS_LOOP:
@@ -645,7 +660,11 @@ RoutineMap Executable::findRoutines() {
                     }
                     else debug("call destination address outside code extents: " + memAddr.toString());
                 }
-                else searchMessage(csip, "unknown near call target: "s + i.toString());
+                else {
+                    searchMessage(csip, "unknown near call target: "s + i.toString());
+                    debug(regs.toString());
+                } 
+
                 break;
             case INS_CALL_FAR:
                 if (i.op1.type == OPR_IMM32) {
@@ -653,7 +672,10 @@ RoutineMap Executable::findRoutines() {
                     searchMessage(csip, "encountered far call to "s + jumpAddr.toString());
                     call = true;
                 }
-                else searchMessage(csip, "unknown far call target: "s + i.toString());
+                else {
+                    searchMessage(csip, "unknown far call target: "s + i.toString());
+                    debug(regs.toString());
+                }
                 break;
             // returns
             case INS_RET:
@@ -708,7 +730,6 @@ RoutineMap Executable::findRoutines() {
                     }
                     if (set) {
                         searchMessage(csip, "encountered move to register: "s + i.toString());
-                        debug(regs.toString());
                     }
                 }
                 break;

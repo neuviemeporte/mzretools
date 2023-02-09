@@ -12,7 +12,9 @@
 
 static constexpr int NULL_ROUTINE = 0;
 
-// TODO: implement calculation of memory offsets based on register values from instruction operand type enum, allow for unknown values
+// TODO: 
+// - implement calculation of memory offsets based on register values from instruction operand type enum, allow for unknown values, see jump @ 0xab3
+
 class RegisterState {
 private:
     static constexpr Word WORD_KNOWN = 0xffff;
@@ -88,7 +90,10 @@ struct Routine {
     Routine() {}
     Routine(const std::string &name, const Block &extents) : name(name), extents(extents) {}
     Address entrypoint() const { return extents.begin; }
+    // for sorting purposes
+    bool operator<(const Routine &other) { return entrypoint() < other.entrypoint(); }
     bool isValid() const { return extents.isValid(); }
+    bool isUnchunked() const { return reachable.size() == 1 && unreachable.empty() && reachable.front() == extents; }
     bool isReachable(const Block &b) const;
     bool isUnreachable(const Block &b) const;
     Block mainBlock() const;
@@ -100,6 +105,7 @@ struct Routine {
 class RoutineMap {
     friend class SystemTest;
     std::vector<Routine> routines;
+    std::vector<Block> unclaimed;
     int curId, prevId, curBlockId, prevBlockId;
 
 public:

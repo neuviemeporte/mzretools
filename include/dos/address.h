@@ -69,7 +69,7 @@ struct Block {
     bool operator<(const Block &arg) const { return begin < arg.begin; }
 
     std::string toString(const bool linear = false, const bool showSize = true) const;
-    Size size() const { assert(isValid()); return end - begin; }
+    Size size() const { return (isValid() ? (end - begin) + 1 : 0); }
     bool isValid() const { return begin <= end; }
     bool contains(const Address &addr) const { return addr >= begin && addr <= end; }
     bool intersects(const Block &other) const;
