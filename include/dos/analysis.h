@@ -25,6 +25,7 @@ private:
 
 public:
     RegisterState();
+    RegisterState(const Address &code, const Address &stack);
     bool isKnown(const Register r) const;
     Word getValue(const Register r) const;
     void setValue(const Register r, const Word value);
@@ -75,7 +76,7 @@ public:
     Size routineCount() const { return entrypoints.size(); }
     std::string statusString() const;
     int getRoutineId(const Offset off) const;
-    void markRoutine(const Offset off, const Size length, int id = NULL_ROUTINE);
+    void markVisited(const Offset off, const Size length, int id = NULL_ROUTINE);
     bool isEntrypoint(const Address &addr) const;
     void dumpVisited(const std::string &path) const;
 
@@ -129,7 +130,12 @@ private:
     void loadFromIdaFile(const std::string &path);
 };
 
-struct Executable {
+struct Branch {
+    Address destination;
+    bool isCall, isUnconditional;
+};
+
+class Executable {
     std::vector<Byte> code;
     Size codeSize;
     const Byte *codeData;
@@ -145,8 +151,10 @@ public:
 
 private:
     void searchMessage(const std::string &msg) const;
-    Address jumpDestination(const Instruction &i, const RegisterState &regs);
-    void applyMov(const Instruction &i, RegisterState &regs);
+    Branch getBranch(const Instruction &i, const RegisterState &regs) const;
+    void saveBranch(const Branch &branch, const RegisterState &regs, const Block &codeExtents, SearchQueue &sq) const;
+    void applyMov(const Instruction &i, RegisterState &regs) const;
+    
 };
 
 #endif // ANALYSIS_H

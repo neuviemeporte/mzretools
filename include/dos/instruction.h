@@ -257,16 +257,17 @@ public:
         } immval; // optional immediate offset or literal value
 
         std::string toString() const;
-        InstructionMatch match(const Operand &other);
+        InstructionMatch match(const Operand &other) const;
         Register regId() const;
     } op1, op2;
 
     Instruction();
     Instruction(const Address &addr, const Byte *data);
     std::string toString() const;
-    InstructionMatch match(const Instruction &other);
+    InstructionMatch match(const Instruction &other) const;
     void load(const Byte *data);
     Word relativeOffset() const;
+    Address relativeAddress() const;
     std::vector<Register> touchedRegs() const;
 
 private:
@@ -276,5 +277,11 @@ private:
 
 // TODO: this is useless, remove
 InstructionClass instr_class(const Byte opcode);
+
+inline bool instructionIsJump(const Instruction i) { return i.iclass == INS_JMP || i.iclass == INS_JMP_FAR; }
+inline bool instructionIsCall(const Instruction i) { return i.iclass == INS_CALL || i.iclass == INS_CALL_FAR; }
+inline bool instructionIsLoop(const Instruction i) { return i.iclass == INS_LOOP || i.iclass == INS_LOOPZ || i.iclass == INS_LOOPNZ; }
+inline bool instructionIsBranch(const Instruction &i) { return instructionIsJump(i) || instructionIsCall(i) || instructionIsLoop(i); }
+inline bool instructionIsReturn(const Instruction &i) { return i.iclass == INS_RET || i.iclass == INS_RETF || i.iclass == INS_IRET; }
 
 #endif // INSTRUCTION_H

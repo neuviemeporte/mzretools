@@ -12,6 +12,7 @@
 #include <string>
 #include <cstring>
 #include <regex>
+#include <map>
 
 using namespace std;
 
@@ -381,6 +382,13 @@ RegisterState::RegisterState() {
     }
 }
 
+RegisterState::RegisterState(const Address &code, const Address &stack) : RegisterState() {
+    setValue(REG_CS, code.segment);
+    setValue(REG_IP, code.offset);
+    setValue(REG_SS, stack.segment);
+    setValue(REG_SP, stack.offset);
+}
+
 bool RegisterState::isKnown(const Register r) const {
     if (regIsWord(r)) return known_.get(r) == WORD_KNOWN;
     else return known_.get(r) == BYTE_KNOWN;
@@ -464,7 +472,7 @@ int SearchQueue::getRoutineId(const Offset off) const {
     return visited.at(off); 
 }
 
-void SearchQueue::markRoutine(const Offset off, const Size length, int id) {
+void SearchQueue::markVisited(const Offset off, const Size length, int id) {
     if (id == NULL_ROUTINE) id = curSearch.routineId;
     fill(visited.begin() + off, visited.begin() + off + length, id);
 }
@@ -550,21 +558,24 @@ void Executable::searchMessage(const string &msg) const {
     output(csip.toString() + ": " + msg, LOG_ANALYSIS, LOG_DEBUG);
 }
 
-Address Executable::jumpDestination(const Instruction &i, const RegisterState &regs) {
-    Address jumpAddr = csip;
+Branch Executable::getBranch(const Instruction &i, const RegisterState &regs) const {
+    Branch branch;
+    branch.isCall = false;
+    branch.isUnconditional = false;
     switch (i.iclass) {
     case INS_JMP:
         // conditional jump, put destination into search queue to check out later
         if (opcodeIsConditionalJump(i.opcode)) {
-            jumpAddr.offset = i.relativeOffset();
-            searchMessage("encountered conditional near jump to "s + jumpAddr.toString());
+            branch.destination = i.relativeAddress();
+            searchMessage("encountered conditional near jump to "s + branch.destination.toString());
         }
         else switch (i.opcode) {
         // unconditional jumps, cannot continue at current location, need to jump now
         case OP_JMP_Jb: 
         case OP_JMP_Jv: 
-            jumpAddr.offset = i.relativeOffset();
-            searchMessage("encountered unconditional near jump to "s + jumpAddr.toString());
+            branch.destination = i.relativeAddress();
+            branch.isUnconditional = true;
+            searchMessage("encountered unconditional near jump to "s + branch.destination.toString());
             break;
         case OP_GRP5_Ev:
             searchMessage("unknown near jump target: "s + i.toString());
@@ -576,8 +587,9 @@ Address Executable::jumpDestination(const Instruction &i, const RegisterState &r
         break;
     case INS_JMP_FAR:
         if (i.op1.type == OPR_IMM32) {
-            jumpAddr = Address{i.op1.immval.u32}; 
-            searchMessage("encountered unconditional far jump to "s + jumpAddr.toString());
+            branch.destination = Address{i.op1.immval.u32}; 
+            branch.isUnconditional = true;
+            searchMessage("encountered unconditional far jump to "s + branch.destination.toString());
         }
         else {
             searchMessage("unknown far jump target: "s + i.toString());
@@ -588,26 +600,29 @@ Address Executable::jumpDestination(const Instruction &i, const RegisterState &r
     case INS_LOOP:
     case INS_LOOPNZ:
     case INS_LOOPZ:
-        jumpAddr.offset = i.relativeOffset();
-        searchMessage("encountered loop to "s + jumpAddr.toString());
+        branch.destination = i.relativeAddress();
+        searchMessage("encountered loop to "s + branch.destination.toString());
         break;
     // calls
     case INS_CALL:
         if (i.op1.type == OPR_IMM16) {
-            jumpAddr.offset = i.relativeOffset();
-            searchMessage("encountered near call to "s + jumpAddr.toString());
+            branch.destination = i.relativeAddress();
+            branch.isCall = true;
+            searchMessage("encountered near call to "s + branch.destination.toString());
         }
         else if (operandIsReg(i.op1.type) && regs.isKnown(i.op1.regId())) {
-            jumpAddr.offset = regs.getValue(i.op1.regId());
-            searchMessage("encountered near call through register to "s + jumpAddr.toString());
+            branch.destination = {i.addr.segment, regs.getValue(i.op1.regId())};
+            branch.isCall = true;
+            searchMessage("encountered near call through register to "s + branch.destination.toString());
         }
         else if (operandIsMemImmediate(i.op1.type) && regs.isKnown(REG_DS)) {
             Address memAddr{regs.getValue(REG_DS), i.op1.immval.u16};
             if (codeExtents.contains(memAddr)) {
                 Word memWord;
-                searchMessage("encountered near call through mem pointer to "s + jumpAddr.toString());
+                searchMessage("encountered near call through mem pointer to "s + branch.destination.toString());
                 memcpy(&memWord, codeData + memAddr.toLinear(), sizeof(Word));
-                jumpAddr.offset = memWord;
+                branch.destination = Address{i.addr.segment, memWord};
+                branch.isCall = true;
             }
             else debug("call destination address outside code extents: " + memAddr.toString());
         }
@@ -618,8 +633,9 @@ Address Executable::jumpDestination(const Instruction &i, const RegisterState &r
         break;
     case INS_CALL_FAR:
         if (i.op1.type == OPR_IMM32) {
-            jumpAddr = Address(i.op1.immval.u32);
-            searchMessage("encountered far call to "s + jumpAddr.toString());
+            branch.destination = Address(i.op1.immval.u32);
+            branch.isCall = true;
+            searchMessage("encountered far call to "s + branch.destination.toString());
         }
         else {
             searchMessage("unknown far call target: "s + i.toString());
@@ -627,12 +643,13 @@ Address Executable::jumpDestination(const Instruction &i, const RegisterState &r
         }
         break;
     default:
-        throw AnalysisError("Instruction is not a jump or call: "s + i.toString());
+        throw AnalysisError("Instruction is not a branch: "s + i.toString());
     }
-    return jumpAddr;
+    return branch;
 }
 
-void Executable::applyMov(const Instruction &i, RegisterState &regs) {
+// TODO: this should be a member of RegisterState?
+void Executable::applyMov(const Instruction &i, RegisterState &regs) const {
     if (i.iclass != INS_MOV || !operandIsReg(i.op1.type)) return;
 
     const Register dest = i.op1.regId();
@@ -682,17 +699,27 @@ void Executable::applyMov(const Instruction &i, RegisterState &regs) {
     }
 }
 
+// TODO: this should be a member of SearchQueue
+void Executable::saveBranch(const Branch &branch, const RegisterState &regs, const Block &codeExtents, SearchQueue &sq) const {
+    if (!branch.destination.isValid())
+        return;
+
+    if (codeExtents.contains(branch.destination)) {
+        if (branch.isCall) sq.saveCall(branch.destination, regs);
+        else sq.saveJump(branch.destination, regs);
+    }
+    else {
+        searchMessage("branch destination outside code boundaries: "s + branch.destination.toString());
+    } 
+}
+
 // explore the code without actually executing instructions, discover routine boundaries
 // TODO: support multiple code segments
 // TODO: identify routines through signatures generated from OMF libraries
 // TODO: trace usage of bp register (sub/add) to determine stack frame size of routines
 // TODO: store references to potential jump tables (e.g. jmp cs:[bx+0xc08]), if unclaimed after initial search, try treating entries as pointers and run second search before coalescing blocks?
 RoutineMap Executable::findRoutines() {
-    RegisterState initRegs;
-    initRegs.setValue(REG_CS, entrypoint.segment);
-    initRegs.setValue(REG_IP, entrypoint.offset);
-    initRegs.setValue(REG_SS, stack.segment);
-    initRegs.setValue(REG_SP, stack.offset);
+    RegisterState initRegs{entrypoint, stack};
     debug("initial register values:\n"s + initRegs.toString());
     // queue for BFS search
     SearchQueue searchQ(codeSize, SearchPoint(entrypoint, 1, true, initRegs));
@@ -710,77 +737,42 @@ RoutineMap Executable::findRoutines() {
             continue;
         }
         RegisterState regs = search.regs;
-        bool scan = true;
         // iterate over instructions at current search location in a linear fashion, until an unconditional jump or return is encountered
-        while (scan) {
+        while (true) {
             if (!codeExtents.contains(csip))
                 throw AnalysisError("Advanced past loaded code extents: "s + csip.toString());
             const Offset instrOffs = csip.toLinear();
             Instruction i(csip, codeData + instrOffs);
             regs.setValue(REG_CS, csip.segment);
             regs.setValue(REG_IP, csip.offset);
-            Address jumpAddr = csip;
-            bool call = false;
-            Word memWord;
-            Byte memByte;
             vector<Register> touchedRegs;
             // mark memory map items corresponding to the current instruction as belonging to the current routine
-            searchQ.markRoutine(instrOffs, i.length);
+            searchQ.markVisited(instrOffs, i.length);
             // interpret the instruction
-            switch (i.iclass) {
-            // jumps
-            case INS_JMP:
-                jumpAddr = jumpDestination(i, regs);
-                if (jumpAddr != csip)
-                    scan = opcodeIsConditionalJump(i.opcode);
+            if (instructionIsBranch(i)) {
+                const Branch branch = getBranch(i, regs);
+                // if the destination of the branch can be established, place it in the search queue
+                saveBranch(branch, regs, codeExtents, searchQ);
+                if (branch.isUnconditional) {
+                    searchMessage("routine scan interrupted by unconditional branch");
+                    break;
+                }
+            }
+            else if (instructionIsReturn(i)) {
+                searchMessage("routine scan interrupted by return");
                 break;
-            case INS_JMP_FAR:
-                jumpAddr = jumpDestination(i, regs);
-                scan = false;
-                break;
-            // loops
-            case INS_LOOP:
-            case INS_LOOPNZ:
-            case INS_LOOPZ:
-                jumpAddr = jumpDestination(i, regs);
-                break;
-            // calls
-            case INS_CALL:
-            case INS_CALL_FAR:
-                jumpAddr = jumpDestination(i, regs);
-                call = true;
-                break;
-            // returns
-            case INS_RET:
-            case INS_RETF:
-            case INS_IRET:
-                searchMessage("returning from routine");
-                scan = false;
-                break;
-            // track some movs to be able to infer jump/call destinations from register values
-            // TODO: use a Cpu instance, evaluate arithmetic instructions to harvest more reg values than only from mov
-            case INS_MOV:
+            }
+            else if (i.iclass == INS_MOV) {
                 applyMov(i, regs);
-                break;
-            default:
+            }
+            else {
                 touchedRegs = i.touchedRegs();
-                if (!touchedRegs.empty()) {
-                    for (Register r : touchedRegs) {
-                        regs.setUnknown(r);
-                    }
+                if (!touchedRegs.empty()) for (Register r : touchedRegs) {
+                    regs.setUnknown(r);
                 }
-            } // switch on instruction class
-
-            // if the processed instruction was a jump or a call and the destination could be established, place it in the search queue
-            if (jumpAddr != csip) {
-                if (codeExtents.contains(jumpAddr)) {
-                    if (call) searchQ.saveCall(jumpAddr, regs);
-                    else searchQ.saveJump(jumpAddr, regs);
-                }
-                else searchMessage("search point destination outside code boundaries: "s + jumpAddr.toString());
-            } 
+            }
             // advance to next instruction
-            csip.offset += i.length;
+            csip += i.length;
         } // next instructions
     } // next address from search queue
     info("Done analyzing code");
@@ -789,28 +781,86 @@ RoutineMap Executable::findRoutines() {
     return RoutineMap{searchQ};
 }
 
-struct RoutinePair {
-    Routine r1, r2;
-    RoutinePair(const std::string &name, const Address &e1, const Address &e2) : r1{name, e1}, r2{name, e2} {}
-    std::string toString() const {
-        ostringstream str;
-        str << "'" << r1.name << ", entrypoints @ " << r1.entrypoint() << " <-> " << r2.entrypoint();
-        return str.str();
+static string compareStatus(const Instruction &i1, const Instruction &i2, const bool align = true) {
+    static const int ALIGN = 50;
+    string status = i1.addr.toString() + ": " + i1.toString();
+    if (align && status.length() < ALIGN) status.append(ALIGN - status.length(), ' ');
+    switch (i1.match(i2)) {
+    case INS_MATCH_FULL:     status += " == "; break;
+    case INS_MATCH_DIFF:     status += " ~~ "; break;
+    case INS_MATCH_DIFFOP1:  status += " ~1 "; break;
+    case INS_MATCH_DIFFOP2:  status += " ~2 "; break;
+    case INS_MATCH_MISMATCH: status += " != "; break; 
     }
-};
+    status += i2.addr.toString() + ": " + i2.toString();
+    return status;
+}
 
-bool Executable::compareCode(const RoutineMap &map, const Executable &other) const {
-    if (map.empty()) {
+bool Executable::compareCode(const RoutineMap &routineMap, const Executable &other) const {
+    if (routineMap.empty()) {
         throw AnalysisError("Unable to compare executables, routine map is empty");
     }
-    const Byte 
-        *refCode = code.data(),
-        *cmpCode = other.code.data();
-    const Size 
-        refCodeSize = code.size(),
-        cmpCodeSize = other.code.size();
-//    const Block refCodeExtents = Block({entrypoint.segment, 0}, Address(SEG_OFFSET(entrypoint.segment) + codeSize));
+    RegisterState initRegs{entrypoint, stack};
+    debug("initial register values:\n"s + initRegs.toString());
+    // map of equivalent addresses in the compared binaries, seed with the two entrypoints
+    std::map<Address, Address> addrMap{{entrypoint, other.entrypoint}};
+    // queue of locations (in the reference binary) for comparison, likewise seeded with the entrypoint
+    SearchQueue compareQ(codeSize, SearchPoint(entrypoint, 1, true, initRegs));
+    info("Comparing code between reference (entrypoint "s + entrypoint.toString() + ") and object (entrypoint " + other.entrypoint.toString() + ") executables\n" +
+         "Reference routine map has " + to_string(routineMap.size()) + " entries");
+    while (!compareQ.empty()) {
+        const SearchPoint compare = compareQ.nextPoint();
+        Address aRef = compare.address, aObj = addrMap[aRef];
+        if (!aObj.isValid()) {
+            debug("Could not find equivalent address for "s + aRef.toString() + " in map, skipping location");
+            continue;
+        }
+        debug("New comparison at reference "s + aRef.toString() + ", object " + aObj.toString());
+        // keep comparing subsequent instructions at current location between the reference and object binary
+        while (true) {
+            if (!codeExtents.contains(aRef))
+                throw AnalysisError("Advanced past reference code extents: "s + aRef.toString());
+            if (!other.codeExtents.contains(aObj))
+                throw AnalysisError("Advanced past object code extents: "s + aObj.toString());
+            // decode instructions
+            Instruction 
+                iRef{aRef, codeData + aRef.toLinear()}, 
+                iObj{aObj, other.codeData + aObj.toLinear()};
+            debug(compareStatus(iRef, iObj));
+            // compare instructions
+            switch (iRef.match(iObj)) {
+            case INS_MATCH_FULL:
+                break;
+            case INS_MATCH_DIFF:
+            case INS_MATCH_DIFFOP1:
+            case INS_MATCH_DIFFOP2:
+            case INS_MATCH_MISMATCH:
+                info("Instruction mismatch at "s + compareStatus(iRef, iObj, false));
+                return false;
+            default:
+                throw AnalysisError("Invalid instruction match result");
+            }
+            // comparison okay, determine where to go next based on instruction contents
+            assert(iRef.iclass == iObj.iclass);
+            // if (instructionIsBranch(iRef)) {
+            //     const Branch branch = getBranch(iRef, regs);
+            //     // if the destination of the branch can be established, place it in the queue
+            //     saveBranch(branch, regs, codeExtents, compareQ);
+            //     if (branch.isUnconditional) {
+            //         searchMessage("routine scan interrupted by unconditional branch");
+            //         break;
+            //     }
+            // }            
+            //else 
+            if (instructionIsReturn(iRef)) {
+                debug("Encountered return, going to next compare location");
+                break;
+            }
+            // advance to next instruction pair
+            aRef += iRef.length;
+            aObj += iObj.length;
+        } // iterate over instructions at comparison location
+    } // iterate over comparison queue
 
-  //  for (Size rid = 1)
     return true;
 }

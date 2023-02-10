@@ -275,6 +275,8 @@ void Instruction::load(const Byte *data)  {
     DEBUG("Instruction: "s + toString() + ", length = " + to_string(length));
 }
 
+// calculate the offset that is relative to this instruction's end, based on the immediate operand 
+// - this is useful for branch instructions like call and the various jumps, whose operand is the number of bytes to jump forward or back, relative to the byte past the instruction
 Word Instruction::relativeOffset() const {
     Word relative = addr.offset + length;
     if (op1.type == OPR_IMM8) {
@@ -285,6 +287,11 @@ Word Instruction::relativeOffset() const {
     }
 
     return relative;
+}
+
+// return the branch destination address 
+Address Instruction::relativeAddress() const {
+    return { addr.segment, relativeOffset() };
 }
 
 // lookup table for which instructions modify their first operand
@@ -425,7 +432,7 @@ std::string Instruction::Operand::toString() const {
     return str.str();
 }
 
-InstructionMatch Instruction::Operand::match(const Operand &other) {
+InstructionMatch Instruction::Operand::match(const Operand &other) const {
     if (type != other.type || size != other.size)
         return INS_MATCH_MISMATCH;
     // check operands' immediate values for difference
@@ -518,7 +525,7 @@ std::string Instruction::toString() const {
     return str.str();
 }
 
-InstructionMatch Instruction::match(const Instruction &other) {
+InstructionMatch Instruction::match(const Instruction &other) const {
     if (prefix != other.prefix || opcode != other.opcode || iclass != other.iclass || iclass != other.iclass)
         return INS_MATCH_MISMATCH;
 
