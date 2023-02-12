@@ -9,7 +9,7 @@ DebugStream debug_stream;
 
 int main(int argc, char* argv[]) {
     TRACE_ENABLE(false);
-    setOutputLevel(LOG_ERROR);    
+    setOutputLevel(LOG_SILENT);    
     for (int i = 0; i < argc; ++i) {
         const string arg{argv[i]};
         if (arg == "--debug") {

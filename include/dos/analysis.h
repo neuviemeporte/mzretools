@@ -67,7 +67,7 @@ public:
     Size size() const { return queue.size(); }
     bool empty() const { return queue.empty(); }
     Address startAddress() const { return start; }
-    SearchPoint nextPoint();
+    SearchPoint nextPoint(const bool front = true);
     bool hasPoint(const Address &dest, const bool call) const;
     void saveCall(const Address &dest, const RegisterState &regs);
     void saveJump(const Address &dest, const RegisterState &regs);
@@ -99,6 +99,7 @@ struct Routine {
     bool isReachable(const Block &b) const;
     bool isUnreachable(const Block &b) const;
     Block mainBlock() const;
+    Block blockContaining(const Address &a) const;
     bool colides(const Block &block, const bool checkExtents = true) const;
     std::string toString(const bool showChunks = true) const;
     std::vector<Block> sortedBlocks() const;
@@ -115,7 +116,8 @@ public:
     RoutineMap(const std::string &path);
 
     Size size() const { return routines.size(); }
-    Routine getRoutine(const Size idx) { return routines.at(idx); }
+    Routine getRoutine(const Size idx) const { return routines.at(idx); }
+    Routine getRoutine(const Address &addr) const;
     bool empty() const { return routines.empty(); }
     Size match(const RoutineMap &other) const;
     Routine colidesBlock(const Block &b) const;
@@ -136,6 +138,7 @@ struct Branch {
 };
 
 class Executable {
+    friend class SystemTest;
     std::vector<Byte> code;
     Size codeSize;
     const Byte *codeData;
@@ -146,15 +149,17 @@ class Executable {
 
 public:
     explicit Executable(const MzImage &mz);
+    bool contains(const Address &addr) const { return codeExtents.contains(addr); }
     RoutineMap findRoutines();
-    bool compareCode(const RoutineMap &map, const Executable &other) const;
+    bool compareCode(const RoutineMap &map, const Executable &other);
 
 private:
     void searchMessage(const std::string &msg) const;
     Branch getBranch(const Instruction &i, const RegisterState &regs) const;
     void saveBranch(const Branch &branch, const RegisterState &regs, const Block &codeExtents, SearchQueue &sq) const;
     void applyMov(const Instruction &i, RegisterState &regs) const;
-    
+
+    void setEntrypoint(const Address &addr);
 };
 
 #endif // ANALYSIS_H

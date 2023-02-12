@@ -28,6 +28,7 @@ protected:
     auto emptySearchQueue() { return SearchQueue(); }
     auto& sqVisited(SearchQueue &sq) { return sq.visited; }
     auto& sqEntrypoints(SearchQueue &sq) { return sq.entrypoints; }
+    void setEntrypoint(Executable &e, const Address &addr) { e.setEntrypoint(addr); }
 };
 
 TEST_F(SystemTest, DISABLED_HelloWorld) {
@@ -214,7 +215,14 @@ TEST_F(SystemTest, CodeCompare) {
     mz.load(0);
     Executable e1{mz}, e2{mz};
     auto map = RoutineMap{"hello.map"};
+
+    // compare identical 
     ASSERT_TRUE(e1.compareCode(map, e2));
+
+    // compare different
+    setEntrypoint(e1, {0x115e}); // getnum
+    setEntrypoint(e2, {0x8d0}); // _fflush
+    ASSERT_FALSE(e1.compareCode(map, e2));
 }
 
 TEST_F(SystemTest, SignedHex) {

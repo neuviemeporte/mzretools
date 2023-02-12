@@ -25,7 +25,7 @@ static void info(const string &msg) {
 }
 
 static void error(const string &msg) {
-    output(msg, LOG_ANALYSIS, LOG_ERROR);
+    output("ERROR: "s + msg, LOG_ANALYSIS, LOG_ERROR);
 }
 
 bool Routine::isReachable(const Block &b) const {
@@ -38,8 +38,16 @@ bool Routine::isUnreachable(const Block &b) const {
 
 Block Routine::mainBlock() const {
     const Address ep = entrypoint();
-    const auto found = std::find_if(reachable.begin(), reachable.end(), [&ep](const Block &b){
+    const auto &found = std::find_if(reachable.begin(), reachable.end(), [&ep](const Block &b){
         return b.begin == ep;
+    });
+    if (found != reachable.end()) return *found;
+    return {};
+}
+
+Block Routine::blockContaining(const Address &a) const {
+    const auto &found = std::find_if(reachable.begin(), reachable.end(), [&a](const Block &b){
+        return b.contains(a);
     });
     if (found != reachable.end()) return *found;
     return {};
@@ -155,6 +163,14 @@ RoutineMap::RoutineMap(const std::string &path) {
     else loadFromMapFile(path);
     debug("Done, found "s + to_string(routines.size()) + " routines");
     sort();
+}
+
+Routine RoutineMap::getRoutine(const Address &addr) const {
+    for (const Routine &r : routines)
+        for (const Block &b : r.reachable)
+            if (b.contains(addr)) return r;
+    
+    return {};
 }
 
 // matches routines by extents only, limited use, mainly unit test for alignment with IDA
@@ -477,10 +493,16 @@ void SearchQueue::markVisited(const Offset off, const Size length, int id) {
     fill(visited.begin() + off, visited.begin() + off + length, id);
 }
 
-SearchPoint SearchQueue::nextPoint() {
+SearchPoint SearchQueue::nextPoint(const bool front) {
     if (!empty()) {
-        curSearch = queue.front();
-        queue.pop_front();
+        if (front) {
+            curSearch = queue.front();
+            queue.pop_front();
+        }
+        else {
+            curSearch = queue.back();
+            queue.pop_back();            
+        }
     }
     return curSearch;
 }
@@ -520,12 +542,12 @@ void SearchQueue::saveCall(const Address &dest, const RegisterState &regs) {
 void SearchQueue::saveJump(const Address &dest, const RegisterState &regs) {
     const int destId = getRoutineId(dest.toLinear());
     if (destId != NULL_ROUTINE) 
-        debug("Jump destination already claimed by routine "s + to_string(destId));
+        debug("Jump destination already visited from id "s + to_string(destId));
     else if (hasPoint(dest, false))
-        debug("Search queue already contains jump to address "s + dest.toString());
+        debug("Queue already contains jump to address "s + dest.toString());
     else { // not claimed by any routine and not yet in queue
-        debug("jump destination not belonging to any routine, claiming for existing routine " + to_string(curSearch.routineId));
         queue.emplace_front(SearchPoint(dest, curSearch.routineId, false, regs));
+        debug("Jump destination not yet visited, scheduled visit from id " + to_string(curSearch.routineId) + ", queue size = " + to_string(size()));
     }
 }
 
@@ -558,6 +580,7 @@ void Executable::searchMessage(const string &msg) const {
     output(csip.toString() + ": " + msg, LOG_ANALYSIS, LOG_DEBUG);
 }
 
+// TODO: this should be in the CPU class, RegisterState as injectable drop-in replacement for regular Registers for CPU
 Branch Executable::getBranch(const Instruction &i, const RegisterState &regs) const {
     Branch branch;
     branch.isCall = false;
@@ -699,6 +722,10 @@ void Executable::applyMov(const Instruction &i, RegisterState &regs) const {
     }
 }
 
+void Executable::setEntrypoint(const Address &addr) {
+    entrypoint = addr;
+}
+
 // TODO: this should be a member of SearchQueue
 void Executable::saveBranch(const Branch &branch, const RegisterState &regs, const Block &codeExtents, SearchQueue &sq) const {
     if (!branch.destination.isValid())
@@ -745,7 +772,6 @@ RoutineMap Executable::findRoutines() {
             Instruction i(csip, codeData + instrOffs);
             regs.setValue(REG_CS, csip.segment);
             regs.setValue(REG_IP, csip.offset);
-            vector<Register> touchedRegs;
             // mark memory map items corresponding to the current instruction as belonging to the current routine
             searchQ.markVisited(instrOffs, i.length);
             // interpret the instruction
@@ -766,8 +792,7 @@ RoutineMap Executable::findRoutines() {
                 applyMov(i, regs);
             }
             else {
-                touchedRegs = i.touchedRegs();
-                if (!touchedRegs.empty()) for (Register r : touchedRegs) {
+                for (Register r : i.touchedRegs()) {
                     regs.setUnknown(r);
                 }
             }
@@ -788,44 +813,58 @@ static string compareStatus(const Instruction &i1, const Instruction &i2, const 
     switch (i1.match(i2)) {
     case INS_MATCH_FULL:     status += " == "; break;
     case INS_MATCH_DIFF:     status += " ~~ "; break;
-    case INS_MATCH_DIFFOP1:  status += " ~1 "; break;
-    case INS_MATCH_DIFFOP2:  status += " ~2 "; break;
+    case INS_MATCH_DIFFOP1:  status += " ~= "; break;
+    case INS_MATCH_DIFFOP2:  status += " =~ "; break;
     case INS_MATCH_MISMATCH: status += " != "; break; 
     }
     status += i2.addr.toString() + ": " + i2.toString();
     return status;
 }
 
-bool Executable::compareCode(const RoutineMap &routineMap, const Executable &other) const {
+bool Executable::compareCode(const RoutineMap &routineMap, const Executable &other) {
     if (routineMap.empty()) {
         throw AnalysisError("Unable to compare executables, routine map is empty");
     }
+    debug("Comparing code between this (entrypoint "s + entrypoint.toString() + ") and other (entrypoint " + other.entrypoint.toString() + ") executables\n" +
+         "Routine map of this binary has " + to_string(routineMap.size()) + " entries");
     RegisterState initRegs{entrypoint, stack};
     debug("initial register values:\n"s + initRegs.toString());
     // map of equivalent addresses in the compared binaries, seed with the two entrypoints
     std::map<Address, Address> addrMap{{entrypoint, other.entrypoint}};
-    // queue of locations (in the reference binary) for comparison, likewise seeded with the entrypoint
+    // queue of locations (in this binary) for comparison, likewise seeded with the entrypoint
     SearchQueue compareQ(codeSize, SearchPoint(entrypoint, 1, true, initRegs));
-    info("Comparing code between reference (entrypoint "s + entrypoint.toString() + ") and object (entrypoint " + other.entrypoint.toString() + ") executables\n" +
-         "Reference routine map has " + to_string(routineMap.size()) + " entries");
+    const int VISITED_ID = 1;
     while (!compareQ.empty()) {
-        const SearchPoint compare = compareQ.nextPoint();
-        Address aRef = compare.address, aObj = addrMap[aRef];
-        if (!aObj.isValid()) {
-            debug("Could not find equivalent address for "s + aRef.toString() + " in map, skipping location");
+        // get next location for linear scan and comparison of instructions
+        const SearchPoint compare = compareQ.nextPoint(false);
+        debug("Now at this location "s + compare.address.toString() + ", queue size = " + to_string(compareQ.size()));
+        // get corresponding address in other binary
+        csip = compare.address;
+        const Routine routine = routineMap.getRoutine(csip);
+        // make sure we are inside a reachable block of a know routine from this binary
+        if (!routine.isValid()) {
+            debug("Could not find address "s + csip.toString() + " in routine map, skipping location");
             continue;
         }
-        debug("New comparison at reference "s + aRef.toString() + ", object " + aObj.toString());
-        // keep comparing subsequent instructions at current location between the reference and object binary
+        Address otherCsip = addrMap[csip];
+        if (!otherCsip.isValid()) {
+            debug("Could not find equivalent address for "s + csip.toString() + " in address map, skipping location");
+            continue;
+        }
+        const Block compareBlock = routine.blockContaining(compare.address);
+        debug("Comparing this @ "s + csip.toString() + ", routine " + routine.toString(false) + ", block " + compareBlock.toString(true) +  " with other @ " + otherCsip.toString());
+        RegisterState regs = compare.regs;
+        // keep comparing subsequent instructions at current location between the this and other binary
         while (true) {
-            if (!codeExtents.contains(aRef))
-                throw AnalysisError("Advanced past reference code extents: "s + aRef.toString());
-            if (!other.codeExtents.contains(aObj))
-                throw AnalysisError("Advanced past object code extents: "s + aObj.toString());
+            if (!contains(csip))
+                throw AnalysisError("Advanced past this code extents: "s + csip.toString());
+            if (!other.contains(otherCsip))
+                throw AnalysisError("Advanced past other code extents: "s + otherCsip.toString());
             // decode instructions
             Instruction 
-                iRef{aRef, codeData + aRef.toLinear()}, 
-                iObj{aObj, other.codeData + aObj.toLinear()};
+                iRef{csip, codeData + csip.toLinear()}, 
+                iObj{otherCsip, other.codeData + otherCsip.toLinear()};
+            compareQ.markVisited(csip.toLinear(), iRef.length, VISITED_ID);
             debug(compareStatus(iRef, iObj));
             // compare instructions
             switch (iRef.match(iObj)) {
@@ -835,32 +874,52 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
             case INS_MATCH_DIFFOP1:
             case INS_MATCH_DIFFOP2:
             case INS_MATCH_MISMATCH:
-                info("Instruction mismatch at "s + compareStatus(iRef, iObj, false));
+                error("Instruction mismatch at "s + compareStatus(iRef, iObj, false));
                 return false;
             default:
                 throw AnalysisError("Invalid instruction match result");
             }
             // comparison okay, determine where to go next based on instruction contents
             assert(iRef.iclass == iObj.iclass);
-            // if (instructionIsBranch(iRef)) {
-            //     const Branch branch = getBranch(iRef, regs);
-            //     // if the destination of the branch can be established, place it in the queue
-            //     saveBranch(branch, regs, codeExtents, compareQ);
-            //     if (branch.isUnconditional) {
-            //         searchMessage("routine scan interrupted by unconditional branch");
-            //         break;
-            //     }
-            // }            
-            //else 
-            if (instructionIsReturn(iRef)) {
-                debug("Encountered return, going to next compare location");
-                break;
+            if (instructionIsBranch(iRef)) {
+                Branch branch = getBranch(iRef, regs);
+                // do not differentiate calls, we don't need the queue to track them since we already have the routine map
+                branch.isCall = false; 
+                // if the destination of the branch can be established, place it in the queue
+                saveBranch(branch, regs, codeExtents, compareQ);
+                if (branch.destination.isValid()) {
+                    // branch destination in compared binary may be different, so calculate and save in address translation map for future reference
+                    // TODO: support saving second set of regs for other
+                    Branch objObranch = getBranch(iObj, regs);
+                    if (objObranch.destination.isValid()) {
+                        // check if mapping not already present in map
+                        Address objAddr = addrMap[branch.destination];
+                        // not present, add new mapping
+                        if (!objAddr.isValid()) { 
+                            addrMap[branch.destination] = objObranch.destination;
+                            debug("This branch destination "s + branch.destination.toString() + " mapped to other " + objObranch.destination.toString());
+                        }
+                        // already present, make sure it matches the current value
+                        else if (objAddr != objObranch.destination) { 
+                            error("This branch destination "s + branch.destination.toString() + " previously mapped to other " + objAddr.toString() + " now resolves to " + objObranch.destination.toString());
+                            return false;
+                        }
+                    }
+                    if (branch.isUnconditional) {
+                        searchMessage("routine scan interrupted by unconditional branch");
+                        break;
+                    }
+                }
             }
             // advance to next instruction pair
-            aRef += iRef.length;
-            aObj += iObj.length;
+            csip += iRef.length;
+            otherCsip += iObj.length;
+            if (csip > compareBlock.end) {
+                debug("Reached end of comparison block @ "s + csip.toString());
+                break;
+            }
         } // iterate over instructions at comparison location
     } // iterate over comparison queue
-
+    debug("Comparison result positive");
     return true;
 }
