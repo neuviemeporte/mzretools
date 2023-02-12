@@ -20,6 +20,10 @@ static void debug(const string &msg) {
     output(msg, LOG_ANALYSIS, LOG_DEBUG);
 }
 
+static void verbose(const string &msg) {
+    output(msg, LOG_ANALYSIS, LOG_VERBOSE);
+}
+
 static void info(const string &msg) {
     output(msg, LOG_ANALYSIS, LOG_INFO);
 }
@@ -568,7 +572,9 @@ void SearchQueue::dumpVisited(const string &path) const {
     }
 }
 
-Executable::Executable(const MzImage &mz) : codeSize(0), codeData(nullptr), entrypoint(mz.entrypoint()), stack(mz.stackPointer()), reloc(mz.loadSegment())  {
+Executable::Executable(const MzImage &mz, const Address &ep) : 
+    codeSize(0), codeData(nullptr), entrypoint(ep.isValid() ? ep : mz.entrypoint()), stack(mz.stackPointer()), reloc(mz.loadSegment())  
+{
     const Byte *data = mz.loadModuleData();
     copy(data, data + mz.loadModuleSize(), std::back_inserter(code));
     codeSize = code.size();
@@ -825,23 +831,23 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
     if (routineMap.empty()) {
         throw AnalysisError("Unable to compare executables, routine map is empty");
     }
-    debug("Comparing code between this (entrypoint "s + entrypoint.toString() + ") and other (entrypoint " + other.entrypoint.toString() + ") executables\n" +
-         "Routine map of this binary has " + to_string(routineMap.size()) + " entries");
+    verbose("Comparing code between reference (entrypoint "s + entrypoint.toString() + ") and other (entrypoint " + other.entrypoint.toString() + ") executables\n" +
+         "Routine map of reference binary has " + to_string(routineMap.size()) + " entries");
     RegisterState initRegs{entrypoint, stack};
     debug("initial register values:\n"s + initRegs.toString());
     // map of equivalent addresses in the compared binaries, seed with the two entrypoints
     std::map<Address, Address> addrMap{{entrypoint, other.entrypoint}};
-    // queue of locations (in this binary) for comparison, likewise seeded with the entrypoint
+    // queue of locations (in reference binary) for comparison, likewise seeded with the entrypoint
     SearchQueue compareQ(codeSize, SearchPoint(entrypoint, 1, true, initRegs));
     const int VISITED_ID = 1;
     while (!compareQ.empty()) {
         // get next location for linear scan and comparison of instructions
         const SearchPoint compare = compareQ.nextPoint(false);
-        debug("Now at this location "s + compare.address.toString() + ", queue size = " + to_string(compareQ.size()));
+        debug("Now at reference location "s + compare.address.toString() + ", queue size = " + to_string(compareQ.size()));
         // get corresponding address in other binary
         csip = compare.address;
         const Routine routine = routineMap.getRoutine(csip);
-        // make sure we are inside a reachable block of a know routine from this binary
+        // make sure we are inside a reachable block of a know routine from reference binary
         if (!routine.isValid()) {
             debug("Could not find address "s + csip.toString() + " in routine map, skipping location");
             continue;
@@ -852,12 +858,12 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
             continue;
         }
         const Block compareBlock = routine.blockContaining(compare.address);
-        debug("Comparing this @ "s + csip.toString() + ", routine " + routine.toString(false) + ", block " + compareBlock.toString(true) +  " with other @ " + otherCsip.toString());
+        verbose("Comparing reference @ "s + csip.toString() + ", routine " + routine.toString(false) + ", block " + compareBlock.toString(true) +  " with other @ " + otherCsip.toString());
         RegisterState regs = compare.regs;
-        // keep comparing subsequent instructions at current location between the this and other binary
+        // keep comparing subsequent instructions at current location between the reference and other binary
         while (true) {
             if (!contains(csip))
-                throw AnalysisError("Advanced past this code extents: "s + csip.toString());
+                throw AnalysisError("Advanced past reference code extents: "s + csip.toString());
             if (!other.contains(otherCsip))
                 throw AnalysisError("Advanced past other code extents: "s + otherCsip.toString());
             // decode instructions
@@ -865,7 +871,7 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
                 iRef{csip, codeData + csip.toLinear()}, 
                 iObj{otherCsip, other.codeData + otherCsip.toLinear()};
             compareQ.markVisited(csip.toLinear(), iRef.length, VISITED_ID);
-            debug(compareStatus(iRef, iObj));
+            verbose(compareStatus(iRef, iObj));
             // compare instructions
             switch (iRef.match(iObj)) {
             case INS_MATCH_FULL:
@@ -897,11 +903,11 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
                         // not present, add new mapping
                         if (!objAddr.isValid()) { 
                             addrMap[branch.destination] = objObranch.destination;
-                            debug("This branch destination "s + branch.destination.toString() + " mapped to other " + objObranch.destination.toString());
+                            debug("Reference branch destination "s + branch.destination.toString() + " mapped to other " + objObranch.destination.toString());
                         }
                         // already present, make sure it matches the current value
                         else if (objAddr != objObranch.destination) { 
-                            error("This branch destination "s + branch.destination.toString() + " previously mapped to other " + objAddr.toString() + " now resolves to " + objObranch.destination.toString());
+                            error("Reference branch destination "s + branch.destination.toString() + " previously mapped to other " + objAddr.toString() + " now resolves to " + objObranch.destination.toString());
                             return false;
                         }
                     }
@@ -920,6 +926,6 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
             }
         } // iterate over instructions at comparison location
     } // iterate over comparison queue
-    debug("Comparison result positive");
+    verbose("Comparison result positive");
     return true;
 }

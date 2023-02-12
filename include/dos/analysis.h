@@ -148,7 +148,7 @@ class Executable {
     Word reloc;
 
 public:
-    explicit Executable(const MzImage &mz);
+    explicit Executable(const MzImage &mz, const Address &entrypoint = Address());
     bool contains(const Address &addr) const { return codeExtents.contains(addr); }
     RoutineMap findRoutines();
     bool compareCode(const RoutineMap &map, const Executable &other);
