@@ -15,8 +15,8 @@
 using namespace std;
 
 void usage() {
-    output("usage: mzdiff <base.exe[:entrypoint]> <base.map> <compare.exe[:entrypoint]> [options]\n"
-           "Compares two DOS MZ executables instruction by instruction, accounting for differences in code layout\n"
+    output("usage: mzmap <file.exe[:entrypoint]> <output.map> [options]\n"
+           "Scans a DOS MZ executable and tries to find routine boundaries, saves output into a file\n"
            "Options:\n"
            "--verbose: show more detailed information, including compared instructions\n"
            "--debug:   show additional debug information\n"
@@ -72,10 +72,10 @@ Executable loadExe(const string &spec) {
 
 int main(int argc, char *argv[]) {
     setOutputLevel(LOG_WARN);
-    if (argc < 4) {
+    if (argc < 3) {
         usage();
     }
-    for (int aidx = 4; aidx < argc; ++aidx) {
+    for (int aidx = 3; aidx < argc; ++aidx) {
         string arg(argv[aidx]);
         if (arg == "--debug") setOutputLevel(LOG_DEBUG);
         else if (arg == "--verbose") setOutputLevel(LOG_VERBOSE);
@@ -83,13 +83,15 @@ int main(int argc, char *argv[]) {
         else if (arg == "--noanal") setModuleVisibility(LOG_ANALYSIS, false);
         else fatal("Unrecognized parameter: "s + arg);
     }
-    const string baseSpec{argv[1]}, pathMap{argv[2]}, compareSpec{argv[3]};
+    const string spec{argv[1]}, pathMap{argv[2]};
     try {
-        Executable exeBase = loadExe(baseSpec);
-        Executable exeCompare = loadExe(compareSpec);
-        RoutineMap map(pathMap);
-        if (!exeBase.compareCode(map, exeCompare))
+        Executable exe = loadExe(spec);
+        RoutineMap map = exe.findRoutines();
+        if (map.empty()) {
+            fatal("Unable to find any routines");
             return 1;
+        }
+        map.save(pathMap);
     }
     catch (Error &e) {
         fatal(e.why());

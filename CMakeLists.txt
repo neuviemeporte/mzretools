@@ -73,6 +73,9 @@ target_link_libraries(runtest PUBLIC gtest gmock libdos)
 add_custom_target(run_unit_test ALL COMMAND ./runtest DEPENDS runtest)
 
 # utility executables
+add_executable(mzmap tools/mzmap.cpp)
+target_link_libraries(mzmap PUBLIC libdos)
+
 add_executable(mzdiff tools/mzdiff.cpp)
 target_link_libraries(mzdiff PUBLIC libdos)
 
