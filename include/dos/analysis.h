@@ -51,13 +51,20 @@ struct SearchPoint {
     std::string toString() const;
 };
 
+struct RoutineEntrypoint {
+    Address addr;
+    int id;
+    RoutineEntrypoint(const Address &addr, const int id) : addr(addr), id(id) {}
+    bool operator==(const Address &arg) const { return addr == arg; }
+};
+
 // utility class for keeping track of the queue of potentially interesting locations (jump/call targets), and which instruction bytes have been claimed by a routine
 class SearchQueue {
     friend class SystemTest;
     // memory map for marking which locations belong to which routines, value of 0 is undiscovered
     std::vector<int> visited; // TODO: store addresses from loaded exe in map, otherwise they don't match after analysis done if exe loaded at segment other than 0 
     std::list<SearchPoint> queue;
-    std::vector<Address> entrypoints;
+    std::vector<RoutineEntrypoint> entrypoints;
     SearchPoint curSearch;
     Address start;
 
@@ -77,7 +84,7 @@ public:
     std::string statusString() const;
     int getRoutineId(const Offset off) const;
     void markVisited(const Offset off, const Size length, int id = NULL_ROUTINE);
-    bool isEntrypoint(const Address &addr) const;
+    int isEntrypoint(const Address &addr) const;
     void dumpVisited(const std::string &path) const;
 
 private:
@@ -122,7 +129,7 @@ public:
     Size match(const RoutineMap &other) const;
     Routine colidesBlock(const Block &b) const;
     void save(const std::string &path) const;
-    void dump() const;
+    std::string dump() const;
 
 private:
     RoutineMap() {}

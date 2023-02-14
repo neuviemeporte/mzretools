@@ -208,7 +208,7 @@ Routine RoutineMap::colidesBlock(const Block &b) const {
 
 // utility function used when constructing from  an instance of SearchQueue
 void RoutineMap::closeBlock(Block &b, const Offset off, const SearchQueue &sq) {
-    if (!b.isValid()) 
+    if (!b.isValid() || off == 0) 
         return;
 
     b.end = Address{off - 1};
@@ -277,10 +277,11 @@ void RoutineMap::save(const std::string &path) const {
 }
 
 // TODO: implement a print mode of all blocks (reachable, unreachable, unclaimed) printed linearly, not grouped under routines
-void RoutineMap::dump() const {
+string RoutineMap::dump() const {
+    ostringstream str;
     if (empty()) {
-        info("--- Empty routine map");
-        return;
+        str << "--- Empty routine map";
+        return str.str();;
     }
 
     vector<Routine> printRoutines = routines;
@@ -292,10 +293,11 @@ void RoutineMap::dump() const {
     std::sort(printRoutines.begin(), printRoutines.end());
 
     // display routines
-    info("--- Routine map containing "s + to_string(routines.size()) + " routines");
+    str << "--- Routine map containing " << routines.size() << " routines" << endl;
     for (const auto &r : printRoutines) {
-        info(r.toString(true));
+        str << r.toString(true) << endl;
     }
+    return str.str();
 }
 
 void RoutineMap::loadFromMapFile(const std::string &path) {
@@ -480,7 +482,7 @@ string SearchPoint::toString() const {
 SearchQueue::SearchQueue(const Size codeSize, const SearchPoint &seed) : visited(codeSize, NULL_ROUTINE) {
     queue.push_front(seed);
     start = seed.address;
-    entrypoints.push_back(start);
+    entrypoints.emplace_back(RoutineEntrypoint(start, seed.routineId));
 }
 
 string SearchQueue::statusString() const { 
@@ -519,8 +521,10 @@ bool SearchQueue::hasPoint(const Address &dest, const bool call) const {
     return it != queue.end();
 };
 
-bool SearchQueue::isEntrypoint(const Address &addr) const {
-    return std::find(entrypoints.begin(), entrypoints.end(), addr) != entrypoints.end();
+int SearchQueue::isEntrypoint(const Address &addr) const {
+    const auto &found = std::find(entrypoints.begin(), entrypoints.end(), addr);
+    if (found != entrypoints.end()) return found->id;
+    else return NULL_ROUTINE;
 }
 
 // function call, create new routine at destination if either not visited, 
@@ -538,7 +542,7 @@ void SearchQueue::saveCall(const Address &dest, const RegisterState &regs) {
         else 
             debug("call destination belonging to routine " + to_string(destId) + ", reclaiming as entrypoint for new routine " + to_string(newRoutineId));
         queue.emplace_front(SearchPoint(dest, newRoutineId, true, regs));
-        entrypoints.push_back(dest);
+        entrypoints.emplace_back(RoutineEntrypoint(dest, newRoutineId));
     }
 }
 
@@ -546,12 +550,12 @@ void SearchQueue::saveCall(const Address &dest, const RegisterState &regs) {
 void SearchQueue::saveJump(const Address &dest, const RegisterState &regs) {
     const int destId = getRoutineId(dest.toLinear());
     if (destId != NULL_ROUTINE) 
-        debug("Jump destination already visited from id "s + to_string(destId));
+        debug("Jump destination already visited from routine "s + to_string(destId));
     else if (hasPoint(dest, false))
         debug("Queue already contains jump to address "s + dest.toString());
     else { // not claimed by any routine and not yet in queue
         queue.emplace_front(SearchPoint(dest, curSearch.routineId, false, regs));
-        debug("Jump destination not yet visited, scheduled visit from id " + to_string(curSearch.routineId) + ", queue size = " + to_string(size()));
+        debug("Jump destination not yet visited, scheduled visit from routine " + to_string(curSearch.routineId) + ", queue size = " + to_string(size()));
     }
 }
 
@@ -579,7 +583,7 @@ Executable::Executable(const MzImage &mz, const Address &ep) :
     copy(data, data + mz.loadModuleSize(), std::back_inserter(code));
     codeSize = code.size();
     codeData = code.data();
-    codeExtents = Block({entrypoint.segment, 0}, Address(SEG_OFFSET(entrypoint.segment) + codeSize));
+    codeExtents = Block({entrypoint.segment, 0}, Address(SEG_TO_OFFSET(entrypoint.segment) + codeSize));
 }
 
 void Executable::searchMessage(const string &msg) const {
@@ -607,6 +611,7 @@ Branch Executable::getBranch(const Instruction &i, const RegisterState &regs) co
             searchMessage("encountered unconditional near jump to "s + branch.destination.toString());
             break;
         case OP_GRP5_Ev:
+            branch.isUnconditional = true;
             searchMessage("unknown near jump target: "s + i.toString());
             debug(regs.toString());
             break; 
@@ -662,7 +667,7 @@ Branch Executable::getBranch(const Instruction &i, const RegisterState &regs) co
         break;
     case INS_CALL_FAR:
         if (i.op1.type == OPR_IMM32) {
-            branch.destination = Address(i.op1.immval.u32);
+            branch.destination = Address(DWORD_SEGMENT(i.op1.immval.u32), DWORD_OFFSET(i.op1.immval.u32));
             branch.isCall = true;
             searchMessage("encountered far call to "s + branch.destination.toString());
         }
@@ -763,17 +768,27 @@ RoutineMap Executable::findRoutines() {
         // get a location from the queue and jump to it
         const SearchPoint search = searchQ.nextPoint();
         csip = search.address;
-        const int rid = searchQ.getRoutineId(csip.toLinear());
-        searchMessage("starting search at new location, call: "s + to_string(search.isCall) + ", queue: " + searchQ.statusString());
-        if (rid != NULL_ROUTINE && !search.isCall) {
-            debug("location already claimed by routine "s + to_string(rid) + " and search point did not originate from a call, skipping");
-            continue;
-        }
+        searchMessage("starting search at new location for routine " + to_string(search.routineId) + ", call: "s + to_string(search.isCall));
         RegisterState regs = search.regs;
         // iterate over instructions at current search location in a linear fashion, until an unconditional jump or return is encountered
         while (true) {
             if (!codeExtents.contains(csip))
                 throw AnalysisError("Advanced past loaded code extents: "s + csip.toString());
+            // check if this location was visited before
+            const int rid = searchQ.getRoutineId(csip.toLinear());
+            if (rid != NULL_ROUTINE) {
+                // make sure we do not steamroll over previously explored instructions from a wild jump (a call has precedence)
+                if (!search.isCall) {
+                    searchMessage("location already claimed by routine "s + to_string(rid) + " and search point did not originate from a call, halting scan");
+                    break;
+                }
+            }
+            const int isEntry = searchQ.isEntrypoint(csip);
+            // similarly, protect yet univisited locations which are however recognized as routine entrypoints, unless visiting from a matching routine id
+            if (isEntry != NULL_ROUTINE && isEntry != search.routineId) {
+                searchMessage("location marked as entrypoint for routine "s + to_string(isEntry) + " while scanning from " + to_string(search.routineId) + ", halting scan");
+                break;                
+            }
             const Offset instrOffs = csip.toLinear();
             Instruction i(csip, codeData + instrOffs);
             regs.setValue(REG_CS, csip.segment);
@@ -785,6 +800,7 @@ RoutineMap Executable::findRoutines() {
                 const Branch branch = getBranch(i, regs);
                 // if the destination of the branch can be established, place it in the search queue
                 saveBranch(branch, regs, codeExtents, searchQ);
+                // even if the branch destination is not known, we cannot keep scanning here if it was unconditional
                 if (branch.isUnconditional) {
                     searchMessage("routine scan interrupted by unconditional branch");
                     break;
@@ -807,6 +823,8 @@ RoutineMap Executable::findRoutines() {
         } // next instructions
     } // next address from search queue
     info("Done analyzing code");
+    // debug
+    searchQ.dumpVisited("routines.visited");
 
     // iterate over discovered memory map and create routine map
     return RoutineMap{searchQ};

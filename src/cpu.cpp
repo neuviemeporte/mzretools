@@ -55,7 +55,7 @@ Register Cpu_8086::defaultSeg(const Register reg) const {
 }
 
 void Cpu_8086::setCodeSegment(const Word seg) {
-    const Offset codeLinearAddr = SEG_OFFSET(seg);
+    const Offset codeLinearAddr = SEG_TO_OFFSET(seg);
     regs_.set(REG_CS, seg);
     // update pointer to current code segment data
     code_ = memBase_ + codeLinearAddr;
@@ -110,7 +110,7 @@ Offset Cpu_8086::modrmMemAddress() const {
         throw CpuError("Invalid ModR/M for address calculation: "s + hexVal(modrm_mod(modrm_)));
     }
     // the calculated address is relative to a segment that is implicitly associated with the base register
-    const Offset segOffset = SEG_OFFSET(regs_.get(defaultSeg(baseReg)));
+    const Offset segOffset = SEG_TO_OFFSET(regs_.get(defaultSeg(baseReg)));
     return segOffset + offset;
 }
 
@@ -147,12 +147,12 @@ void Cpu_8086::init(const Address &codeAddr, const Address &stackAddr, const Siz
     regs_.set(REG_IP, codeAddr.offset);
     regs_.set(REG_SS, stackAddr.segment);
     regs_.set(REG_SP, stackAddr.offset);
-    const Offset pspLinearAddr = SEG_OFFSET(codeAddr.segment) - PSP_SIZE;
+    const Offset pspLinearAddr = SEG_TO_OFFSET(codeAddr.segment) - PSP_SIZE;
     Address pspAddr(pspLinearAddr);
     assert(pspAddr.offset == 0);
     regs_.set(REG_DS, pspAddr.segment);
     regs_.set(REG_ES, pspAddr.segment);
-    codeExtents_ = Block({codeAddr.segment, 0}, Address(SEG_OFFSET(codeAddr.segment) + codeSize));
+    codeExtents_ = Block({codeAddr.segment, 0}, Address(SEG_TO_OFFSET(codeAddr.segment) + codeSize));
 }
 
 void Cpu_8086::step() {

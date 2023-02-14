@@ -55,7 +55,7 @@ INS_MOV,    INS_MOV,   INS_MOV,   INS_MOV,  INS_MOVSB, INS_MOVSW, INS_CMPSB, INS
 INS_MOV,    INS_MOV,   INS_MOV,   INS_MOV,  INS_MOV,   INS_MOV,   INS_MOV,   INS_MOV,   INS_MOV,  INS_MOV,  INS_MOV,      INS_MOV,   INS_MOV,   INS_MOV,   INS_MOV,   INS_MOV,   // B
 INS_ERR,    INS_ERR,   INS_RET,   INS_RET,  INS_LES,   INS_LDS,   INS_MOV,   INS_MOV,   INS_ERR,  INS_ERR,  INS_RETF,     INS_RETF,  INS_INT,   INS_INT,   INS_INTO,  INS_IRET,  // C
 INS_ERR,    INS_ERR,   INS_ERR,   INS_ERR,  INS_AAM,   INS_AAD,   INS_ERR,   INS_XLAT,  INS_ERR,  INS_ERR,  INS_ERR,      INS_ERR,   INS_ERR,   INS_ERR,   INS_ERR,   INS_ERR,   // D
-INS_LOOPNZ, INS_LOOPZ, INS_LOOP,  INS_JMP,  INS_IN,    INS_IN,    INS_OUT,   INS_OUT,   INS_CALL, INS_JMP,  INS_JMP,      INS_JMP,   INS_IN,    INS_IN,    INS_OUT,   INS_OUT,   // E
+INS_LOOPNZ, INS_LOOPZ, INS_LOOP,  INS_JMP,  INS_IN,    INS_IN,    INS_OUT,   INS_OUT,   INS_CALL, INS_JMP,  INS_JMP_FAR,  INS_JMP,   INS_IN,    INS_IN,    INS_OUT,   INS_OUT,   // E
 INS_LOCK,   INS_ERR,   INS_REPNZ, INS_REPZ, INS_HLT,   INS_CMC,   INS_ERR,   INS_ERR,   INS_CLC,  INS_STC,  INS_CLI,      INS_STI,   INS_CLD,   INS_STD,   INS_ERR,   INS_ERR,   // F
 };
 
@@ -113,23 +113,23 @@ OPR_NONE,   OPR_NONE,   OPR_NONE,      OPR_NONE,      OPR_NONE,   OPR_NONE,   OP
 
 // maps non-modrm opcodes into their first operand's type
 static const OperandType OP2_TYPE[] = {
-//   0           1              2           3           4           5           6           7           8          9          A          B          C           D           E           F
-OPR_ERR,      OPR_ERR,       OPR_ERR,    OPR_ERR,    OPR_IMM8,   OPR_IMM16,  OPR_NONE,   OPR_NONE,   OPR_ERR,   OPR_ERR,   OPR_ERR,   OPR_ERR,   OPR_IMM8,   OPR_IMM16,  OPR_NONE,   OPR_ERR,    // 0
-OPR_ERR,      OPR_ERR,       OPR_ERR,    OPR_ERR,    OPR_IMM8,   OPR_IMM16,  OPR_NONE,   OPR_NONE,   OPR_ERR,   OPR_ERR,   OPR_ERR,   OPR_ERR,   OPR_IMM8,   OPR_IMM16,  OPR_NONE,   OPR_NONE,   // 1
-OPR_ERR,      OPR_ERR,       OPR_ERR,    OPR_ERR,    OPR_IMM8,   OPR_IMM16,  OPR_NONE,   OPR_NONE,   OPR_ERR,   OPR_ERR,   OPR_ERR,   OPR_ERR,   OPR_IMM8,   OPR_IMM16,  OPR_ERR,    OPR_NONE,   // 2
-OPR_ERR,      OPR_ERR,       OPR_ERR,    OPR_ERR,    OPR_IMM8,   OPR_IMM16,  OPR_NONE,   OPR_NONE,   OPR_ERR,   OPR_ERR,   OPR_ERR,   OPR_ERR,   OPR_IMM8,   OPR_IMM16,  OPR_ERR,    OPR_NONE,   // 3
-OPR_NONE,     OPR_NONE,      OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,  OPR_NONE,  OPR_NONE,  OPR_NONE,  OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   // 4
-OPR_NONE,     OPR_NONE,      OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,  OPR_NONE,  OPR_NONE,  OPR_NONE,  OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   // 5
-OPR_ERR,      OPR_ERR,       OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,   OPR_ERR,   OPR_ERR,   OPR_ERR,   OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    // 6
-OPR_NONE,     OPR_NONE,      OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,  OPR_NONE,  OPR_NONE,  OPR_NONE,  OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   // 7
-OPR_ERR,      OPR_ERR,       OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,   OPR_ERR,   OPR_ERR,   OPR_ERR,   OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    // 8
-OPR_NONE,     OPR_REG_AX,    OPR_REG_AX, OPR_REG_AX, OPR_REG_AX, OPR_REG_AX, OPR_REG_AX, OPR_REG_AX, OPR_NONE,  OPR_NONE,  OPR_NONE,  OPR_NONE,  OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   // 9
-OPR_MEM_OFF8, OPR_MEM_OFF16, OPR_REG_AL, OPR_REG_AX, OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_IMM8,  OPR_IMM16, OPR_NONE,  OPR_NONE,  OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   // A
-OPR_IMM8,     OPR_IMM8,      OPR_IMM8,   OPR_IMM8,   OPR_IMM8,   OPR_IMM8,   OPR_IMM8,   OPR_IMM8,   OPR_IMM16, OPR_IMM16, OPR_IMM16, OPR_IMM16, OPR_IMM16,  OPR_IMM16,  OPR_IMM16,  OPR_IMM16,  // B
-OPR_ERR,      OPR_ERR,       OPR_NONE,   OPR_NONE,   OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,   OPR_ERR,   OPR_NONE,  OPR_NONE,  OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   // C
-OPR_ERR,      OPR_ERR,       OPR_ERR,    OPR_ERR,    OPR_NONE,   OPR_NONE,   OPR_ERR,    OPR_NONE,   OPR_ERR,   OPR_ERR,   OPR_ERR,   OPR_ERR,   OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    // D
-OPR_NONE,     OPR_NONE,      OPR_NONE,   OPR_NONE,   OPR_IMM8,   OPR_IMM8,   OPR_REG_AL, OPR_REG_AX, OPR_NONE,  OPR_NONE,  OPR_NONE,  OPR_NONE,  OPR_REG_DX, OPR_REG_DX, OPR_REG_AL, OPR_REG_AX, // E
-OPR_NONE,     OPR_NONE,      OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_ERR,    OPR_ERR,    OPR_NONE,  OPR_NONE,  OPR_NONE,  OPR_NONE,  OPR_NONE,   OPR_NONE,   OPR_ERR,    OPR_ERR,    // F
+//   0            1              2           3           4           5           6           7           8          9          A          B          C           D           E           F
+OPR_ERR,       OPR_ERR,       OPR_ERR,    OPR_ERR,    OPR_IMM8,   OPR_IMM16,  OPR_NONE,   OPR_NONE,   OPR_ERR,   OPR_ERR,   OPR_ERR,   OPR_ERR,   OPR_IMM8,   OPR_IMM16,  OPR_NONE,   OPR_ERR,    // 0
+OPR_ERR,       OPR_ERR,       OPR_ERR,    OPR_ERR,    OPR_IMM8,   OPR_IMM16,  OPR_NONE,   OPR_NONE,   OPR_ERR,   OPR_ERR,   OPR_ERR,   OPR_ERR,   OPR_IMM8,   OPR_IMM16,  OPR_NONE,   OPR_NONE,   // 1
+OPR_ERR,       OPR_ERR,       OPR_ERR,    OPR_ERR,    OPR_IMM8,   OPR_IMM16,  OPR_NONE,   OPR_NONE,   OPR_ERR,   OPR_ERR,   OPR_ERR,   OPR_ERR,   OPR_IMM8,   OPR_IMM16,  OPR_ERR,    OPR_NONE,   // 2
+OPR_ERR,       OPR_ERR,       OPR_ERR,    OPR_ERR,    OPR_IMM8,   OPR_IMM16,  OPR_NONE,   OPR_NONE,   OPR_ERR,   OPR_ERR,   OPR_ERR,   OPR_ERR,   OPR_IMM8,   OPR_IMM16,  OPR_ERR,    OPR_NONE,   // 3
+OPR_NONE,      OPR_NONE,      OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,  OPR_NONE,  OPR_NONE,  OPR_NONE,  OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   // 4
+OPR_NONE,      OPR_NONE,      OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,  OPR_NONE,  OPR_NONE,  OPR_NONE,  OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   // 5
+OPR_ERR,       OPR_ERR,       OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,   OPR_ERR,   OPR_ERR,   OPR_ERR,   OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    // 6
+OPR_NONE,      OPR_NONE,      OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,  OPR_NONE,  OPR_NONE,  OPR_NONE,  OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   // 7
+OPR_ERR,       OPR_ERR,       OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,   OPR_ERR,   OPR_ERR,   OPR_ERR,   OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    // 8
+OPR_NONE,      OPR_REG_AX,    OPR_REG_AX, OPR_REG_AX, OPR_REG_AX, OPR_REG_AX, OPR_REG_AX, OPR_REG_AX, OPR_NONE,  OPR_NONE,  OPR_NONE,  OPR_NONE,  OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   // 9
+OPR_MEM_OFF16, OPR_MEM_OFF16, OPR_REG_AL, OPR_REG_AX, OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_IMM8,  OPR_IMM16, OPR_NONE,  OPR_NONE,  OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   // A
+OPR_IMM8,      OPR_IMM8,      OPR_IMM8,   OPR_IMM8,   OPR_IMM8,   OPR_IMM8,   OPR_IMM8,   OPR_IMM8,   OPR_IMM16, OPR_IMM16, OPR_IMM16, OPR_IMM16, OPR_IMM16,  OPR_IMM16,  OPR_IMM16,  OPR_IMM16,  // B
+OPR_ERR,       OPR_ERR,       OPR_NONE,   OPR_NONE,   OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,   OPR_ERR,   OPR_NONE,  OPR_NONE,  OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   // C
+OPR_ERR,       OPR_ERR,       OPR_ERR,    OPR_ERR,    OPR_NONE,   OPR_NONE,   OPR_ERR,    OPR_NONE,   OPR_ERR,   OPR_ERR,   OPR_ERR,   OPR_ERR,   OPR_ERR,    OPR_ERR,    OPR_ERR,    OPR_ERR,    // D
+OPR_NONE,      OPR_NONE,      OPR_NONE,   OPR_NONE,   OPR_IMM8,   OPR_IMM8,   OPR_REG_AL, OPR_REG_AX, OPR_NONE,  OPR_NONE,  OPR_NONE,  OPR_NONE,  OPR_REG_DX, OPR_REG_DX, OPR_REG_AL, OPR_REG_AX, // E
+OPR_NONE,      OPR_NONE,      OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_ERR,    OPR_ERR,    OPR_NONE,  OPR_NONE,  OPR_NONE,  OPR_NONE,  OPR_NONE,   OPR_NONE,   OPR_ERR,    OPR_ERR,    // F
 };
 
 // map operand type to operand size
@@ -272,7 +272,7 @@ void Instruction::load(const Byte *data)  {
     immSize = loadImmediate(op2, data);
     data += immSize;
     length += immSize;
-    DEBUG("Instruction: "s + toString() + ", length = " + to_string(length));
+    DEBUG("Instruction @" + addr.toString() + ": " + toString() + ", length = " + to_string(length));
 }
 
 // calculate the offset that is relative to this instruction's end, based on the immediate operand 

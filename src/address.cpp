@@ -47,7 +47,7 @@ void Address::set(const Offset linear) {
 
 Address Address::operator+(const DWord arg) const {
     Offset linear = toLinear();
-    return { linear + arg };
+    return Address{ linear + arg };
 }
 
 std::string Address::toString(const bool brief) const {
@@ -67,7 +67,7 @@ void Address::normalize() {
 }
 
 void Address::rebase(const Word base) {
-    auto linear = toLinear(), baseLinear = SEG_OFFSET(base);
+    auto linear = toLinear(), baseLinear = SEG_TO_OFFSET(base);
     if (linear < baseLinear) throw MemoryError("Unable to rebase address " + toString() + " to " + hexVal(base));
     linear -= baseLinear;
     set(linear);

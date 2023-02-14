@@ -200,20 +200,20 @@ TEST_F(CpuTest, DISABLED_Mov) {
     setReg(REG_BP, 123);
     setReg(REG_DI, 456);
     setReg(REG_SS, 789);
-    off = SEG_OFFSET(getReg(REG_SS)) + getReg(REG_BP) + getReg(REG_DI);
+    off = SEG_TO_OFFSET(getReg(REG_SS)) + getReg(REG_BP) + getReg(REG_DI);
     cpu_->step(); // mov [bp+di],ah
     ASSERT_EQ(mem_->readByte(off), getReg(REG_AH));
 
     setReg(REG_BX, 639);
     setReg(REG_SI, 157);
     setReg(REG_DS, 371);
-    off = SEG_OFFSET(getReg(REG_DS)) + getReg(REG_BX) + getReg(REG_SI) + 0xa;
+    off = SEG_TO_OFFSET(getReg(REG_DS)) + getReg(REG_BX) + getReg(REG_SI) + 0xa;
     mem_->writeByte(off, 201);
     cpu_->step(); // mov cl,[bx+si+0xa]
     ASSERT_EQ(getReg(REG_CL), 201);
 
     setReg(REG_DX, 4265);
-    off = SEG_OFFSET(getReg(REG_DS)) + getReg(REG_SI) + 0xa8c;
+    off = SEG_TO_OFFSET(getReg(REG_DS)) + getReg(REG_SI) + 0xa8c;
     cpu_->step(); // mov [si+0xa8c],dx
     ASSERT_EQ(mem_->readWord(off), getReg(REG_DX));
 
@@ -222,30 +222,30 @@ TEST_F(CpuTest, DISABLED_Mov) {
     ASSERT_EQ(getReg(REG_SI), getReg(REG_CX));
 
     setReg(REG_ES, 6548);
-    off = SEG_OFFSET(getReg(REG_DS)) + getReg(REG_BX);
+    off = SEG_TO_OFFSET(getReg(REG_DS)) + getReg(REG_BX);
     cpu_->step(); // mov [bx],es
     ASSERT_EQ(mem_->readWord(off), getReg(REG_ES));
 
-    off = SEG_OFFSET(getReg(REG_ES)) + getReg(REG_DI) - 0x74;
+    off = SEG_TO_OFFSET(getReg(REG_ES)) + getReg(REG_DI) - 0x74;
     mem_->writeWord(off, 0xfafe);
     cpu_->step(); // mov ss,[di+0x8c]
     ASSERT_EQ(getReg(REG_SS), 0xfafe);
 
-    off = SEG_OFFSET(getReg(REG_DS)) + 0xcdab;
+    off = SEG_TO_OFFSET(getReg(REG_DS)) + 0xcdab;
     mem_->writeByte(off, 0x64);
     cpu_->step(); // mov al,[0xcdab]
     ASSERT_EQ(getReg(REG_AL), 0x64);
 
-    off = SEG_OFFSET(getReg(REG_DS)) + 0xabcd;
+    off = SEG_TO_OFFSET(getReg(REG_DS)) + 0xabcd;
     mem_->writeWord(off, 0xcaca);
     cpu_->step(); // mov ax,[0xabcd]
     ASSERT_EQ(getReg(REG_AX), 0xcaca);
 
-    off = SEG_OFFSET(getReg(REG_DS)) + 0xabcd;
+    off = SEG_TO_OFFSET(getReg(REG_DS)) + 0xabcd;
     cpu_->step(); // mov [0xabcd],al
     ASSERT_EQ(mem_->readByte(off), getReg(REG_AL));
 
-    off = SEG_OFFSET(getReg(REG_DS)) + 0xcdab;
+    off = SEG_TO_OFFSET(getReg(REG_DS)) + 0xcdab;
     cpu_->step(); // mov [0xcdab],ax
     ASSERT_EQ(mem_->readWord(off), getReg(REG_AX));
 
@@ -283,21 +283,21 @@ TEST_F(CpuTest, DISABLED_Mov) {
     cpu_->step(); // mov di,0x123b
     ASSERT_EQ(getReg(REG_DI), 0x123b);
 
-    off = SEG_OFFSET(getReg(REG_DS)) + getReg(REG_BX) + getReg(REG_DI) + 0x1024;
+    off = SEG_TO_OFFSET(getReg(REG_DS)) + getReg(REG_BX) + getReg(REG_DI) + 0x1024;
     cpu_->step(); // mov [bx+di+0x1024],0xab
     ASSERT_EQ(mem_->readByte(off), 0xab);
 
-    off = SEG_OFFSET(getReg(REG_DS)) + 0xbabe;
+    off = SEG_TO_OFFSET(getReg(REG_DS)) + 0xbabe;
     cpu_->step(); // mov [0xbabe],0xabcd
     ASSERT_EQ(mem_->readWord(off), 0xabcd);
 
     // negative displacement value
-    off = SEG_OFFSET(getReg(REG_DS)) + getReg(REG_BX) + getReg(REG_DI) - 0x101;
+    off = SEG_TO_OFFSET(getReg(REG_DS)) + getReg(REG_BX) + getReg(REG_DI) - 0x101;
     cpu_->step(); // mov [bx+di-0x101], 0xab
     ASSERT_EQ(mem_->readByte(off), 0xab);
 
     // segment override prefix
-    off = SEG_OFFSET(getReg(REG_ES)) + getReg(REG_BX) + getReg(REG_DI);
+    off = SEG_TO_OFFSET(getReg(REG_ES)) + getReg(REG_BX) + getReg(REG_DI);
     cpu_->step(); // mov [es:bx+di],ch
     ASSERT_EQ(mem_->readByte(off), getReg(REG_CH));
 }

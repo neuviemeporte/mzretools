@@ -12,9 +12,11 @@ static constexpr int OFFSET_STRLEN = MEM_TOTAL % 10;
 static constexpr int WORD_STRLEN = UINT16_MAX % 10;
 static constexpr Word ADDR_INVALID = 0xffff;
 
-inline Offset SEG_OFFSET(const Word seg) { return static_cast<Offset>(seg) << SEGMENT_SHIFT; }
+inline Offset SEG_TO_OFFSET(const Word seg) { return static_cast<Offset>(seg) << SEGMENT_SHIFT; }
 inline Size BYTES_TO_PARA(const Size bytes) { return bytes / PARAGRAPH_SIZE + (bytes % PARAGRAPH_SIZE ? 1 : 0); }
 inline const Word* WORD_PTR(const Byte* buf, const Offset off = 0) { return reinterpret_cast<const Word*>(buf + off); }
+inline Word DWORD_SEGMENT(const DWord val) { return val >> 16; }
+inline Word DWORD_OFFSET(const DWord val) { return val & 0xffff; }
 
 // A segmented address
 struct Address {
@@ -44,7 +46,7 @@ struct Address {
 
     void set(const Offset linear);
     std::string toString(const bool brief = false) const;
-    inline Offset toLinear() const { return SEG_OFFSET(segment) + offset; }
+    inline Offset toLinear() const { return SEG_TO_OFFSET(segment) + offset; }
     bool isNull() const { return segment == 0 && offset == 0; }
     bool isValid() const { return segment != ADDR_INVALID || offset != ADDR_INVALID; }
     void normalize();

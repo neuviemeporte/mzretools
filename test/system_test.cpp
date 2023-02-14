@@ -119,10 +119,10 @@ TEST_F(SystemTest, RoutineMapFromQueue) {
     // test routine map generation from contents of a search queue
     SearchQueue sq = emptySearchQueue();
     vector<int> &visited = sqVisited(sq);
-    vector<Address> &entrypoints = sqEntrypoints(sq);
+    vector<RoutineEntrypoint> &entrypoints = sqEntrypoints(sq);
     //          0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f  10 11 12 13 14 15 16 17
     visited = { 0, 0, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 2, 2, 0, 0, 1, 1, 3, 0, 3, 3, 3, 0 };
-    entrypoints = { 0x8, 0xc, 0x12 };
+    entrypoints = { {0x8, 1}, {0xc, 2}, {0x12, 3} };
     RoutineMap queueMap{sq};
     queueMap.dump();
     ASSERT_EQ(queueMap.size(), 3);
@@ -220,8 +220,8 @@ TEST_F(SystemTest, CodeCompare) {
     ASSERT_TRUE(e1.compareCode(map, e2));
 
     // compare different
-    setEntrypoint(e1, {0x115e}); // getnum
-    setEntrypoint(e2, {0x8d0}); // _fflush
+    setEntrypoint(e1, Address(0x115e)); // getnum
+    setEntrypoint(e2, Address(0x8d0)); // _fflush
     ASSERT_FALSE(e1.compareCode(map, e2));
 }
 

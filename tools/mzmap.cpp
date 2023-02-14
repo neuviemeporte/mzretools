@@ -34,6 +34,10 @@ void info(const string &msg) {
     output(msg, LOG_OTHER, LOG_ERROR);
 }
 
+void verbose(const string &msg, const bool noNewline = false) {
+    output(msg, LOG_OTHER, LOG_VERBOSE, noNewline);
+}
+
 void debug(const string &msg) {
     output(msg, LOG_OTHER, LOG_DEBUG);
 }
@@ -91,6 +95,7 @@ int main(int argc, char *argv[]) {
             fatal("Unable to find any routines");
             return 1;
         }
+        verbose(map.dump(), true);
         map.save(pathMap);
     }
     catch (Error &e) {
