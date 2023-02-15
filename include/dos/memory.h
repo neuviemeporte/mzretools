@@ -40,6 +40,7 @@ private:
 
 public:
     Memory();
+    Memory(const Word segment, const Byte *data, const Size size);
     Size size() const { return MEM_TOTAL; }
     Size availableBlock() const { return BYTES_TO_PARA(MEM_END - break_); }
     Size availableBytes() const { return availableBlock() * PARAGRAPH_SIZE; }
@@ -50,6 +51,8 @@ public:
     void freeBlock(const Size para);
     Byte readByte(const Offset addr) const;
     Word readWord(const Offset addr) const;
+    Byte readByte(const Address addr) const { return readByte(addr.toLinear()); }
+    Word readWord(const Address addr) const { return readWord(addr.toLinear()); }
     void writeByte(const Offset addr, const Byte value);
     void writeWord(const Offset addr, const Word value);
     void writeBuf(const Offset addr, const Byte *data, const Size size);

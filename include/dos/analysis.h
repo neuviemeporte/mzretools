@@ -10,6 +10,7 @@
 #include "dos/registers.h"
 #include "dos/instruction.h"
 #include "dos/mz.h"
+#include "dos/memory.h"
 
 static constexpr int NULL_ROUTINE = 0;
 
@@ -63,17 +64,19 @@ class SearchQueue {
     friend class SystemTest;
     // memory map for marking which locations belong to which routines, value of 0 is undiscovered
     std::vector<int> visited; // TODO: store addresses from loaded exe in map, otherwise they don't match after analysis done if exe loaded at segment other than 0 
+    Offset load;
+    Address start;
+    SearchPoint curSearch;
     std::list<SearchPoint> queue;
     std::vector<RoutineEntrypoint> entrypoints;
-    SearchPoint curSearch;
-    Address start;
 
 public:
-    SearchQueue(const Size codeSize, const SearchPoint &seed);
+    SearchQueue(const Size codeSize, const Word loadSegment, const SearchPoint &seed);
     // search point queue operations
     Size size() const { return queue.size(); }
     bool empty() const { return queue.empty(); }
     Address startAddress() const { return start; }
+    Offset loadOffset() const { return load; }
     SearchPoint nextPoint(const bool front = true);
     bool hasPoint(const Address &dest, const bool call) const;
     void saveCall(const Address &dest, const RegisterState &regs);
@@ -82,13 +85,13 @@ public:
     Size codeSize() const { return visited.size(); }
     Size routineCount() const { return entrypoints.size(); }
     std::string statusString() const;
-    int getRoutineId(const Offset off) const;
-    void markVisited(const Offset off, const Size length, int id = NULL_ROUTINE);
+    int getRoutineId(Offset off) const;
+    void markVisited(Offset off, const Size length, int id = NULL_ROUTINE);
     int isEntrypoint(const Address &addr) const;
     void dumpVisited(const std::string &path) const;
 
 private:
-    SearchQueue() {}
+    SearchQueue() : load(0) {}
 };
 
 struct Routine {
@@ -114,13 +117,15 @@ struct Routine {
 
 class RoutineMap {
     friend class SystemTest;
+    Word reloc;
     std::vector<Routine> routines;
     std::vector<Block> unclaimed;
+    // TODO: turn these into a context struct, pass around instead of members
     int curId, prevId, curBlockId, prevBlockId;
 
 public:
     RoutineMap(const SearchQueue &sq);
-    RoutineMap(const std::string &path);
+    RoutineMap(const std::string &path, const Word reloc = 0);
 
     Size size() const { return routines.size(); }
     Routine getRoutine(const Size idx) const { return routines.at(idx); }
@@ -132,7 +137,7 @@ public:
     std::string dump() const;
 
 private:
-    RoutineMap() {}
+    RoutineMap() : reloc(0) {}
     void closeBlock(Block &b, const Offset off, const SearchQueue &sq);
     void sort();
     void loadFromMapFile(const std::string &path);
@@ -146,13 +151,12 @@ struct Branch {
 
 class Executable {
     friend class SystemTest;
-    std::vector<Byte> code;
+    const Memory code;
+    Word loadSegment;
     Size codeSize;
-    const Byte *codeData;
-    Block codeExtents;
     Address entrypoint;
     Address csip, stack;
-    Word reloc;
+    Block codeExtents;
 
 public:
     explicit Executable(const MzImage &mz, const Address &entrypoint = Address());

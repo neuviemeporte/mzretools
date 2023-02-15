@@ -1,6 +1,7 @@
 #include <iostream>
 #include <fstream>
 #include <sstream>
+#include <cstring>
 
 #include "dos/memory.h"
 #include "dos/error.h"
@@ -17,6 +18,10 @@ Memory::Memory() : break_(INIT_BREAK) {
         data_[i] = pattern[j];
         if (++j >= sizeof pattern) j = 0;
     }
+}
+
+Memory::Memory(const Word segment, const Byte *data, const Size size) : Memory() {
+    writeBuf(SEG_TO_OFFSET(segment), data, size);
 }
 
 void Memory::allocBlock(const Size para) {
@@ -42,7 +47,9 @@ Byte Memory::readByte(const Offset addr) const {
 
 Word Memory::readWord(const Offset addr) const {
     if (addr >= MEM_TOTAL) throw MemoryError(std::string("Read word outside memory bounds"));
-    return *reinterpret_cast<const Word*>(&data_[addr]);
+    Word ret;
+    memcpy(&ret, &data_[addr], sizeof(ret));
+    return ret;
 }
 
 void Memory::writeByte(const Offset addr, const Byte value) {
@@ -52,8 +59,7 @@ void Memory::writeByte(const Offset addr, const Byte value) {
 
 void Memory::writeWord(const Offset addr, const Word value) {
     if (addr >= MEM_TOTAL) throw MemoryError(std::string("Word write outside memory bounds"));
-    Word *dest = reinterpret_cast<Word*>(&data_[addr]);
-    *dest = value;
+    memcpy(&data_[addr], &value, sizeof(value));
 }
 
 void Memory::writeBuf(const Offset addr, const Byte *data, const Size size) {

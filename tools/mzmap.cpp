@@ -18,10 +18,11 @@ void usage() {
     output("usage: mzmap <file.exe[:entrypoint]> <output.map> [options]\n"
            "Scans a DOS MZ executable and tries to find routine boundaries, saves output into a file\n"
            "Options:\n"
-           "--verbose: show more detailed information, including compared instructions\n"
-           "--debug:   show additional debug information\n"
-           "--nocpu:   omit CPU-related information like instruction decoding\n"
-           "--noanal:  omit analysis-related information", LOG_OTHER, LOG_ERROR);
+           "--verbose:      show more detailed information, including compared instructions\n"
+           "--debug:        show additional debug information\n"
+           "--nocpu:        omit CPU-related information like instruction decoding\n"
+           "--noanal:       omit analysis-related information\n"
+           "--load segment: overrride default load segment (0x1000)", LOG_OTHER, LOG_ERROR);
     exit(1);
 }
 
@@ -49,7 +50,7 @@ string mzInfo(const MzImage &mz) {
     return str.str();
 }
 
-Executable loadExe(const string &spec) {
+Executable loadExe(const string &spec, const Word loadSegment) {
     static const regex EXESPEC_RE{"([-_./a-zA-Z0-9]*)(:([a-fA-F0-9]+))?"};
     smatch match;
     if (!regex_match(spec, match, EXESPEC_RE)) {
@@ -60,9 +61,9 @@ Executable loadExe(const string &spec) {
     const auto stat = checkFile(path);
     if (!stat.exists) fatal("File does not exist: "s + path);
     else if (stat.size <= MZ_HEADER_SIZE) fatal("File too small ("s + to_string(stat.size) + "B): " + path); 
-
+    verbose("Loading executable "s + path + " at segment "s + hexVal(loadSegment));
     MzImage mz{path};
-    mz.load(0);
+    mz.load(loadSegment);
     debug(mzInfo(mz));
     if (entrypoint.empty())
         return Executable(mz);
@@ -79,17 +80,23 @@ int main(int argc, char *argv[]) {
     if (argc < 3) {
         usage();
     }
+    Word loadSegment = 0x1000;
     for (int aidx = 3; aidx < argc; ++aidx) {
         string arg(argv[aidx]);
         if (arg == "--debug") setOutputLevel(LOG_DEBUG);
         else if (arg == "--verbose") setOutputLevel(LOG_VERBOSE);
         else if (arg == "--nocpu") setModuleVisibility(LOG_CPU, false);
         else if (arg == "--noanal") setModuleVisibility(LOG_ANALYSIS, false);
+        else if (arg == "--load" && (aidx + 1 < argc)) {
+            string loadSegStr(argv[aidx+1]);
+            loadSegment = static_cast<Word>(stoi(loadSegStr, nullptr, 16));
+            verbose("Overloading default load segment: "s + hexVal(loadSegment));
+        }
         else fatal("Unrecognized parameter: "s + arg);
     }
     const string spec{argv[1]}, pathMap{argv[2]};
     try {
-        Executable exe = loadExe(spec);
+        Executable exe = loadExe(spec, loadSegment);
         RoutineMap map = exe.findRoutines();
         if (map.empty()) {
             fatal("Unable to find any routines");

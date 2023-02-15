@@ -79,12 +79,12 @@ bool Routine::colides(const Block &block, const bool checkExtents) const {
 
 string Routine::toString(const bool showChunks) const {
     ostringstream str;
-    str << extents.toString(true) << ": " << name;
+    str << extents.toString(false, true) << ": " << name;
     if (!showChunks || isUnchunked()) return str.str();
 
     auto blocks = sortedBlocks();
     for (const auto &b : blocks) {
-        str << endl << "\t" << b.toString(true) << ": ";
+        str << endl << "\t" << b.toString(false, true) << ": ";
         if (b.begin == entrypoint())
             str << "main";
         else if (isReachable(b))
@@ -104,7 +104,7 @@ std::vector<Block> Routine::sortedBlocks() const {
     return blocks;
 }
 
-RoutineMap::RoutineMap(const SearchQueue &sq) {
+RoutineMap::RoutineMap(const SearchQueue &sq) : reloc(OFFSET_TO_SEG(sq.loadOffset())) {
     // XXX: debugging purpose only, remove later
     sq.dumpVisited("search_queue.dump");
     const Size routineCount = sq.routineCount();
@@ -121,7 +121,8 @@ RoutineMap::RoutineMap(const SearchQueue &sq) {
 
     prevId = curBlockId = prevBlockId = NULL_ROUTINE;
     Block b(0);
-    for (Size mapOffset = 0; mapOffset < sq.codeSize(); ++mapOffset) {
+    // TODO: messy offset vs reloc segment back and forth conversions, also generated addresses are normalized which makes the output hard to read
+    for (Offset mapOffset = sq.loadOffset(); mapOffset < sq.loadOffset() + sq.codeSize(); ++mapOffset) {
         curId = sq.getRoutineId(mapOffset);
         // do nothing as long as the value doesn't change, unless we encounter the routine entrypoint in the middle of a block, in which case we force a block close
         if (curId == prevId && !sq.isEntrypoint(Address{mapOffset})) continue;
@@ -135,7 +136,8 @@ RoutineMap::RoutineMap(const SearchQueue &sq) {
         prevId = curId;
     }
     // close last block finishing on the last byte of the memory map
-    closeBlock(b, sq.codeSize(), sq);
+    // TODO: again with the stupid offset
+    closeBlock(b, sq.loadOffset() + sq.codeSize(), sq);
 
     // calculate routine extents
     for (auto &r : routines) {
@@ -158,7 +160,8 @@ RoutineMap::RoutineMap(const SearchQueue &sq) {
     sort();
 }
 
-RoutineMap::RoutineMap(const std::string &path) {
+// TODO: instead of requiring the relocation factor as an argment, perhaps save it to the mapfile?
+RoutineMap::RoutineMap(const std::string &path, const Word reloc) : reloc(reloc) {
     static const regex LSTFILE_RE{".*\\.(lst|LST)"};
     const auto fstat = checkFile(path);
     if (!fstat.exists) throw ArgError("File does not exist: "s + path);
@@ -214,6 +217,8 @@ void RoutineMap::closeBlock(Block &b, const Offset off, const SearchQueue &sq) {
     b.end = Address{off - 1};
     debug(hexVal(off) + ": closing block starting at " + b.begin.toString() + ", curId = " + to_string(curId) + ", prevId = " + to_string(prevId) 
         + ", curBlockId = " + to_string(curBlockId) + ", prevBlockId = " + to_string(prevBlockId));
+    if (!b.isValid())
+        throw AnalysisError("Attempted to close invalid block");
     if (curBlockId != NULL_ROUTINE) { // block contains reachable code
         // get handle to matching routine
         assert(curBlockId - 1 < routines.size());
@@ -261,16 +266,20 @@ void RoutineMap::sort() {
 
 void RoutineMap::save(const std::string &path) const {
     if (empty()) return;
-    info("Saving routine map to "s + path);
+    info("Saving routine map (size = " + to_string(size()) + ") to "s + path);
     ofstream file{path};
     for (const auto &r : routines) {
-        file << r.name << ": e" << r.extents.toString(true, false);
+        Block rextent{r.extents};
+        rextent.rebase(reloc);
+        file << r.name << ": e" << rextent.toString(true, false);
         const auto blocks = r.sortedBlocks();
         for (const auto &b : blocks) {
+            Block rblock{b};
+            rblock.rebase(reloc);
             if (r.isReachable(b))
-                file << " r" << b.toString(true, false);
+                file << " r" << rblock.toString(true, false);
             else
-                file << " u" << b.toString(true, false);
+                file << " u" << rblock.toString(true, false);
         }
         file << endl;
     }
@@ -318,7 +327,8 @@ void RoutineMap::loadFromMapFile(const std::string &path) {
             else { // an extents, reachable
                 // first character is block type
                 char blockType = token.front(); 
-                const Block block{token.substr(1, token.size() - 1)};
+                Block block{token.substr(1, token.size() - 1)};
+                block.relocate(reloc);
                 // check block for collisions agains rest of routines already in the map as well as the currently built routine
                 Routine colideRoutine = colidesBlock(block);
                 if (!colideRoutine.isValid() && r.colides(block, false)) 
@@ -351,7 +361,7 @@ void RoutineMap::loadFromMapFile(const std::string &path) {
 // create routine map from IDA .lst file
 // TODO: add collision checks
 void RoutineMap::loadFromIdaFile(const std::string &path) {
-    debug("Loading IDA routine map from "s + path);
+    debug("Loading IDA routine map from "s + path + ", relocation factor " + hexVal(reloc));
     ifstream fstr{path};
     string line, lastAddr;
     Size lineno = 1;
@@ -364,10 +374,12 @@ void RoutineMap::loadFromIdaFile(const std::string &path) {
             tokenno++;
         }
         string &addrStr = token[0];
+        // TODO: get rid of harcoded segment name
         if (addrStr.find("seg000") != string::npos) {
             addrStr = addrStr.substr(2,9);
             addrStr[0] = '0';
             curAddr = Address{addrStr};
+            curAddr.relocate(reloc);
         }
         else {
             curAddr = Address();
@@ -479,9 +491,12 @@ string SearchPoint::toString() const {
     return str.str();
 }
 
-SearchQueue::SearchQueue(const Size codeSize, const SearchPoint &seed) : visited(codeSize, NULL_ROUTINE) {
+SearchQueue::SearchQueue(const Size codeSize, const Word loadSegment, const SearchPoint &seed) : 
+    visited(codeSize, NULL_ROUTINE),
+    load(SEG_TO_OFFSET(loadSegment)),
+    start(seed.address)
+{
     queue.push_front(seed);
-    start = seed.address;
     entrypoints.emplace_back(RoutineEntrypoint(start, seed.routineId));
 }
 
@@ -489,13 +504,18 @@ string SearchQueue::statusString() const {
     return "[r"s + to_string(curSearch.routineId) + "/q" + to_string(size()) + "]"; 
 } 
 
-int SearchQueue::getRoutineId(const Offset off) const { 
+int SearchQueue::getRoutineId(Offset off) const { 
+    assert(off >= load);
+    off -= load;
     assert(off < visited.size());
     return visited.at(off); 
 }
 
-void SearchQueue::markVisited(const Offset off, const Size length, int id) {
+void SearchQueue::markVisited(Offset off, const Size length, int id) {
     if (id == NULL_ROUTINE) id = curSearch.routineId;
+    assert(off >= load);
+    off -= load;
+    assert(off < visited.size());
     fill(visited.begin() + off, visited.begin() + off + length, id);
 }
 
@@ -565,7 +585,7 @@ void SearchQueue::dumpVisited(const string &path) const {
     mapFile << "      ";
     for (int i = 0; i < 16; ++i) mapFile << hex << setw(5) << setfill(' ') << i << " ";
     mapFile << endl;
-    for (size_t mapOffset = 0; mapOffset < visited.size(); ++mapOffset) {
+    for (Offset mapOffset = load; mapOffset < load + visited.size(); ++mapOffset) {
         const int id = getRoutineId(mapOffset);
         //debug(hexVal(mapOffset) + ": " + to_string(m));
         if (mapOffset % 16 == 0) {
@@ -577,13 +597,17 @@ void SearchQueue::dumpVisited(const string &path) const {
 }
 
 Executable::Executable(const MzImage &mz, const Address &ep) : 
-    codeSize(0), codeData(nullptr), entrypoint(ep.isValid() ? ep : mz.entrypoint()), stack(mz.stackPointer()), reloc(mz.loadSegment())  
+    code(mz.loadSegment(), mz.loadModuleData(), mz.loadModuleSize()),
+    loadSegment(mz.loadSegment()),
+    codeSize(mz.loadModuleSize()),
+    entrypoint(ep.isValid() ? ep : mz.entrypoint()), 
+    stack(mz.stackPointer()), 
+    codeExtents({loadSegment, 0}, Address(SEG_TO_OFFSET(loadSegment) + codeSize))
 {
-    const Byte *data = mz.loadModuleData();
-    copy(data, data + mz.loadModuleSize(), std::back_inserter(code));
-    codeSize = code.size();
-    codeData = code.data();
-    codeExtents = Block({entrypoint.segment, 0}, Address(SEG_TO_OFFSET(entrypoint.segment) + codeSize));
+    // relocate entrypoint and stack
+    entrypoint.segment += loadSegment;
+    stack.segment += loadSegment;
+    verbose("Loaded executable data into memory, code at "s + codeExtents.toString() + ", relocated entrypoint " + entrypoint.toString() + ", stack " + stack.toString());
 }
 
 void Executable::searchMessage(const string &msg) const {
@@ -650,15 +674,14 @@ Branch Executable::getBranch(const Instruction &i, const RegisterState &regs) co
             searchMessage("encountered near call through register to "s + branch.destination.toString());
         }
         else if (operandIsMemImmediate(i.op1.type) && regs.isKnown(REG_DS)) {
+            // need to read call destination offset from memory
             Address memAddr{regs.getValue(REG_DS), i.op1.immval.u16};
             if (codeExtents.contains(memAddr)) {
-                Word memWord;
-                searchMessage("encountered near call through mem pointer to "s + branch.destination.toString());
-                memcpy(&memWord, codeData + memAddr.toLinear(), sizeof(Word));
-                branch.destination = Address{i.addr.segment, memWord};
+                branch.destination = Address{i.addr.segment, code.readWord(memAddr)};
                 branch.isCall = true;
+                searchMessage("encountered near call through mem pointer to "s + branch.destination.toString());
             }
-            else debug("call destination address outside code extents: " + memAddr.toString());
+            else debug("mem pointer of call destination outside code extents: " + memAddr.toString());
         }
         else {
             searchMessage("unknown near call target: "s + i.toString());
@@ -710,19 +733,13 @@ void Executable::applyMov(const Instruction &i, RegisterState &regs) const {
     // mov reg, mem
     else if (operandIsMemImmediate(i.op2.type) && regs.isKnown(prefixRegId(i.prefix))) {
         Address memAddr(regs.getValue(prefixRegId(i.prefix)), i.op2.immval.u16);
-        Word memWord;
-        Byte memByte;
         if (codeExtents.contains(memAddr)) switch(i.op2.size) {
         case OPRSZ_BYTE:
-            assert(memAddr.toLinear() < codeSize);
-            memByte = codeData[memAddr.toLinear()];
-            regs.setValue(dest, memByte); 
+            regs.setValue(dest, code.readByte(memAddr)); 
             set = true;
             break;
         case OPRSZ_WORD:
-            assert(memAddr.toLinear() < codeSize);
-            memcpy(&memWord, codeData + memAddr.toLinear(), sizeof(Word));
-            regs.setValue(dest, memWord);
+            regs.setValue(dest, code.readWord(memAddr));
             set = true;
             break;
         }
@@ -760,9 +777,9 @@ RoutineMap Executable::findRoutines() {
     RegisterState initRegs{entrypoint, stack};
     debug("initial register values:\n"s + initRegs.toString());
     // queue for BFS search
-    SearchQueue searchQ(codeSize, SearchPoint(entrypoint, 1, true, initRegs));
+    SearchQueue searchQ(codeSize, loadSegment, SearchPoint(entrypoint, 1, true, initRegs));
+    info("Analyzing code within extents: "s + codeExtents);
 
-    info("Analyzing code in range " + codeExtents);
     // iterate over entries in the search queue
     while (!searchQ.empty()) {
         // get a location from the queue and jump to it
@@ -789,12 +806,11 @@ RoutineMap Executable::findRoutines() {
                 searchMessage("location marked as entrypoint for routine "s + to_string(isEntry) + " while scanning from " + to_string(search.routineId) + ", halting scan");
                 break;                
             }
-            const Offset instrOffs = csip.toLinear();
-            Instruction i(csip, codeData + instrOffs);
+            Instruction i(csip, code.pointer(csip));
             regs.setValue(REG_CS, csip.segment);
             regs.setValue(REG_IP, csip.offset);
             // mark memory map items corresponding to the current instruction as belonging to the current routine
-            searchQ.markVisited(instrOffs, i.length);
+            searchQ.markVisited(csip.toLinear(), i.length);
             // interpret the instruction
             if (instructionIsBranch(i)) {
                 const Branch branch = getBranch(i, regs);
@@ -856,7 +872,7 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
     // map of equivalent addresses in the compared binaries, seed with the two entrypoints
     std::map<Address, Address> addrMap{{entrypoint, other.entrypoint}};
     // queue of locations (in reference binary) for comparison, likewise seeded with the entrypoint
-    SearchQueue compareQ(codeSize, SearchPoint(entrypoint, 1, true, initRegs));
+    SearchQueue compareQ(codeSize, loadSegment, SearchPoint(entrypoint, 1, true, initRegs));
     const int VISITED_ID = 1;
     while (!compareQ.empty()) {
         // get next location for linear scan and comparison of instructions
@@ -886,8 +902,8 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
                 throw AnalysisError("Advanced past other code extents: "s + otherCsip.toString());
             // decode instructions
             Instruction 
-                iRef{csip, codeData + csip.toLinear()}, 
-                iObj{otherCsip, other.codeData + otherCsip.toLinear()};
+                iRef{csip, code.pointer(csip)}, 
+                iObj{otherCsip, other.code.pointer(otherCsip)};
             compareQ.markVisited(csip.toLinear(), iRef.length, VISITED_ID);
             verbose(compareStatus(iRef, iObj));
             // compare instructions

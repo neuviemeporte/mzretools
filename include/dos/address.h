@@ -8,11 +8,12 @@
 static constexpr Size MEM_TOTAL = 1_MB;
 static constexpr int SEGMENT_SHIFT = 4;
 static constexpr int OFFSET_MASK = 0xf;
-static constexpr int OFFSET_STRLEN = MEM_TOTAL % 10;
-static constexpr int WORD_STRLEN = UINT16_MAX % 10;
+static constexpr int OFFSET_STRLEN = 6; // 6 hex digits for linear offsets up to 0x100000
+static constexpr int WORD_STRLEN = 4;   // 4 hex digits for segment values up to 0xffff
 static constexpr Word ADDR_INVALID = 0xffff;
 
 inline Offset SEG_TO_OFFSET(const Word seg) { return static_cast<Offset>(seg) << SEGMENT_SHIFT; }
+inline Word OFFSET_TO_SEG(const Offset off) { return static_cast<Word>(off >> SEGMENT_SHIFT); }
 inline Size BYTES_TO_PARA(const Size bytes) { return bytes / PARAGRAPH_SIZE + (bytes % PARAGRAPH_SIZE ? 1 : 0); }
 inline const Word* WORD_PTR(const Byte* buf, const Offset off = 0) { return reinterpret_cast<const Word*>(buf + off); }
 inline Word DWORD_SEGMENT(const DWord val) { return val >> 16; }
@@ -50,7 +51,7 @@ struct Address {
     bool isNull() const { return segment == 0 && offset == 0; }
     bool isValid() const { return segment != ADDR_INVALID || offset != ADDR_INVALID; }
     void normalize();
-    void relocate(const SWord reloc) { segment += reloc; }
+    void relocate(const Word reloc) { segment += reloc; }
     void rebase(const Word base);
 };
 std::ostream& operator<<(std::ostream &os, const Address &arg);
@@ -77,7 +78,7 @@ struct Block {
     bool intersects(const Block &other) const;
     bool adjacent(const Block &other) const;
 
-    void relocate(const SWord reloc) { begin.relocate(reloc); end.relocate(reloc); }
+    void relocate(const Word reloc) { begin.relocate(reloc); end.relocate(reloc); }
     void rebase(const Word base) { begin.rebase(base); end.rebase(base); }
     void coalesce(const Block &other);
     Block coalesce(const Block &other) const;

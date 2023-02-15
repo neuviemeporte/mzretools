@@ -169,7 +169,7 @@ std::string MzImage::dump() const {
 
 // read actual load module data
 void MzImage::load(const Word loadSegment) {
-    info("Loading executable code: "s + hexVal(loadModuleSize_) + " bytes from offset "s + hexVal(loadModuleOffset_) + ", relocation factor " + hexVal(loadSegment));
+    info("Loading executable code: size = "s + hexVal(loadModuleSize_) + " bytes starting at file offset "s + hexVal(loadModuleOffset_) + ", relocation factor " + hexVal(loadSegment));
     ifstream mzFile(path_, ios::binary);
     if (!mzFile.is_open()) throw IoError("Unable to open exe file: " + path_);
     mzFile.seekg(loadModuleOffset_);
@@ -183,10 +183,10 @@ void MzImage::load(const Word loadSegment) {
     if (bytesRead != loadModuleSize_) throw IoError("Incorrect number of bytes read from "s  + path_ + ": " + to_string(bytesRead));
     mzFile.close();
     // patch relocations
-    for (const auto &r : relocs_) {
+    for (const Relocation &r : relocs_) {
         const Address addr(r.segment, r.offset);
         const Offset off = addr.toLinear();
         const Word patchedVal = r.value + loadSegment;
-        loadModuleData_[off] = patchedVal;
+        memcpy(&loadModuleData_[off], &patchedVal, sizeof(patchedVal));
     }
 }
