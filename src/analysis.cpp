@@ -493,7 +493,7 @@ string SearchPoint::toString() const {
 
 SearchQueue::SearchQueue(const Size codeSize, const Word loadSegment, const SearchPoint &seed) : 
     visited(codeSize, NULL_ROUTINE),
-    load(SEG_TO_OFFSET(loadSegment)),
+    loadSeg(loadSegment),
     start(seed.address)
 {
     queue.push_front(seed);
@@ -511,7 +511,7 @@ int SearchQueue::getRoutineId(Offset off) const {
     return visited.at(off); 
 }
 
-void SearchQueue::markVisited(Offset off, const Size length, int id) {
+void SearchQueue::setRoutineId(Offset off, const Size length, int id) {
     if (id == NULL_ROUTINE) id = curSearch.routineId;
     assert(off >= load);
     off -= load;
@@ -785,7 +785,7 @@ RoutineMap Executable::findRoutines() {
         // get a location from the queue and jump to it
         const SearchPoint search = searchQ.nextPoint();
         csip = search.address;
-        searchMessage("starting search at new location for routine " + to_string(search.routineId) + ", call: "s + to_string(search.isCall));
+        searchMessage("--- starting search at new location for routine " + to_string(search.routineId) + ", call: "s + to_string(search.isCall) + ", queue = " + to_string(searchQ.size()));
         RegisterState regs = search.regs;
         // iterate over instructions at current search location in a linear fashion, until an unconditional jump or return is encountered
         while (true) {
@@ -810,7 +810,7 @@ RoutineMap Executable::findRoutines() {
             regs.setValue(REG_CS, csip.segment);
             regs.setValue(REG_IP, csip.offset);
             // mark memory map items corresponding to the current instruction as belonging to the current routine
-            searchQ.markVisited(csip.toLinear(), i.length);
+            searchQ.setRoutineId(csip.toLinear(), i.length);
             // interpret the instruction
             if (instructionIsBranch(i)) {
                 const Branch branch = getBranch(i, regs);
@@ -904,7 +904,7 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
             Instruction 
                 iRef{csip, code.pointer(csip)}, 
                 iObj{otherCsip, other.code.pointer(otherCsip)};
-            compareQ.markVisited(csip.toLinear(), iRef.length, VISITED_ID);
+            compareQ.setRoutineId(csip.toLinear(), iRef.length, VISITED_ID);
             verbose(compareStatus(iRef, iObj));
             // compare instructions
             switch (iRef.match(iObj)) {

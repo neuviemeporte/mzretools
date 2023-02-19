@@ -64,7 +64,7 @@ class SearchQueue {
     friend class SystemTest;
     // memory map for marking which locations belong to which routines, value of 0 is undiscovered
     std::vector<int> visited; // TODO: store addresses from loaded exe in map, otherwise they don't match after analysis done if exe loaded at segment other than 0 
-    Offset load;
+    Word loadSeg;
     Address start;
     SearchPoint curSearch;
     std::list<SearchPoint> queue;
@@ -76,7 +76,7 @@ public:
     Size size() const { return queue.size(); }
     bool empty() const { return queue.empty(); }
     Address startAddress() const { return start; }
-    Offset loadOffset() const { return load; }
+    Word loadSegment() const { return loadSeg; }
     SearchPoint nextPoint(const bool front = true);
     bool hasPoint(const Address &dest, const bool call) const;
     void saveCall(const Address &dest, const RegisterState &regs);
@@ -86,7 +86,7 @@ public:
     Size routineCount() const { return entrypoints.size(); }
     std::string statusString() const;
     int getRoutineId(Offset off) const;
-    void markVisited(Offset off, const Size length, int id = NULL_ROUTINE);
+    void setRoutineId(Offset off, const Size length, int id = NULL_ROUTINE);
     int isEntrypoint(const Address &addr) const;
     void dumpVisited(const std::string &path) const;
 
