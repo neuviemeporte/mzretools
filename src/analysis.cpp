@@ -584,12 +584,14 @@ void ScanQueue::dumpVisited(const string &path, const Offset start, Size size) c
     for (int i = 0; i < 16; ++i) mapFile << hex << setw(5) << setfill(' ') << i << " ";
     mapFile << endl;
     if (size == 0) size = visited.size();
-    for (Offset mapOffset = start; mapOffset < size; ++mapOffset) {
+    info("Dumping visited map of size "s + hexVal(size) + " starting at " + hexVal(start) + " to " + path);
+    for (Offset mapOffset = start; mapOffset < start + size; ++mapOffset) {
         const auto id = getRoutineId(mapOffset);
         //debug(hexVal(mapOffset) + ": " + to_string(m));
-        if (mapOffset % 16 == 0) {
-            if (mapOffset != 0) mapFile << endl;
-            mapFile << hex << setw(5) << setfill('0') << mapOffset << " ";
+        const Offset printOffset = mapOffset - start;
+        if (printOffset % 16 == 0) {
+            if (printOffset != 0) mapFile << endl;
+            mapFile << hex << setw(5) << setfill('0') << printOffset << " ";
         }
         mapFile << dec << setw(5) << setfill(' ') << id << " ";
     }
