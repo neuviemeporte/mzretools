@@ -25,9 +25,9 @@ protected:
     // access to private fields
     auto& getRoutines(RoutineMap &rm) { return rm.routines; }
     auto emptyRoutineMap() { return RoutineMap(); }
-    auto emptySearchQueue() { return SearchQueue(); }
-    auto& sqVisited(SearchQueue &sq) { return sq.visited; }
-    auto& sqEntrypoints(SearchQueue &sq) { return sq.entrypoints; }
+    auto emptyScanQueue() { return ScanQueue(); }
+    auto& sqVisited(ScanQueue &sq) { return sq.visited; }
+    auto& sqEntrypoints(ScanQueue &sq) { return sq.entrypoints; }
     void setEntrypoint(Executable &e, const Address &addr) { e.setEntrypoint(addr); }
 };
 
@@ -117,13 +117,13 @@ TEST_F(SystemTest, RoutineMap) {
 
 TEST_F(SystemTest, RoutineMapFromQueue) {
     // test routine map generation from contents of a search queue
-    SearchQueue sq = emptySearchQueue();
+    ScanQueue sq = emptyScanQueue();
     vector<int> &visited = sqVisited(sq);
     vector<RoutineEntrypoint> &entrypoints = sqEntrypoints(sq);
     //          0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f  10 11 12 13 14 15 16 17
     visited = { 0, 0, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 2, 2, 0, 0, 1, 1, 3, 0, 3, 3, 3, 0 };
     entrypoints = { {0x8, 1}, {0xc, 2}, {0x12, 3} };
-    RoutineMap queueMap{sq};
+    RoutineMap queueMap{sq, 0, visited.size()};
     queueMap.dump();
     ASSERT_EQ(queueMap.size(), 3);
 

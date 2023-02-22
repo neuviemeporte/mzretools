@@ -13,11 +13,14 @@ protected:
 
 TEST_F(MemoryTest, AddressFromString) {
     Address addr1{"1234:abcd"};
+    TRACELN("addr1 = "s + addr1.toString());
     ASSERT_EQ(addr1.segment, 0x1234);
     ASSERT_EQ(addr1.offset, 0xabcd);
     Address addr2{"0x1234"};
+    TRACELN("addr2 = "s + addr2.toString());
     ASSERT_EQ(addr2.toLinear(), 0x1234);
     Address addr3{"1234"};
+    TRACELN("addr3 = "s + addr3.toString());
     ASSERT_EQ(addr3.toLinear(), 1234);
 }
 

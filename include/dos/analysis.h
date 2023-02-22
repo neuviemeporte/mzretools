@@ -12,10 +12,11 @@
 #include "dos/mz.h"
 #include "dos/memory.h"
 
-static constexpr int NULL_ROUTINE = 0;
+using RoutineId = int;
+static constexpr RoutineId NULL_ROUTINE = 0;
 
 // TODO: 
-// - implement calculation of memory offsets based on register values from instruction operand type enum, allow for unknown values, see jump @ 0xab3
+// - implement calculation of memory offsets based on register values from instruction operand type enum, allow for unknown values, see jump @ 0xab3 in hello.exe
 
 class RegisterState {
 private:
@@ -39,59 +40,57 @@ private:
     std::string stateString(const Register r) const;
 };
 
-struct SearchPoint {
+// A destination (jump or call location) inside an analyzed executable
+struct Destination {
     Address address;
-    int routineId;
+    RoutineId routineId;
     bool isCall;
     RegisterState regs;
 
-    SearchPoint() : routineId(NULL_ROUTINE), isCall(false) {}
-    SearchPoint(const Address address, const int id, const bool call, const RegisterState &regs) : address(address), routineId(id), isCall(call), regs(regs) {}
-    bool match(const SearchPoint &other) const { return address == other.address && isCall == other.isCall; }
+    Destination() : routineId(NULL_ROUTINE), isCall(false) {}
+    Destination(const Address address, const RoutineId id, const bool call, const RegisterState &regs) : address(address), routineId(id), isCall(call), regs(regs) {}
+    bool match(const Destination &other) const { return address == other.address && isCall == other.isCall; }
     bool isNull() const { return address.isNull(); }
     std::string toString() const;
 };
 
 struct RoutineEntrypoint {
     Address addr;
-    int id;
-    RoutineEntrypoint(const Address &addr, const int id) : addr(addr), id(id) {}
+    RoutineId id;
+    RoutineEntrypoint(const Address &addr, const RoutineId id) : addr(addr), id(id) {}
     bool operator==(const Address &arg) const { return addr == arg; }
 };
 
-// utility class for keeping track of the queue of potentially interesting locations (jump/call targets), and which instruction bytes have been claimed by a routine
-class SearchQueue {
+// utility class for keeping track of the queue of potentially interesting Destinations, and which bytes in the executable have been visited already
+class ScanQueue {
     friend class SystemTest;
     // memory map for marking which locations belong to which routines, value of 0 is undiscovered
-    std::vector<int> visited; // TODO: store addresses from loaded exe in map, otherwise they don't match after analysis done if exe loaded at segment other than 0 
-    Word loadSeg;
+    std::vector<RoutineId> visited; // TODO: store addresses from loaded exe in map, otherwise they don't match after analysis done if exe loaded at segment other than 0 
     Address start;
-    SearchPoint curSearch;
-    std::list<SearchPoint> queue;
+    Destination curSearch;
+    std::list<Destination> queue;
     std::vector<RoutineEntrypoint> entrypoints;
 
 public:
-    SearchQueue(const Size codeSize, const Word loadSegment, const SearchPoint &seed);
+    ScanQueue(const Destination &seed);
     // search point queue operations
     Size size() const { return queue.size(); }
     bool empty() const { return queue.empty(); }
     Address startAddress() const { return start; }
-    Word loadSegment() const { return loadSeg; }
-    SearchPoint nextPoint(const bool front = true);
+    Destination nextPoint(const bool front = true);
     bool hasPoint(const Address &dest, const bool call) const;
     void saveCall(const Address &dest, const RegisterState &regs);
     void saveJump(const Address &dest, const RegisterState &regs);
     // discovered locations operations
-    Size codeSize() const { return visited.size(); }
     Size routineCount() const { return entrypoints.size(); }
     std::string statusString() const;
-    int getRoutineId(Offset off) const;
-    void setRoutineId(Offset off, const Size length, int id = NULL_ROUTINE);
-    int isEntrypoint(const Address &addr) const;
-    void dumpVisited(const std::string &path) const;
+    RoutineId getRoutineId(Offset off) const;
+    void setRoutineId(Offset off, const Size length, RoutineId id = NULL_ROUTINE);
+    RoutineId isEntrypoint(const Address &addr) const;
+    void dumpVisited(const std::string &path, const Offset start = 0, Size size = 0) const;
 
 private:
-    SearchQueue() : load(0) {}
+    ScanQueue() {}
 };
 
 struct Routine {
@@ -118,13 +117,14 @@ struct Routine {
 class RoutineMap {
     friend class SystemTest;
     Word reloc;
+    Size codeSize;
     std::vector<Routine> routines;
     std::vector<Block> unclaimed;
     // TODO: turn these into a context struct, pass around instead of members
-    int curId, prevId, curBlockId, prevBlockId;
+    RoutineId curId, prevId, curBlockId, prevBlockId;
 
 public:
-    RoutineMap(const SearchQueue &sq);
+    RoutineMap(const ScanQueue &sq, const Word loadSegment, const Size codeSize);
     RoutineMap(const std::string &path, const Word reloc = 0);
 
     Size size() const { return routines.size(); }
@@ -138,7 +138,7 @@ public:
 
 private:
     RoutineMap() : reloc(0) {}
-    void closeBlock(Block &b, const Offset off, const SearchQueue &sq);
+    void closeBlock(Block &b, const Offset off, const ScanQueue &sq);
     void sort();
     void loadFromMapFile(const std::string &path);
     void loadFromIdaFile(const std::string &path);
@@ -167,7 +167,7 @@ public:
 private:
     void searchMessage(const std::string &msg) const;
     Branch getBranch(const Instruction &i, const RegisterState &regs) const;
-    void saveBranch(const Branch &branch, const RegisterState &regs, const Block &codeExtents, SearchQueue &sq) const;
+    void saveBranch(const Branch &branch, const RegisterState &regs, const Block &codeExtents, ScanQueue &sq) const;
     void applyMov(const Instruction &i, RegisterState &regs) const;
 
     void setEntrypoint(const Address &addr);

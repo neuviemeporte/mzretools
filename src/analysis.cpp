@@ -104,9 +104,9 @@ std::vector<Block> Routine::sortedBlocks() const {
     return blocks;
 }
 
-RoutineMap::RoutineMap(const SearchQueue &sq) : reloc(OFFSET_TO_SEG(sq.loadOffset())) {
+RoutineMap::RoutineMap(const ScanQueue &sq, const Word loadSegment, const Size codeSize) : reloc(loadSegment), codeSize(codeSize) {
     // XXX: debugging purpose only, remove later
-    sq.dumpVisited("search_queue.dump");
+    sq.dumpVisited("search_queue.dump", SEG_TO_OFFSET(loadSegment), codeSize);
     const Size routineCount = sq.routineCount();
     if (routineCount == 0)
         throw AnalysisError("Attempted to create routine map from search queue with no routines");
@@ -122,7 +122,9 @@ RoutineMap::RoutineMap(const SearchQueue &sq) : reloc(OFFSET_TO_SEG(sq.loadOffse
     prevId = curBlockId = prevBlockId = NULL_ROUTINE;
     Block b(0);
     // TODO: messy offset vs reloc segment back and forth conversions, also generated addresses are normalized which makes the output hard to read
-    for (Offset mapOffset = sq.loadOffset(); mapOffset < sq.loadOffset() + sq.codeSize(); ++mapOffset) {
+    const Offset startOffset = SEG_TO_OFFSET(loadSegment);
+    const Offset endOffset = startOffset + codeSize;
+    for (Offset mapOffset = startOffset; mapOffset < endOffset; ++mapOffset) {
         curId = sq.getRoutineId(mapOffset);
         // do nothing as long as the value doesn't change, unless we encounter the routine entrypoint in the middle of a block, in which case we force a block close
         if (curId == prevId && !sq.isEntrypoint(Address{mapOffset})) continue;
@@ -137,7 +139,7 @@ RoutineMap::RoutineMap(const SearchQueue &sq) : reloc(OFFSET_TO_SEG(sq.loadOffse
     }
     // close last block finishing on the last byte of the memory map
     // TODO: again with the stupid offset
-    closeBlock(b, sq.loadOffset() + sq.codeSize(), sq);
+    closeBlock(b, endOffset, sq);
 
     // calculate routine extents
     for (auto &r : routines) {
@@ -210,7 +212,7 @@ Routine RoutineMap::colidesBlock(const Block &b) const {
 }
 
 // utility function used when constructing from  an instance of SearchQueue
-void RoutineMap::closeBlock(Block &b, const Offset off, const SearchQueue &sq) {
+void RoutineMap::closeBlock(Block &b, const Offset off, const ScanQueue &sq) {
     if (!b.isValid() || off == 0) 
         return;
 
@@ -485,41 +487,36 @@ void RegisterState::setState(const Register r, const Word value, const bool know
     }
 }
 
-string SearchPoint::toString() const {
+string Destination::toString() const {
     ostringstream str;
     str << "[" << address.toString() << " / " << routineId << " / " << (isCall ? "call" : "jump") << "]";
     return str.str();
 }
 
-SearchQueue::SearchQueue(const Size codeSize, const Word loadSegment, const SearchPoint &seed) : 
-    visited(codeSize, NULL_ROUTINE),
-    loadSeg(loadSegment),
+ScanQueue::ScanQueue(const Destination &seed) : 
+    visited(MEM_TOTAL, NULL_ROUTINE),
     start(seed.address)
 {
     queue.push_front(seed);
     entrypoints.emplace_back(RoutineEntrypoint(start, seed.routineId));
 }
 
-string SearchQueue::statusString() const { 
+string ScanQueue::statusString() const { 
     return "[r"s + to_string(curSearch.routineId) + "/q" + to_string(size()) + "]"; 
 } 
 
-int SearchQueue::getRoutineId(Offset off) const { 
-    assert(off >= load);
-    off -= load;
+RoutineId ScanQueue::getRoutineId(Offset off) const { 
     assert(off < visited.size());
     return visited.at(off); 
 }
 
-void SearchQueue::setRoutineId(Offset off, const Size length, int id) {
+void ScanQueue::setRoutineId(Offset off, const Size length, RoutineId id) {
     if (id == NULL_ROUTINE) id = curSearch.routineId;
-    assert(off >= load);
-    off -= load;
     assert(off < visited.size());
     fill(visited.begin() + off, visited.begin() + off + length, id);
 }
 
-SearchPoint SearchQueue::nextPoint(const bool front) {
+Destination ScanQueue::nextPoint(const bool front) {
     if (!empty()) {
         if (front) {
             curSearch = queue.front();
@@ -533,15 +530,15 @@ SearchPoint SearchQueue::nextPoint(const bool front) {
     return curSearch;
 }
 
-bool SearchQueue::hasPoint(const Address &dest, const bool call) const {
-    SearchPoint findme(dest, 0, call, RegisterState());
-    const auto &it = std::find_if(queue.begin(), queue.end(), [&](const SearchPoint &p){
+bool ScanQueue::hasPoint(const Address &dest, const bool call) const {
+    Destination findme(dest, 0, call, RegisterState());
+    const auto &it = std::find_if(queue.begin(), queue.end(), [&](const Destination &p){
         return p.match(findme);
     });
     return it != queue.end();
 };
 
-int SearchQueue::isEntrypoint(const Address &addr) const {
+RoutineId ScanQueue::isEntrypoint(const Address &addr) const {
     const auto &found = std::find(entrypoints.begin(), entrypoints.end(), addr);
     if (found != entrypoints.end()) return found->id;
     else return NULL_ROUTINE;
@@ -549,8 +546,8 @@ int SearchQueue::isEntrypoint(const Address &addr) const {
 
 // function call, create new routine at destination if either not visited, 
 // or visited but destination was not yet discovered as a routine entrypoint and this call now takes precedence and will replace it
-void SearchQueue::saveCall(const Address &dest, const RegisterState &regs) {
-    const int destId = getRoutineId(dest.toLinear());
+void ScanQueue::saveCall(const Address &dest, const RegisterState &regs) {
+    const RoutineId destId = getRoutineId(dest.toLinear());
     if (isEntrypoint(dest)) 
         debug("Address "s + dest.toString() + " already registered as entrypoint for routine " + to_string(destId));
     else if (hasPoint(dest, true)) 
@@ -561,32 +558,34 @@ void SearchQueue::saveCall(const Address &dest, const RegisterState &regs) {
             debug("call destination not belonging to any routine, claiming as entrypoint for new routine " + to_string(newRoutineId));
         else 
             debug("call destination belonging to routine " + to_string(destId) + ", reclaiming as entrypoint for new routine " + to_string(newRoutineId));
-        queue.emplace_front(SearchPoint(dest, newRoutineId, true, regs));
+        queue.emplace_front(Destination(dest, newRoutineId, true, regs));
         entrypoints.emplace_back(RoutineEntrypoint(dest, newRoutineId));
     }
 }
 
 // conditional jump, save as destination to be investigated, belonging to current routine
-void SearchQueue::saveJump(const Address &dest, const RegisterState &regs) {
-    const int destId = getRoutineId(dest.toLinear());
+void ScanQueue::saveJump(const Address &dest, const RegisterState &regs) {
+    const RoutineId destId = getRoutineId(dest.toLinear());
     if (destId != NULL_ROUTINE) 
         debug("Jump destination already visited from routine "s + to_string(destId));
     else if (hasPoint(dest, false))
         debug("Queue already contains jump to address "s + dest.toString());
     else { // not claimed by any routine and not yet in queue
-        queue.emplace_front(SearchPoint(dest, curSearch.routineId, false, regs));
+        queue.emplace_front(Destination(dest, curSearch.routineId, false, regs));
         debug("Jump destination not yet visited, scheduled visit from routine " + to_string(curSearch.routineId) + ", queue size = " + to_string(size()));
     }
 }
 
-void SearchQueue::dumpVisited(const string &path) const {
+// This is very slow!
+void ScanQueue::dumpVisited(const string &path, const Offset start, Size size) const {
     // dump map to file for debugging
     ofstream mapFile(path);
     mapFile << "      ";
     for (int i = 0; i < 16; ++i) mapFile << hex << setw(5) << setfill(' ') << i << " ";
     mapFile << endl;
-    for (Offset mapOffset = load; mapOffset < load + visited.size(); ++mapOffset) {
-        const int id = getRoutineId(mapOffset);
+    if (size == 0) size = visited.size();
+    for (Offset mapOffset = start; mapOffset < size; ++mapOffset) {
+        const auto id = getRoutineId(mapOffset);
         //debug(hexVal(mapOffset) + ": " + to_string(m));
         if (mapOffset % 16 == 0) {
             if (mapOffset != 0) mapFile << endl;
@@ -602,7 +601,7 @@ Executable::Executable(const MzImage &mz, const Address &ep) :
     codeSize(mz.loadModuleSize()),
     entrypoint(ep.isValid() ? ep : mz.entrypoint()), 
     stack(mz.stackPointer()), 
-    codeExtents({loadSegment, 0}, Address(SEG_TO_OFFSET(loadSegment) + codeSize))
+    codeExtents({loadSegment, Word(0)}, Address(SEG_TO_OFFSET(loadSegment) + codeSize))
 {
     // relocate entrypoint and stack
     entrypoint.segment += loadSegment;
@@ -755,7 +754,7 @@ void Executable::setEntrypoint(const Address &addr) {
 }
 
 // TODO: this should be a member of SearchQueue
-void Executable::saveBranch(const Branch &branch, const RegisterState &regs, const Block &codeExtents, SearchQueue &sq) const {
+void Executable::saveBranch(const Branch &branch, const RegisterState &regs, const Block &codeExtents, ScanQueue &sq) const {
     if (!branch.destination.isValid())
         return;
 
@@ -777,13 +776,13 @@ RoutineMap Executable::findRoutines() {
     RegisterState initRegs{entrypoint, stack};
     debug("initial register values:\n"s + initRegs.toString());
     // queue for BFS search
-    SearchQueue searchQ(codeSize, loadSegment, SearchPoint(entrypoint, 1, true, initRegs));
+    ScanQueue searchQ{Destination(entrypoint, 1, true, initRegs)};
     info("Analyzing code within extents: "s + codeExtents);
 
     // iterate over entries in the search queue
     while (!searchQ.empty()) {
         // get a location from the queue and jump to it
-        const SearchPoint search = searchQ.nextPoint();
+        const Destination search = searchQ.nextPoint();
         csip = search.address;
         searchMessage("--- starting search at new location for routine " + to_string(search.routineId) + ", call: "s + to_string(search.isCall) + ", queue = " + to_string(searchQ.size()));
         RegisterState regs = search.regs;
@@ -792,7 +791,7 @@ RoutineMap Executable::findRoutines() {
             if (!codeExtents.contains(csip))
                 throw AnalysisError("Advanced past loaded code extents: "s + csip.toString());
             // check if this location was visited before
-            const int rid = searchQ.getRoutineId(csip.toLinear());
+            const auto rid = searchQ.getRoutineId(csip.toLinear());
             if (rid != NULL_ROUTINE) {
                 // make sure we do not steamroll over previously explored instructions from a wild jump (a call has precedence)
                 if (!search.isCall) {
@@ -800,7 +799,7 @@ RoutineMap Executable::findRoutines() {
                     break;
                 }
             }
-            const int isEntry = searchQ.isEntrypoint(csip);
+            const auto isEntry = searchQ.isEntrypoint(csip);
             // similarly, protect yet univisited locations which are however recognized as routine entrypoints, unless visiting from a matching routine id
             if (isEntry != NULL_ROUTINE && isEntry != search.routineId) {
                 searchMessage("location marked as entrypoint for routine "s + to_string(isEntry) + " while scanning from " + to_string(search.routineId) + ", halting scan");
@@ -839,11 +838,11 @@ RoutineMap Executable::findRoutines() {
         } // next instructions
     } // next address from search queue
     info("Done analyzing code");
-    // debug
-    searchQ.dumpVisited("routines.visited");
+    // XXX: debug, remove
+    searchQ.dumpVisited("routines.visited", SEG_TO_OFFSET(loadSegment), codeSize);
 
     // iterate over discovered memory map and create routine map
-    return RoutineMap{searchQ};
+    return RoutineMap{searchQ, loadSegment, codeSize};
 }
 
 static string compareStatus(const Instruction &i1, const Instruction &i2, const bool align = true) {
@@ -872,11 +871,11 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
     // map of equivalent addresses in the compared binaries, seed with the two entrypoints
     std::map<Address, Address> addrMap{{entrypoint, other.entrypoint}};
     // queue of locations (in reference binary) for comparison, likewise seeded with the entrypoint
-    SearchQueue compareQ(codeSize, loadSegment, SearchPoint(entrypoint, 1, true, initRegs));
-    const int VISITED_ID = 1;
+    ScanQueue compareQ(Destination(entrypoint, 1, true, initRegs));
+    const RoutineId VISITED_ID = 1;
     while (!compareQ.empty()) {
         // get next location for linear scan and comparison of instructions
-        const SearchPoint compare = compareQ.nextPoint(false);
+        const Destination compare = compareQ.nextPoint(false);
         debug("Now at reference location "s + compare.address.toString() + ", queue size = " + to_string(compareQ.size()));
         // get corresponding address in other binary
         csip = compare.address;

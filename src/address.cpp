@@ -16,7 +16,7 @@ static const regex
     DECSIZE_RE{"\\+([0-9]{1,7})"};
 
 Address::Address(const Offset linear) {
-    set(linear);
+    set(linear, true);
 }
 
 Address::Address(const std::string &str) {
@@ -26,10 +26,10 @@ Address::Address(const std::string &str) {
         offset  = stoi(match.str(2), nullptr, 16);
     }
     else if (regex_match(str, match, HEXOFFSET_RE)) {
-        set(stoi(match.str(1), nullptr, 16));
+        set(stoi(match.str(1), nullptr, 16), true);
     }
     else if (regex_match(str, match, DECOFFSET_RE)) {
-        set(stoi(match.str(1), nullptr, 10));
+        set(stoi(match.str(1), nullptr, 10), true);
     }
     else
         throw ArgError("Invalid address string: "s + str);
@@ -39,10 +39,11 @@ Address::Address(const Address &other, const SWord displacement) : segment(other
     offset += displacement;
 }
 
-void Address::set(const Offset linear) {
+void Address::set(const Offset linear, const bool normal) {
     if (linear >= MEM_TOTAL) throw MemoryError("Linear address too big while converting to segmented representation: "s + hexVal(linear));
     segment = static_cast<Word>(linear >> SEGMENT_SHIFT);
-    offset = static_cast<Word>(linear & OFFSET_MASK);
+    offset = static_cast<Word>(linear & OFFSET_NORMAL_MASK);
+    if (normal) normalize();
 }
 
 Address Address::operator+(const DWord arg) const {
@@ -63,14 +64,14 @@ std::string Address::toString(const bool brief) const {
 // move bulk of the offset to the segment part, limit offset to the modulus of a paragraph
 void Address::normalize() {
     segment += offset >> SEGMENT_SHIFT;
-    offset &= OFFSET_MASK;
+    offset &= OFFSET_NORMAL_MASK;
 }
 
 void Address::rebase(const Word base) {
     auto linear = toLinear(), baseLinear = SEG_TO_OFFSET(base);
     if (linear < baseLinear) throw MemoryError("Unable to rebase address " + toString() + " to " + hexVal(base));
     linear -= baseLinear;
-    set(linear);
+    set(linear, true);
 }
 
 std::ostream& operator<<(std::ostream &os, const Address &arg) {

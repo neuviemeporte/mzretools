@@ -6,11 +6,18 @@
 #include "dos/types.h"
 
 static constexpr Size MEM_TOTAL = 1_MB;
-static constexpr int SEGMENT_SHIFT = 4;
-static constexpr int OFFSET_MASK = 0xf;
+static constexpr Size SEGMENT_SIZE = 64_kB;
+// amount of right shift needed to convert linear offset values into segment values (losing the 16 byte aliasing factor), or left shift for the opposite (segment to linear)
+static constexpr int SEGMENT_SHIFT = 4; 
+// amount of shift needed to obtain the count of full, 64k size segments covered by a linear offset
+static constexpr int SEGMENT_SIZE_SHIFT = 16;
+static constexpr Offset OFFSET_MASK = 0xffff;
+// masking to apply to obtain the normalized offset value (the aliasing factor)
+static constexpr Offset OFFSET_NORMAL_MASK = 0xf;
 static constexpr int OFFSET_STRLEN = 6; // 6 hex digits for linear offsets up to 0x100000
 static constexpr int WORD_STRLEN = 4;   // 4 hex digits for segment values up to 0xffff
 static constexpr Word ADDR_INVALID = 0xffff;
+static constexpr Offset OFFSET_MAX = 0xffff;
 
 inline Offset SEG_TO_OFFSET(const Word seg) { return static_cast<Offset>(seg) << SEGMENT_SHIFT; }
 inline Word OFFSET_TO_SEG(const Offset off) { return static_cast<Word>(off >> SEGMENT_SHIFT); }
@@ -18,6 +25,9 @@ inline Size BYTES_TO_PARA(const Size bytes) { return bytes / PARAGRAPH_SIZE + (b
 inline const Word* WORD_PTR(const Byte* buf, const Offset off = 0) { return reinterpret_cast<const Word*>(buf + off); }
 inline Word DWORD_SEGMENT(const DWord val) { return val >> 16; }
 inline Word DWORD_OFFSET(const DWord val) { return val & 0xffff; }
+inline bool linearPastSegment(const Offset linear, const Word segment) { return linear >= SEG_TO_OFFSET(segment); }
+inline bool linearInSegment(const Offset linear, const Word segment) { return linearPastSegment(linear, segment) && linear - SEG_TO_OFFSET(segment) <= OFFSET_MAX; }
+//inline Word linear
 
 // A segmented address
 struct Address {
@@ -45,7 +55,7 @@ struct Address {
     Address& operator+=(const SByte adjust) { offset += adjust; return *this; }
     Address& operator+=(const Byte adjust) { offset += adjust; return *this; }
 
-    void set(const Offset linear);
+    void set(const Offset linear, const bool normal);
     std::string toString(const bool brief = false) const;
     inline Offset toLinear() const { return SEG_TO_OFFSET(segment) + offset; }
     bool isNull() const { return segment == 0 && offset == 0; }
