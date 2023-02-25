@@ -119,11 +119,11 @@ RoutineMap::RoutineMap(const ScanQueue &sq, const Word loadSegment, const Size c
         r.name = "routine_"s + to_string(i);
     }
 
-    prevId = curBlockId = prevBlockId = NULL_ROUTINE;
-    Block b(0);
-    // TODO: messy offset vs reloc segment back and forth conversions, also generated addresses are normalized which makes the output hard to read
     const Offset startOffset = SEG_TO_OFFSET(loadSegment);
     const Offset endOffset = startOffset + codeSize;
+    Block b(startOffset);
+    prevId = curBlockId = prevBlockId = NULL_ROUTINE;
+
     for (Offset mapOffset = startOffset; mapOffset < endOffset; ++mapOffset) {
         curId = sq.getRoutineId(mapOffset);
         // do nothing as long as the value doesn't change, unless we encounter the routine entrypoint in the middle of a block, in which case we force a block close
@@ -138,7 +138,6 @@ RoutineMap::RoutineMap(const ScanQueue &sq, const Word loadSegment, const Size c
         prevId = curId;
     }
     // close last block finishing on the last byte of the memory map
-    // TODO: again with the stupid offset
     closeBlock(b, endOffset, sq);
 
     // calculate routine extents
