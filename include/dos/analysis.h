@@ -61,6 +61,27 @@ struct RoutineEntrypoint {
     bool operator==(const Address &arg) const { return addr == arg; }
 };
 
+struct Routine {
+    std::string name;
+    Block extents; // largest contiguous block starting at routine entrypoint, may contain unreachable regions
+    std::vector<Block> reachable, unreachable;
+
+    Routine() {}
+    Routine(const std::string &name, const Block &extents) : name(name), extents(extents) {}
+    Address entrypoint() const { return extents.begin; }
+    // for sorting purposes
+    bool operator<(const Routine &other) { return entrypoint() < other.entrypoint(); }
+    bool isValid() const { return extents.isValid(); }
+    bool isUnchunked() const { return reachable.size() == 1 && unreachable.empty() && reachable.front() == extents; }
+    bool isReachable(const Block &b) const;
+    bool isUnreachable(const Block &b) const;
+    Block mainBlock() const;
+    Block blockContaining(const Address &a) const;
+    bool colides(const Block &block, const bool checkExtents = true) const;
+    std::string toString(const bool showChunks = true) const;
+    std::vector<Block> sortedBlocks() const;
+};
+
 // utility class for keeping track of the queue of potentially interesting Destinations, and which bytes in the executable have been visited already
 class ScanQueue {
     friend class SystemTest;
@@ -87,33 +108,14 @@ public:
     RoutineId getRoutineId(Offset off) const;
     void setRoutineId(Offset off, const Size length, RoutineId id = NULL_ROUTINE);
     RoutineId isEntrypoint(const Address &addr) const;
+    std::vector<Routine> getRoutines() const;
     void dumpVisited(const std::string &path, const Offset start = 0, Size size = 0) const;
 
 private:
     ScanQueue() {}
 };
 
-struct Routine {
-    std::string name;
-    Block extents; // largest contiguous block starting at routine entrypoint, may contain unreachable regions
-    std::vector<Block> reachable, unreachable;
-
-    Routine() {}
-    Routine(const std::string &name, const Block &extents) : name(name), extents(extents) {}
-    Address entrypoint() const { return extents.begin; }
-    // for sorting purposes
-    bool operator<(const Routine &other) { return entrypoint() < other.entrypoint(); }
-    bool isValid() const { return extents.isValid(); }
-    bool isUnchunked() const { return reachable.size() == 1 && unreachable.empty() && reachable.front() == extents; }
-    bool isReachable(const Block &b) const;
-    bool isUnreachable(const Block &b) const;
-    Block mainBlock() const;
-    Block blockContaining(const Address &a) const;
-    bool colides(const Block &block, const bool checkExtents = true) const;
-    std::string toString(const bool showChunks = true) const;
-    std::vector<Block> sortedBlocks() const;
-};
-
+// A map of an executable, records which areas have been claimed by routines, and which have not, serializable to a file
 class RoutineMap {
     friend class SystemTest;
     Word reloc;
@@ -139,6 +141,7 @@ public:
 private:
     RoutineMap() : reloc(0) {}
     void closeBlock(Block &b, const Offset off, const ScanQueue &sq);
+    Block moveBlock(const Block &b, const Word segment) const;
     void sort();
     void loadFromMapFile(const std::string &path);
     void loadFromIdaFile(const std::string &path);

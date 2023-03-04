@@ -60,9 +60,11 @@ struct Address {
     inline Offset toLinear() const { return SEG_TO_OFFSET(segment) + offset; }
     bool isNull() const { return segment == 0 && offset == 0; }
     bool isValid() const { return segment != ADDR_INVALID || offset != ADDR_INVALID; }
+    bool inSegment(const Word arg) const { return toLinear() >= SEG_TO_OFFSET(arg) && toLinear() - SEG_TO_OFFSET(arg) <= OFFSET_MAX; }
     void normalize();
     void relocate(const Word reloc) { segment += reloc; }
     void rebase(const Word base);
+    void move(const Word segment);
 };
 std::ostream& operator<<(std::ostream &os, const Address &arg);
 inline std::string operator+(const std::string &str, const Address &arg) { return str + arg.toString(); }
@@ -84,12 +86,14 @@ struct Block {
     std::string toString(const bool linear = false, const bool showSize = true) const;
     Size size() const { return (isValid() ? (end - begin) + 1 : 0); }
     bool isValid() const { return begin <= end; }
+    bool inSegment(const Word seg) const { return begin.inSegment(seg) && end.inSegment(seg); }
     bool contains(const Address &addr) const { return addr >= begin && addr <= end; }
     bool intersects(const Block &other) const;
     bool adjacent(const Block &other) const;
 
     void relocate(const Word reloc) { begin.relocate(reloc); end.relocate(reloc); }
     void rebase(const Word base) { begin.rebase(base); end.rebase(base); }
+    void move(const Word seg) { begin.move(seg); end.move(seg); }
     void coalesce(const Block &other);
     Block coalesce(const Block &other) const;
 };

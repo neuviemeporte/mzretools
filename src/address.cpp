@@ -74,6 +74,13 @@ void Address::rebase(const Word base) {
     set(linear, true);
 }
 
+// move address to another segment, if possible
+void Address::move(const Word arg) {
+    if (!inSegment(arg)) throw MemoryError("Unable to move address "s + toString() + " to segment " + hexVal(arg));
+    offset = toLinear() - SEG_TO_OFFSET(arg);
+    segment = arg;
+}
+
 std::ostream& operator<<(std::ostream &os, const Address &arg) {
     return os << arg.toString();
 }

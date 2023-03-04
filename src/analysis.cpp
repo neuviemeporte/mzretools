@@ -32,6 +32,10 @@ static void error(const string &msg) {
     output("ERROR: "s + msg, LOG_ANALYSIS, LOG_ERROR);
 }
 
+static void warn(const string &msg) {
+    output("WARNING: "s + msg, LOG_ANALYSIS, LOG_WARN);
+}
+
 bool Routine::isReachable(const Block &b) const {
     return std::find(reachable.begin(), reachable.end(), b) != reachable.end();
 }
@@ -111,13 +115,7 @@ RoutineMap::RoutineMap(const ScanQueue &sq, const Word loadSegment, const Size c
     if (routineCount == 0)
         throw AnalysisError("Attempted to create routine map from search queue with no routines");
     info("Building routine map from search queue contents ("s + to_string(routineCount) + " routines)");
-    routines = vector<Routine>{routineCount};
-    // assign automatic names to routines
-    for (Size i = 1; i <= routines.size(); ++i) {
-        auto &r = routines.at(i - 1);
-        if (!r.name.empty()) continue;
-        r.name = "routine_"s + to_string(i);
-    }
+    routines = sq.getRoutines();
 
     const Offset startOffset = SEG_TO_OFFSET(loadSegment);
     const Offset endOffset = startOffset + codeSize;
@@ -220,36 +218,51 @@ void RoutineMap::closeBlock(Block &b, const Offset off, const ScanQueue &sq) {
         + ", curBlockId = " + to_string(curBlockId) + ", prevBlockId = " + to_string(prevBlockId));
     if (!b.isValid())
         throw AnalysisError("Attempted to close invalid block");
-    if (curBlockId != NULL_ROUTINE) { // block contains reachable code
+
+    // block contains reachable code
+    if (curBlockId != NULL_ROUTINE) { 
         // get handle to matching routine
         assert(curBlockId - 1 < routines.size());
         Routine &r = routines.at(curBlockId - 1);
-        debug("closed reachable block " + b.toString() + " for routine_" + to_string(curBlockId));
+        const Word epSeg = r.entrypoint().segment;
         if (sq.isEntrypoint(b.begin)) { // this is the entrypoint block of the routine
             debug("block starts at routine entrypoint");
-            assert(!r.extents.isValid());
-            // set entrypoint of routine
-            r.extents.begin = b.begin;
-            if (b.begin == sq.startAddress()) r.name = "start";
         }
         // add reachable block
-        r.reachable.push_back(b);
+        // addresses created from map offsets lose the original segment information, 
+        // so move the block into the segment of the routine's entrypoint, if possible
+        assert(r.entrypoint().isValid());
+        r.reachable.push_back(moveBlock(b, r.entrypoint().segment));
     }
     // block contains unreachable code or data, attribute to a routine if surrounded by that routine's blocks on both sides
     else if (prevBlockId != NULL_ROUTINE && curId == prevBlockId) { 
         // get handle to matching routine
         assert(prevBlockId - 1 < routines.size());
         Routine &r = routines.at(prevBlockId - 1);
-        debug("closed unreachable block " + b.toString() + " for routine_" + to_string(prevBlockId));
-        r.unreachable.push_back(b);
+        assert(r.entrypoint().isValid());
+        r.unreachable.push_back(moveBlock(b, r.entrypoint().segment));
     }
+    // block is unreachable and unclaimed by any routine
     else {
         assert(curBlockId == NULL_ROUTINE);
         debug("closed unclaimed block " + b.toString());
-        unclaimed.push_back(b);
+        // try to move the unclaimed block into the executable's original load segment
+        unclaimed.push_back(moveBlock(b, reloc));
     }
+
     // remember the id of the block we just closed
     prevBlockId = curBlockId;
+}
+
+Block RoutineMap::moveBlock(const Block &b, const Word segment) const {
+    Block block(b);
+    if (block.inSegment(segment)) {
+        block.move(segment);
+    }
+    else {
+        warn("Unable to move block "s + block.toString() + " to segment " + hexVal(segment));
+    }
+    return block;
 }
 
 void RoutineMap::sort() {
@@ -541,6 +554,20 @@ RoutineId ScanQueue::isEntrypoint(const Address &addr) const {
     const auto &found = std::find(entrypoints.begin(), entrypoints.end(), addr);
     if (found != entrypoints.end()) return found->id;
     else return NULL_ROUTINE;
+}
+
+// return the set of routines found by the queue, these will only have the entrypoint set and an automatic name generated
+vector<Routine> ScanQueue::getRoutines() const {
+    auto routines = vector<Routine>{routineCount()};
+    for (const auto &ep : entrypoints) {
+        auto &r = routines.at(ep.id - 1);
+        // initialize routine extents with entrypoint address
+        r.extents = Block(ep.addr);
+        // assign automatic names to routines
+        if (ep.addr == startAddress()) r.name = "start";
+        else r.name = "routine_"s + to_string(ep.id);
+    }   
+    return routines;
 }
 
 // function call, create new routine at destination if either not visited, 
