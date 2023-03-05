@@ -156,6 +156,7 @@ RoutineMap::RoutineMap(const ScanQueue &sq, const Word loadSegment, const Size c
         }
         debug("Calculated routine extents: "s + r.toString(false));
     }
+    
     sort();
 }
 

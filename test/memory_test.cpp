@@ -33,6 +33,27 @@ TEST_F(MemoryTest, Segmentation) {
     ASSERT_EQ(a.toLinear(), 0x8124);
 }
 
+TEST_F(MemoryTest, Move) {
+    Address src(0x1234, 0xa);
+    TRACELN("source: " + src.toString());
+    
+    const Word dest = 0x1000;
+    Address a = src;
+    a.move(dest);
+    TRACELN("after move to " + hexVal(dest) + ": " + a.toString());
+    ASSERT_EQ(a, src);
+    ASSERT_EQ(a.segment, dest);
+    ASSERT_EQ(a.offset, 0x234a);
+    
+    const Word dest2 = 0x2000;
+    a = src;
+    a.mov e(dest2);
+    TRACELN("after move to " + hexVal(dest2) + ": " + a.toString());
+    ASSERT_EQ(a, src);
+    ASSERT_EQ(a.segment, dest);
+    ASSERT_EQ(a.offset, 0x234a);
+}
+
 TEST_F(MemoryTest, Advance) {
     Address a(0xabcd, 0x10);
     vector<SByte> disp8{ 10, 100, INT8_MAX, static_cast<SByte>(UINT16_MAX), -10, -100, INT8_MIN };
