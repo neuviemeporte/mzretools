@@ -44,14 +44,6 @@ TEST_F(MemoryTest, Move) {
     ASSERT_EQ(a, src);
     ASSERT_EQ(a.segment, dest);
     ASSERT_EQ(a.offset, 0x234a);
-    
-    const Word dest2 = 0x2000;
-    a = src;
-    a.mov e(dest2);
-    TRACELN("after move to " + hexVal(dest2) + ": " + a.toString());
-    ASSERT_EQ(a, src);
-    ASSERT_EQ(a.segment, dest);
-    ASSERT_EQ(a.offset, 0x234a);
 }
 
 TEST_F(MemoryTest, Advance) {

@@ -6,6 +6,7 @@ release/
 *.id1
 *.nam
 *.til
+*.swp
 bin/*.asm
 bin/*.map
 bin/*.exe

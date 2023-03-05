@@ -344,6 +344,7 @@ void RoutineMap::loadFromMapFile(const std::string &path) {
                 char blockType = token.front(); 
                 Block block{token.substr(1, token.size() - 1)};
                 block.relocate(reloc);
+                block.move(reloc);
                 // check block for collisions agains rest of routines already in the map as well as the currently built routine
                 Routine colideRoutine = colidesBlock(block);
                 if (!colideRoutine.isValid() && r.colides(block, false)) 

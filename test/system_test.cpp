@@ -169,7 +169,7 @@ TEST_F(SystemTest, FindRoutines) {
     const Size idaMatchCount = 37; // not all 54 routines that ida finds can be identified for now    
     // compare our map against IDA map
     Size matchCount = idaMap.match(discoveredMap);
-    TRACELN("Found matching " << matchCount << " routines out of " << idaMap.size());
+    TRACELN("Discovered vs IDA, found matching " << matchCount << " routines out of " << idaMap.size());
     ASSERT_GE(matchCount, idaMatchCount);
     
     // save to file and reload
@@ -179,8 +179,12 @@ TEST_F(SystemTest, FindRoutines) {
 
     // check matching in the opposite direction, should be the same
     matchCount = reloadMap.match(idaMap);
-    TRACELN("Found matching " << matchCount << " routines out of " << discoveredMap.size());
+    TRACELN("Reload vs IDA, found matching " << matchCount << " routines out of " << reloadMap.size());
     ASSERT_GE(matchCount, idaMatchCount);
+
+    matchCount = discoveredMap.match(reloadMap);
+    TRACELN("Discovered vs reload, found matching " << matchCount << " routines out of " << discoveredMap.size());
+    ASSERT_EQ(matchCount, discoveredMap.size());
 }
 
 TEST_F(SystemTest, RoutineMapCollision) {
