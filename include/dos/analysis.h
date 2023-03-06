@@ -152,6 +152,17 @@ struct Branch {
     bool isCall, isUnconditional;
 };
 
+struct AnalysisOptions {
+    bool ignoreDiff;
+    AnalysisOptions() : ignoreDiff(false) {}
+};
+
+struct AnalysisResult {
+    bool success;
+    std::string info;
+    AnalysisResult(bool success, const std::string &info) : success(success), info(info) {}
+};
+
 class Executable {
     friend class SystemTest;
     const Memory code;
@@ -165,7 +176,7 @@ public:
     explicit Executable(const MzImage &mz, const Address &entrypoint = Address());
     bool contains(const Address &addr) const { return codeExtents.contains(addr); }
     RoutineMap findRoutines();
-    bool compareCode(const RoutineMap &map, const Executable &other);
+    AnalysisResult compareCode(const RoutineMap &map, const Executable &other, const AnalysisOptions &options);
 
 private:
     void searchMessage(const std::string &msg) const;

@@ -222,12 +222,12 @@ TEST_F(SystemTest, CodeCompare) {
     auto map = RoutineMap{"hello.map"};
 
     // compare identical 
-    ASSERT_TRUE(e1.compareCode(map, e2));
+    ASSERT_TRUE(e1.compareCode(map, e2, {}));
 
     // compare different
     setEntrypoint(e1, Address(0x115e)); // getnum
     setEntrypoint(e2, Address(0x8d0)); // _fflush
-    ASSERT_FALSE(e1.compareCode(map, e2));
+    ASSERT_FALSE(e1.compareCode(map, e2, {}));
 }
 
 TEST_F(SystemTest, SignedHex) {

@@ -890,7 +890,7 @@ static string compareStatus(const Instruction &i1, const Instruction &i2, const 
     return status;
 }
 
-bool Executable::compareCode(const RoutineMap &routineMap, const Executable &other) {
+AnalysisResult Executable::compareCode(const RoutineMap &routineMap, const Executable &other, const AnalysisOptions &options) {
     if (routineMap.empty()) {
         throw AnalysisError("Unable to compare executables, routine map is empty");
     }
@@ -943,13 +943,12 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
             case INS_MATCH_DIFFOP1:
             case INS_MATCH_DIFFOP2:
             case INS_MATCH_MISMATCH:
-                error("Instruction mismatch at "s + compareStatus(iRef, iObj, false));
-                return false;
+                if (options.ignoreDiff) break;
+                return { false, "Instruction mismatch in routine " + routine.name + " at "s + compareStatus(iRef, iObj, false) };
             default:
                 throw AnalysisError("Invalid instruction match result");
             }
             // comparison okay, determine where to go next based on instruction contents
-            assert(iRef.iclass == iObj.iclass);
             if (instructionIsBranch(iRef)) {
                 Branch branch = getBranch(iRef, regs);
                 // do not differentiate calls, we don't need the queue to track them since we already have the routine map
@@ -970,8 +969,7 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
                         }
                         // already present, make sure it matches the current value
                         else if (objAddr != objObranch.destination) { 
-                            error("Reference branch destination "s + branch.destination.toString() + " previously mapped to other " + objAddr.toString() + " now resolves to " + objObranch.destination.toString());
-                            return false;
+                            return { false, "Reference branch destination "s + branch.destination.toString() + " previously mapped to other " + objAddr.toString() + " now resolves to " + objObranch.destination.toString() };
                         }
                     }
                     if (branch.isUnconditional) {
@@ -989,6 +987,6 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
             }
         } // iterate over instructions at comparison location
     } // iterate over comparison queue
-    verbose("Comparison result positive");
-    return true;
+
+    return { true, "Comparison result positive" };
 }

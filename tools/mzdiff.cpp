@@ -14,6 +14,9 @@
 
 using namespace std;
 
+// TODO: 
+// - mode to figure out main() address automatically, call to main seems to be always at offset 0x8d into MSC start function code
+
 void usage() {
     output("usage: mzdiff <base.exe[:entrypoint]> <base.map> <compare.exe[:entrypoint]> [options]\n"
            "Compares two DOS MZ executables instruction by instruction, accounting for differences in code layout\n"
@@ -21,7 +24,9 @@ void usage() {
            "--verbose: show more detailed information, including compared instructions\n"
            "--debug:   show additional debug information\n"
            "--nocpu:   omit CPU-related information like instruction decoding\n"
-           "--noanal:  omit analysis-related information", LOG_OTHER, LOG_ERROR);
+           "--noanal:  omit analysis-related information\n"
+           "--idiff:   ignore differences completely",
+           LOG_OTHER, LOG_ERROR);
     exit(1);
 }
 
@@ -45,7 +50,8 @@ string mzInfo(const MzImage &mz) {
     return str.str();
 }
 
-Executable loadExe(const string &spec) {
+Executable loadExe(const string &spec, const Word segment) {
+    // TODO: support providing segment for entrypoint
     static const regex EXESPEC_RE{"([-_./a-zA-Z0-9]*)(:([a-fA-F0-9]+))?"};
     smatch match;
     if (!regex_match(spec, match, EXESPEC_RE)) {
@@ -58,38 +64,45 @@ Executable loadExe(const string &spec) {
     else if (stat.size <= MZ_HEADER_SIZE) fatal("File too small ("s + to_string(stat.size) + "B): " + path); 
 
     MzImage mz{path};
-    mz.load(0);
+    mz.load(segment);
     debug(mzInfo(mz));
     if (entrypoint.empty())
         return Executable(mz);
     else {
         Offset epOffset = static_cast<Offset>(stoi(entrypoint, nullptr, 16));
         Address epAddr(epOffset);
+        epAddr.move(0);
         debug("Entrypoint override: "s + epAddr.toString());
         return Executable(mz, epAddr);
     }
 }
 
 int main(int argc, char *argv[]) {
+    const Word loadSeg = 0x1000;
     setOutputLevel(LOG_WARN);
     if (argc < 4) {
         usage();
     }
+    AnalysisOptions opt;
     for (int aidx = 4; aidx < argc; ++aidx) {
         string arg(argv[aidx]);
         if (arg == "--debug") setOutputLevel(LOG_DEBUG);
         else if (arg == "--verbose") setOutputLevel(LOG_VERBOSE);
         else if (arg == "--nocpu") setModuleVisibility(LOG_CPU, false);
         else if (arg == "--noanal") setModuleVisibility(LOG_ANALYSIS, false);
+        else if (arg == "--idiff") opt.ignoreDiff = true;
         else fatal("Unrecognized parameter: "s + arg);
     }
     const string baseSpec{argv[1]}, pathMap{argv[2]}, compareSpec{argv[3]};
     try {
-        Executable exeBase = loadExe(baseSpec);
-        Executable exeCompare = loadExe(compareSpec);
-        RoutineMap map(pathMap);
-        if (!exeBase.compareCode(map, exeCompare))
+        Executable exeBase = loadExe(baseSpec, loadSeg);
+        Executable exeCompare = loadExe(compareSpec, loadSeg);
+        RoutineMap map(pathMap, loadSeg);
+        auto result = exeBase.compareCode(map, exeCompare, opt);
+        if (!result.success) {
+            info(result.info);
             return 1;
+        }
     }
     catch (Error &e) {
         fatal(e.why());
