@@ -173,7 +173,7 @@ TEST_F(SystemTest, FindRoutines) {
     ASSERT_GE(matchCount, idaMatchCount);
     
     // save to file and reload
-    discoveredMap.save("hello.map");
+    discoveredMap.save("hello.map", true);
     RoutineMap reloadMap("hello.map", loadSegment);
     ASSERT_EQ(reloadMap.size(), discoveredMap.size());
 
@@ -197,20 +197,20 @@ TEST_F(SystemTest, RoutineMapCollision) {
     TRACELN("--- testing coliding routine extents");
     rv = { r1, r2 };
     rm.dump();
-    rm.save(path);
+    rm.save(path, true);
     ASSERT_THROW(rm = RoutineMap{path}, AnalysisError);
 
     TRACELN("--- testing coliding routine extent with chunk");
     rv = { r1, r3 };
     rv.back().reachable.push_back(b2);
     rm.dump();
-    rm.save(path);
+    rm.save(path, true);
     ASSERT_THROW(rm = RoutineMap{path}, AnalysisError);
 
     TRACELN("--- testing no colision");
     rv = { r1, r3 };
     rm.dump();
-    rm.save(path);
+    rm.save(path, true);
     rm = RoutineMap{path};
     ASSERT_EQ(rm.size(), 2);
 }

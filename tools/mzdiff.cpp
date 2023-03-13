@@ -25,7 +25,8 @@ void usage() {
            "--debug:   show additional debug information\n"
            "--nocpu:   omit CPU-related information like instruction decoding\n"
            "--noanal:  omit analysis-related information\n"
-           "--idiff:   ignore differences completely",
+           "--idiff:   ignore differences completely\n"
+           "--loose:   non-strict matching, allows e.g for literal argument differences",
            LOG_OTHER, LOG_ERROR);
     exit(1);
 }
@@ -91,6 +92,8 @@ int main(int argc, char *argv[]) {
         else if (arg == "--nocpu") setModuleVisibility(LOG_CPU, false);
         else if (arg == "--noanal") setModuleVisibility(LOG_ANALYSIS, false);
         else if (arg == "--idiff") opt.ignoreDiff = true;
+        else if (arg == "--loose") opt.strict = false;
+
         else fatal("Unrecognized parameter: "s + arg);
     }
     const string baseSpec{argv[1]}, pathMap{argv[2]}, compareSpec{argv[3]};
@@ -98,11 +101,7 @@ int main(int argc, char *argv[]) {
         Executable exeBase = loadExe(baseSpec, loadSeg);
         Executable exeCompare = loadExe(compareSpec, loadSeg);
         RoutineMap map(pathMap, loadSeg);
-        auto result = exeBase.compareCode(map, exeCompare, opt);
-        if (!result.success) {
-            info(result.info);
-            return 1;
-        }
+        if (!exeBase.compareCode(map, exeCompare, opt)) return 1;
     }
     catch (Error &e) {
         fatal(e.why());

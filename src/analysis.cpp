@@ -12,7 +12,6 @@
 #include <string>
 #include <cstring>
 #include <regex>
-#include <map>
 
 using namespace std;
 
@@ -279,8 +278,9 @@ void RoutineMap::sort() {
     }
 }
 
-void RoutineMap::save(const std::string &path) const {
+void RoutineMap::save(const std::string &path, const bool overwrite) const {
     if (empty()) return;
+    if (checkFile(path).exists && !overwrite) throw AnalysisError("Map file already exists: " + path);
     info("Saving routine map (size = " + to_string(size()) + ") to "s + path);
     ofstream file{path};
     for (const auto &r : routines) {
@@ -322,6 +322,14 @@ string RoutineMap::dump() const {
         str << r.toString(true) << endl;
     }
     return str.str();
+}
+
+void RoutineMap::setSegments(const std::vector<Segment> &seg) {
+    segments = seg;
+    debug("Map identifies following segments:");
+    for (auto &s : segments) {
+        debug(s.toString());
+    }
 }
 
 void RoutineMap::loadFromMapFile(const std::string &path) {
@@ -422,6 +430,18 @@ void RoutineMap::loadFromIdaFile(const std::string &path) {
         }
         lineno++;
     }
+}
+
+std::string Segment::toString() const {
+    ostringstream str;
+    switch (type) {
+    case SEG_CODE:  str << "CODE/"; break;
+    case SEG_DATA:  str << "CODE/"; break;
+    case SEG_STACK: str << "CODE/"; break;
+    default:        str << "???""/"; break; 
+    }
+    str << hexVal(value);
+    return str.str();
 }
 
 RegisterState::RegisterState() {
@@ -625,13 +645,14 @@ void ScanQueue::dumpVisited(const string &path, const Offset start, Size size) c
     }
 }
 
-Executable::Executable(const MzImage &mz, const Address &ep) : 
+Executable::Executable(const MzImage &mz, const Address &ep, const AnalysisOptions &opt) : 
     code(mz.loadSegment(), mz.loadModuleData(), mz.loadModuleSize()),
     loadSegment(mz.loadSegment()),
     codeSize(mz.loadModuleSize()),
     entrypoint(ep.isValid() ? ep : mz.entrypoint()), 
     stack(mz.stackPointer()), 
-    codeExtents({loadSegment, Word(0)}, Address(SEG_TO_OFFSET(loadSegment) + codeSize))
+    codeExtents({loadSegment, Word(0)}, Address(SEG_TO_OFFSET(loadSegment) + codeSize)),
+    opt(opt)
 {
     // relocate entrypoint and stack
     entrypoint.segment += loadSegment;
@@ -734,8 +755,7 @@ Branch Executable::getBranch(const Instruction &i, const RegisterState &regs) co
     return branch;
 }
 
-// TODO: this should be a member of RegisterState?
-void Executable::applyMov(const Instruction &i, RegisterState &regs) const {
+void Executable::applyMov(const Instruction &i, RegisterState &regs) {
     if (i.iclass != INS_MOV || !operandIsReg(i.op1.type)) return;
 
     const Register dest = i.op1.regId();
@@ -776,11 +796,75 @@ void Executable::applyMov(const Instruction &i, RegisterState &regs) const {
     }
     if (set) {
         searchMessage("encountered move to register: "s + i.toString());
+        if (i.op1.type == OPR_REG_DS) storeSegment({Segment::SEG_DATA, regs.getValue(REG_DS)});
+        else if (i.op1.type == OPR_REG_SS) storeSegment({Segment::SEG_STACK, regs.getValue(REG_SS)});
     }
 }
 
 void Executable::setEntrypoint(const Address &addr) {
     entrypoint = addr;
+}
+
+static string compareStatus(const Instruction &i1, const Instruction &i2, const InstructionMatch match, const bool align) {
+    static const int ALIGN = 50;
+    string status = i1.addr.toString() + ": " + i1.toString();
+    if (align && status.length() < ALIGN) status.append(ALIGN - status.length(), ' ');
+    switch (match) {
+    case INS_MATCH_FULL:     status += " == "; break;
+    case INS_MATCH_DIFF:     status += " ~~ "; break;
+    case INS_MATCH_DIFFOP1:  status += " ~= "; break;
+    case INS_MATCH_DIFFOP2:  status += " =~ "; break;
+    case INS_MATCH_MISMATCH: status += " != "; break; 
+    }
+    status += i2.addr.toString() + ": " + i2.toString();
+    return status;
+}
+
+bool Executable::instructionsMatch(const Instruction &ref, const Instruction &obj, const Routine &routine) {
+    auto result = ref.match(obj);
+    auto statusStr = compareStatus(ref, obj, result, true);
+    verbose(statusStr);
+    if (opt.ignoreDiff) return true;
+
+    bool match = (result == INS_MATCH_FULL);
+    // instructions differ in value of immediate or memory offset
+    if (result == INS_MATCH_DIFFOP1 || result == INS_MATCH_DIFFOP2) {
+        const auto &refop = (result == INS_MATCH_DIFFOP1 ? ref.op1 : ref.op2);
+        const auto &objop = (result == INS_MATCH_DIFFOP1 ? obj.op1 : obj.op2);
+        if (operandIsMemWithOffset(refop.type)) {
+            // TODO: use actual data segment value, need register state? or save segments to memory map from findRoutines()?
+            Address refAddr = refop.memAddress(loadSegment);
+            Address objAddr = objop.memAddress(loadSegment);
+            // look up the memory address of the reference instruction in the address translation map
+            Address existAddr = addrMap[refAddr];
+            if (!existAddr.isValid()) {
+                debug("Saving mapping " + refAddr.toString() + " -> " + objAddr.toString());
+                addrMap[refAddr] = objAddr;
+                match = true;
+            }
+            else if (existAddr == objAddr) {
+                debug("Existing mapping " + refAddr.toString() + " -> " + existAddr.toString());
+                match = true;
+            }
+            else {
+                debug("Existing mapping " + refAddr.toString() + " -> " + existAddr.toString() + " conflicts with " + objAddr.toString());
+            }
+        }
+        else if (operandIsImmediate(refop.type)) {
+            // ignore immediate differences in loose mode
+            if (!opt.strict) match = true;
+        }
+    }
+    
+    if (!match) error("Instruction mismatch in routine " + routine.name + " at " + compareStatus(ref, obj, result, false));
+    return match;
+}
+
+void Executable::storeSegment(const Segment &seg) {
+    auto found = std::find(segments.begin(), segments.end(), seg);
+    if (found != segments.end()) return;
+    debug("Found new segment: " + seg.toString());
+    segments.push_back(seg);
 }
 
 // TODO: this should be a member of SearchQueue
@@ -816,6 +900,8 @@ RoutineMap Executable::findRoutines() {
         csip = search.address;
         searchMessage("--- starting search at new location for routine " + to_string(search.routineId) + ", call: "s + to_string(search.isCall) + ", queue = " + to_string(searchQ.size()));
         RegisterState regs = search.regs;
+        regs.setValue(REG_CS, csip.segment);
+        storeSegment({Segment::SEG_CODE, csip.segment});
         // iterate over instructions at current search location in a linear fashion, until an unconditional jump or return is encountered
         while (true) {
             if (!codeExtents.contains(csip))
@@ -836,7 +922,6 @@ RoutineMap Executable::findRoutines() {
                 break;                
             }
             Instruction i(csip, code.pointer(csip));
-            regs.setValue(REG_CS, csip.segment);
             regs.setValue(REG_IP, csip.offset);
             // mark memory map items corresponding to the current instruction as belonging to the current routine
             searchQ.setRoutineId(csip.toLinear(), i.length);
@@ -872,34 +957,22 @@ RoutineMap Executable::findRoutines() {
     searchQ.dumpVisited("routines.visited", SEG_TO_OFFSET(loadSegment), codeSize);
 
     // iterate over discovered memory map and create routine map
-    return RoutineMap{searchQ, loadSegment, codeSize};
+    auto ret = RoutineMap{searchQ, loadSegment, codeSize};
+    ret.setSegments(segments);
+    return ret;
 }
 
-static string compareStatus(const Instruction &i1, const Instruction &i2, const bool align = true) {
-    static const int ALIGN = 50;
-    string status = i1.addr.toString() + ": " + i1.toString();
-    if (align && status.length() < ALIGN) status.append(ALIGN - status.length(), ' ');
-    switch (i1.match(i2)) {
-    case INS_MATCH_FULL:     status += " == "; break;
-    case INS_MATCH_DIFF:     status += " ~~ "; break;
-    case INS_MATCH_DIFFOP1:  status += " ~= "; break;
-    case INS_MATCH_DIFFOP2:  status += " =~ "; break;
-    case INS_MATCH_MISMATCH: status += " != "; break; 
-    }
-    status += i2.addr.toString() + ": " + i2.toString();
-    return status;
-}
-
-AnalysisResult Executable::compareCode(const RoutineMap &routineMap, const Executable &other, const AnalysisOptions &options) {
+bool Executable::compareCode(const RoutineMap &routineMap, const Executable &other, const AnalysisOptions &options) {
     if (routineMap.empty()) {
         throw AnalysisError("Unable to compare executables, routine map is empty");
     }
     verbose("Comparing code between reference (entrypoint "s + entrypoint.toString() + ") and other (entrypoint " + other.entrypoint.toString() + ") executables\n" +
          "Routine map of reference binary has " + to_string(routineMap.size()) + " entries");
+    opt = options;
     RegisterState initRegs{entrypoint, stack};
     debug("initial register values:\n"s + initRegs.toString());
     // map of equivalent addresses in the compared binaries, seed with the two entrypoints
-    std::map<Address, Address> addrMap{{entrypoint, other.entrypoint}};
+    addrMap = {{entrypoint, other.entrypoint}};
     // queue of locations (in reference binary) for comparison, likewise seeded with the entrypoint
     ScanQueue compareQ(Destination(entrypoint, 1, true, initRegs));
     const RoutineId VISITED_ID = 1;
@@ -934,20 +1007,8 @@ AnalysisResult Executable::compareCode(const RoutineMap &routineMap, const Execu
                 iRef{csip, code.pointer(csip)}, 
                 iObj{otherCsip, other.code.pointer(otherCsip)};
             compareQ.setRoutineId(csip.toLinear(), iRef.length, VISITED_ID);
-            verbose(compareStatus(iRef, iObj));
             // compare instructions
-            switch (iRef.match(iObj)) {
-            case INS_MATCH_FULL:
-                break;
-            case INS_MATCH_DIFF:
-            case INS_MATCH_DIFFOP1:
-            case INS_MATCH_DIFFOP2:
-            case INS_MATCH_MISMATCH:
-                if (options.ignoreDiff) break;
-                return { false, "Instruction mismatch in routine " + routine.name + " at "s + compareStatus(iRef, iObj, false) };
-            default:
-                throw AnalysisError("Invalid instruction match result");
-            }
+            if (!instructionsMatch(iRef, iObj, routine)) return false;
             // comparison okay, determine where to go next based on instruction contents
             if (instructionIsBranch(iRef)) {
                 Branch branch = getBranch(iRef, regs);
@@ -969,7 +1030,8 @@ AnalysisResult Executable::compareCode(const RoutineMap &routineMap, const Execu
                         }
                         // already present, make sure it matches the current value
                         else if (objAddr != objObranch.destination) { 
-                            return { false, "Reference branch destination "s + branch.destination.toString() + " previously mapped to other " + objAddr.toString() + " now resolves to " + objObranch.destination.toString() };
+                            verbose("Reference branch destination "s + branch.destination.toString() + " previously mapped to other " + objAddr.toString() + " now resolves to " + objObranch.destination.toString());
+                            return false;
                         }
                     }
                     if (branch.isUnconditional) {
@@ -988,5 +1050,6 @@ AnalysisResult Executable::compareCode(const RoutineMap &routineMap, const Execu
         } // iterate over instructions at comparison location
     } // iterate over comparison queue
 
-    return { true, "Comparison result positive" };
+    verbose("Comparison result positive");
+    return true;
 }

@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <list>
+#include <map>
 
 #include "dos/types.h"
 #include "dos/address.h"
@@ -115,6 +116,18 @@ private:
     ScanQueue() {}
 };
 
+struct Segment {
+    enum Type {
+        SEG_CODE,
+        SEG_DATA,
+        SEG_STACK
+    } type;
+    Word value;
+    Segment(Type type, Word value) : type(type), value(value) {}
+    bool operator==(const Segment &other) const { return type == other.type && value == other.value; }
+    std::string toString() const;
+};
+
 // A map of an executable, records which areas have been claimed by routines, and which have not, serializable to a file
 class RoutineMap {
     friend class SystemTest;
@@ -122,6 +135,7 @@ class RoutineMap {
     Size codeSize;
     std::vector<Routine> routines;
     std::vector<Block> unclaimed;
+    std::vector<Segment> segments;
     // TODO: turn these into a context struct, pass around instead of members
     RoutineId curId, prevId, curBlockId, prevBlockId;
 
@@ -135,8 +149,9 @@ public:
     bool empty() const { return routines.empty(); }
     Size match(const RoutineMap &other) const;
     Routine colidesBlock(const Block &b) const;
-    void save(const std::string &path) const;
+    void save(const std::string &path, const bool overwrite = false) const;
     std::string dump() const;
+    void setSegments(const std::vector<Segment> &seg);
 
 private:
     RoutineMap() : reloc(0) {}
@@ -153,14 +168,8 @@ struct Branch {
 };
 
 struct AnalysisOptions {
-    bool ignoreDiff;
-    AnalysisOptions() : ignoreDiff(false) {}
-};
-
-struct AnalysisResult {
-    bool success;
-    std::string info;
-    AnalysisResult(bool success, const std::string &info) : success(success), info(info) {}
+    bool ignoreDiff, strict;
+    AnalysisOptions() : ignoreDiff(false), strict(true) {}
 };
 
 class Executable {
@@ -171,20 +180,25 @@ class Executable {
     Address entrypoint;
     Address csip, stack;
     Block codeExtents;
+    std::map<Address, Address> addrMap;
+    std::vector<Segment> segments;    
+    AnalysisOptions opt;
 
 public:
-    explicit Executable(const MzImage &mz, const Address &entrypoint = Address());
+    explicit Executable(const MzImage &mz, const Address &entrypoint = Address(), const AnalysisOptions &opt = AnalysisOptions());
     bool contains(const Address &addr) const { return codeExtents.contains(addr); }
     RoutineMap findRoutines();
-    AnalysisResult compareCode(const RoutineMap &map, const Executable &other, const AnalysisOptions &options);
+    bool compareCode(const RoutineMap &map, const Executable &other, const AnalysisOptions &options);
 
 private:
     void searchMessage(const std::string &msg) const;
     Branch getBranch(const Instruction &i, const RegisterState &regs) const;
     void saveBranch(const Branch &branch, const RegisterState &regs, const Block &codeExtents, ScanQueue &sq) const;
-    void applyMov(const Instruction &i, RegisterState &regs) const;
+    void applyMov(const Instruction &i, RegisterState &regs);
 
     void setEntrypoint(const Address &addr);
+    bool instructionsMatch(const Instruction &ref, const Instruction &obj, const Routine &routine);
+    void storeSegment(const Segment &seg);
 };
 
 #endif // ANALYSIS_H

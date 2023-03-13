@@ -673,6 +673,20 @@ Register Instruction::Operand::regId() const {
     return regs[idx];
 }
 
+Address Instruction::Operand::memAddress(const Word segment) const {
+    Word offset = 0;
+    if (operandIsMemWithByteOffset(type)) {
+        offset = immval.u8;
+    }
+    else if (operandIsMemWithWordOffset(type)) {
+        offset = immval.u16;
+    }
+    else {
+        return {};
+    }
+    return { segment, offset };
+}
+
 Register prefixRegId(const InstructionPrefix p) {
                                 // PRF_NONE   PRF_ES  PRF_CS  PRF_SS  PRF_DS  PRF_REPNZ PRF_REPZ
     static const Register segs[] = { REG_DS,  REG_ES, REG_CS, REG_SS, REG_DS, REG_NONE, REG_NONE };

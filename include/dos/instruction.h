@@ -115,6 +115,8 @@ INSTRUCTION_PREFIX
 
 Register prefixRegId(const InstructionPrefix p);
 
+// the offsets in memory operands (OFF8/OFF16) are signed, except for OPR_MEM_OFF16 (e.g. [0x9000])
+// TODO: OPR_MEM_OFF8 should not exist? There is no modrm MEM type that allows a 8bit offset by itself.
 #define OPERAND_TYPE \
     X(OPR_ERR) \
     X(OPR_NONE) \
@@ -180,6 +182,10 @@ inline bool operandIsReg(const OperandType type) {
 
 inline bool operandIsMem(const OperandType type) {
     return type >= OPR_MEM_BX_SI && type <= OPR_MEM_BX_OFF16;
+}
+
+inline bool operandIsMemWithOffset(const OperandType type) {
+    return type >= OPR_MEM_OFF8 && type <= OPR_MEM_BX_OFF16;
 }
 
 inline bool operandIsMemNoOffset(const OperandType type) {
@@ -259,6 +265,7 @@ public:
         std::string toString() const;
         InstructionMatch match(const Operand &other) const;
         Register regId() const;
+        Address memAddress(const Word segment) const;
     } op1, op2;
 
     Instruction();
