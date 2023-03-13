@@ -436,8 +436,8 @@ std::string Segment::toString() const {
     ostringstream str;
     switch (type) {
     case SEG_CODE:  str << "CODE/"; break;
-    case SEG_DATA:  str << "CODE/"; break;
-    case SEG_STACK: str << "CODE/"; break;
+    case SEG_DATA:  str << "DATA/"; break;
+    case SEG_STACK: str << "STACK/"; break;
     default:        str << "???""/"; break; 
     }
     str << hexVal(value);
@@ -888,6 +888,7 @@ void Executable::saveBranch(const Branch &branch, const RegisterState &regs, con
 // TODO: store references to potential jump tables (e.g. jmp cs:[bx+0xc08]), if unclaimed after initial search, try treating entries as pointers and run second search before coalescing blocks?
 RoutineMap Executable::findRoutines() {
     RegisterState initRegs{entrypoint, stack};
+    storeSegment({Segment::SEG_STACK, stack.segment});
     debug("initial register values:\n"s + initRegs.toString());
     // queue for BFS search
     ScanQueue searchQ{Destination(entrypoint, 1, true, initRegs)};
