@@ -909,11 +909,11 @@ void Executable::setEntrypoint(const Address &addr) {
     entrypoint = addr;
 }
 
-static string compareStatus(const Instruction &i1, const Instruction &i2, const InstructionMatch match, const bool align) {
+static string compareStatus(const Instruction &i1, const Instruction &i2, const bool align) {
     static const int ALIGN = 50;
     string status = i1.addr.toString() + ": " + i1.toString();
     if (align && status.length() < ALIGN) status.append(ALIGN - status.length(), ' ');
-    switch (match) {
+    switch (i1.match(i2)) {
     case INS_MATCH_FULL:     status += " == "; break;
     case INS_MATCH_DIFF:     status += " ~~ "; break;
     case INS_MATCH_DIFFOP1:  status += " ~= "; break;
@@ -924,9 +924,9 @@ static string compareStatus(const Instruction &i1, const Instruction &i2, const 
     return status;
 }
 
-bool Executable::instructionsMatch(const Instruction &ref, const Instruction &obj, const Routine &routine) {
+bool Executable::instructionsMatch(const Instruction &ref, const Instruction &obj) {
     auto result = ref.match(obj);
-    auto statusStr = compareStatus(ref, obj, result, true);
+    auto statusStr = compareStatus(ref, obj, true);
     verbose(statusStr);
     if (opt.ignoreDiff) return true;
 
@@ -961,7 +961,6 @@ bool Executable::instructionsMatch(const Instruction &ref, const Instruction &ob
         }
     }
     
-    if (!match) error("Instruction mismatch in routine " + routine.name + " at " + compareStatus(ref, obj, result, false));
     return match;
 }
 
@@ -1002,7 +1001,6 @@ void Executable::saveBranch(const Branch &branch, const RegisterState &regs, con
 }
 
 // explore the code without actually executing instructions, discover routine boundaries
-// TODO: support multiple code segments
 // TODO: identify routines through signatures generated from OMF libraries
 // TODO: trace usage of bp register (sub/add) to determine stack frame size of routines
 // TODO: store references to potential jump tables (e.g. jmp cs:[bx+0xc08]), if unclaimed after initial search, try treating entries as pointers and run second search before coalescing blocks?
@@ -1126,6 +1124,7 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
         verbose("Comparing reference @ "s + csip.toString() + ", routine " + routine.toString(false) + ", block " + compareBlock.toString(true) +  " with other @ " + otherCsip.toString());
         RegisterState regs = compare.regs;
         // keep comparing subsequent instructions at current location between the reference and other binary
+        Size skipCount = 0;
         while (true) {
             if (!contains(csip))
                 throw AnalysisError("Advanced past reference code extents: "s + csip.toString());
@@ -1137,7 +1136,19 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
                 iObj{otherCsip, other.code.pointer(otherCsip)};
             compareQ.setRoutineId(csip.toLinear(), iRef.length, VISITED_ID);
             // compare instructions
-            if (!instructionsMatch(iRef, iObj, routine)) return false;
+            const bool matchOk = instructionsMatch(iRef, iObj);
+            if (!matchOk) {
+                // attempt to skip the difference, if permitted by the options
+                skipCount++;
+                if (skipCount > opt.skipDiff) {
+                    error("Instruction mismatch in routine " + routine.name + " at " + compareStatus(iRef, iObj, false));
+                    return false;
+                }
+            }
+            else {
+                // an instruction match resets the allowed skip counter
+                skipCount = 0;
+            }
             // check if we need to stop comparing due to an unconditional jump
             if (iRef.isUnconditionalJump()) {
                 searchMessage("linear compare scan interrupted by unconditional branch");
@@ -1145,7 +1156,14 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
             }
             // advance to next instruction pair
             csip += iRef.length;
-            otherCsip += iObj.length;
+            // if the instructions did not match and we still got here, that means we are in difference skipping mode, 
+            // so don't advance to the next instruction in the compared binary, maybe the next one from the reference will match
+            if (matchOk) {
+                otherCsip += iObj.length;
+            }
+            else {
+                debug("Skipping over instruction mismatch, allowed " + to_string(skipCount) + " out of " + to_string(opt.skipDiff));
+            }
             if (csip > compareBlock.end) {
                 debug("Reached end of comparison block @ "s + csip.toString());
                 break;

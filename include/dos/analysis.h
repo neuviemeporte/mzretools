@@ -196,8 +196,9 @@ struct Branch {
 };
 
 struct AnalysisOptions {
-    bool ignoreDiff, strict;
-    AnalysisOptions() : ignoreDiff(false), strict(true) {}
+    bool strict, ignoreDiff;
+    Size skipDiff;
+    AnalysisOptions() : strict(true), ignoreDiff(false), skipDiff(0) {}
 };
 
 class Executable {
@@ -225,7 +226,7 @@ private:
     void applyMov(const Instruction &i, RegisterState &regs);
 
     void setEntrypoint(const Address &addr);
-    bool instructionsMatch(const Instruction &ref, const Instruction &obj, const Routine &routine);
+    bool instructionsMatch(const Instruction &ref, const Instruction &obj);
     void storeSegment(const Segment &seg);
 };
 
