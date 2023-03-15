@@ -119,7 +119,16 @@ std::string hexVal(const Offset val, const bool hdr, const int pad) {
     if (hdr) str << "0x";
     if (pad) str << setfill('0') << setw(pad);
     str << hex <<  val;
-    return str.str();        
+    return str.str();
+}
+
+std::string hexVal(SOffset val, const bool hdr, const int pad) {
+    std::ostringstream str;
+    if (val < 0) { str << "-"; val = -val; }
+    if (hdr) str << "0x";
+    if (pad) str << setfill('0') << setw(pad);
+    str << hex <<  val;
+    return str.str();
 }
 
 std::string hexVal(const void* ptr) {

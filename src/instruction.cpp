@@ -168,6 +168,23 @@ static const OperandSize MODRM_OPR_SIZE[] = {
     OPRSZ_BYTE,  // MODRM_CL
 };
 
+Register defaultMemSegment(const OperandType ot) {
+    if (!operandIsMem(ot)) return REG_NONE;
+    Register ret = REG_NONE;
+    switch (ot) {
+    case OPR_MEM_BP_SI:
+    case OPR_MEM_BP_DI:      
+    case OPR_MEM_BP_SI_OFF8: 
+    case OPR_MEM_BP_DI_OFF8: 
+    case OPR_MEM_BP_OFF8:    
+    case OPR_MEM_BP_SI_OFF16:
+    case OPR_MEM_BP_DI_OFF16:
+    case OPR_MEM_BP_OFF16:    ret = REG_SS; break;
+    default:                  ret = REG_DS; break;
+    }
+    return ret;
+}
+
 Instruction::Instruction() : addr{}, prefix(PRF_NONE), opcode(OP_INVALID), iclass(INS_ERR), length(0) {
 }
 
@@ -379,6 +396,37 @@ vector<Register> Instruction::touchedRegs() const {
     if (prefix == PRF_CHAIN_REPNZ || prefix == PRF_CHAIN_REPZ) 
         ret.push_back(REG_CX);
     return ret;
+}
+
+SOffset Instruction::memOffset() const {
+    // check if the instruction has a mem operand
+    const Operand *op = memOperand();
+    if (!op) return 0;
+
+    SOffset ret = 0;
+    if (op->type == OPR_MEM_OFF16) {
+        ret = op->immval.u16;
+    }
+    else if (operandIsMemWithByteOffset(op->type)) {
+        SByte offset = static_cast<SByte>(op->immval.u8);
+        ret = offset;
+    }
+    else if (operandIsMemWithWordOffset(op->type)) {
+        SWord offset = static_cast<SWord>(op->immval.u16);
+        ret = offset;
+    }
+
+    return ret;
+}
+
+Register Instruction::memSegmentId() const {
+    // check if the instruction has a mem operand
+    const Operand *op = memOperand();
+    if (!op) return REG_NONE;
+    // segment override prefix is present, use it
+    if (prefixIsSegment(prefix)) return prefixRegId(prefix);
+    // otherwise use the default segment based on the operand type
+    return defaultMemSegment(op->type);
 }
 
 static const char* INS_NAME[] = {
@@ -665,26 +713,19 @@ Size Instruction::loadImmediate(Operand &op, const Byte *data) {
     return size;
 }
 
+const Instruction::Operand* Instruction::memOperand() const {
+    const Operand *op = nullptr;
+    if (operandIsMem(op1.type)) op = &op1;
+    else if (operandIsMem(op2.type)) op = &op2;
+    return op;
+}
+
 Register Instruction::Operand::regId() const {
     static const Register regs[] = { REG_AX, REG_AL, REG_AH, REG_BX, REG_BL, REG_BH, REG_CX, REG_CL, REG_CH, REG_DX, REG_DL, REG_DH, REG_SI, REG_DI, REG_BP, REG_SP, REG_CS, REG_DS, REG_ES, REG_SS };
     if (!operandIsReg(type)) return REG_NONE;
     const int idx = type - OPR_REG_AX;
     assert(idx >= 0 && idx < sizeof(regs) / sizeof(regs[0]));
     return regs[idx];
-}
-
-Address Instruction::Operand::memAddress(const Word segment) const {
-    Word offset = 0;
-    if (operandIsMemWithByteOffset(type)) {
-        offset = immval.u8;
-    }
-    else if (operandIsMemWithWordOffset(type)) {
-        offset = immval.u16;
-    }
-    else {
-        return {};
-    }
-    return { segment, offset };
 }
 
 Register prefixRegId(const InstructionPrefix p) {

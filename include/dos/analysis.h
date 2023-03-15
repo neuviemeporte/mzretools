@@ -118,12 +118,14 @@ private:
 
 struct Segment {
     enum Type {
+        SEG_NONE,
         SEG_CODE,
         SEG_DATA,
         SEG_STACK
     } type;
     Word value;
     Segment(Type type, Word value) : type(type), value(value) {}
+    Segment(const std::string &str);
     bool operator==(const Segment &other) const { return type == other.type && value == other.value; }
     std::string toString() const;
 };
@@ -152,7 +154,9 @@ public:
     void save(const std::string &path, const bool overwrite = false) const;
     std::string dump() const;
     void setSegments(const std::vector<Segment> &seg);
-
+    const auto& getSegments() const { return segments; }
+    Size segmentCount(const Segment::Type type) const;
+    
 private:
     RoutineMap() : reloc(0) {}
     void closeBlock(Block &b, const Offset off, const ScanQueue &sq);
@@ -160,6 +164,30 @@ private:
     void sort();
     void loadFromMapFile(const std::string &path);
     void loadFromIdaFile(const std::string &path);
+};
+
+class OffsetMap {
+    using MapSet = std::vector<SOffset>;
+    Size maxData;
+    std::map<Address, Address> codeMap;
+    std::map<SOffset, MapSet> dataMap;
+    std::map<SOffset, SOffset> stackMap;
+
+public:
+    // the argument is the maximum number of data segments, we allow as many alternate offset mappings 
+    // for a particular offset as there are data segments in the executable. If there is no data segment,
+    // then probably this is tiny model (DS=CS) and there is still at least one data segment.
+    OffsetMap() : maxData(0) {}
+    explicit OffsetMap(const Size maxData) : maxData(maxData > 0 ? maxData : 1) {}
+    Address getCode(const Address &from) { return codeMap[from]; }
+    void setCode(const Address &from, const Address &to) { codeMap[from] = to; }
+    bool codeMatch(const Address from, const Address to);
+    bool dataMatch(const SOffset from, const SOffset to);
+    bool stackMatch(const SOffset from, const SOffset to);
+    void resetStack() { stackMap.clear(); }
+
+private:
+    std::string dataStr(const MapSet &ms) const;
 };
 
 struct Branch {
@@ -180,8 +208,8 @@ class Executable {
     Address entrypoint;
     Address csip, stack;
     Block codeExtents;
-    std::map<Address, Address> addrMap;
-    std::vector<Segment> segments;    
+    OffsetMap offMap;
+    std::vector<Segment> segments;
     AnalysisOptions opt;
 
 public:
@@ -192,7 +220,7 @@ public:
 
 private:
     void searchMessage(const std::string &msg) const;
-    Branch getBranch(const Instruction &i, const RegisterState &regs) const;
+    Branch getBranch(const Instruction &i, const RegisterState &regs = {}) const;
     void saveBranch(const Branch &branch, const RegisterState &regs, const Block &codeExtents, ScanQueue &sq) const;
     void applyMov(const Instruction &i, RegisterState &regs);
 

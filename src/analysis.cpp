@@ -283,6 +283,10 @@ void RoutineMap::save(const std::string &path, const bool overwrite) const {
     if (checkFile(path).exists && !overwrite) throw AnalysisError("Map file already exists: " + path);
     info("Saving routine map (size = " + to_string(size()) + ") to "s + path);
     ofstream file{path};
+    for (auto s: segments) {
+        s.value -= reloc;
+        file << s.toString() << endl;
+    }
     for (const auto &r : routines) {
         Block rextent{r.extents};
         rextent.rebase(reloc);
@@ -316,8 +320,13 @@ string RoutineMap::dump() const {
     }
     std::sort(printRoutines.begin(), printRoutines.end());
 
-    // display routines
     str << "--- Routine map containing " << routines.size() << " routines" << endl;
+
+    for (const auto &s : segments) {
+        str << s.toString() << endl;
+    }
+
+    // display routines
     for (const auto &r : printRoutines) {
         str << r.toString(true) << endl;
     }
@@ -326,10 +335,14 @@ string RoutineMap::dump() const {
 
 void RoutineMap::setSegments(const std::vector<Segment> &seg) {
     segments = seg;
-    debug("Map identifies following segments:");
-    for (auto &s : segments) {
-        debug(s.toString());
+}
+
+Size RoutineMap::segmentCount(const Segment::Type type) const {
+    Size ret = 0;
+    for (const Segment &s : segments) {
+        if (s.type == type) ret++;
     }
+    return ret;
 }
 
 void RoutineMap::loadFromMapFile(const std::string &path) {
@@ -340,6 +353,13 @@ void RoutineMap::loadFromMapFile(const std::string &path) {
     bool colideOk = true;
     while (safeGetline(mapFile, line) && colideOk) {
         lineno++;
+        try {
+            Segment s(line);
+            s.value += reloc;
+            segments.push_back(s);
+            continue;
+        }
+        catch (ArgError &e) {}
         istringstream sstr{line};
         Routine r;
         while (sstr >> token) {
@@ -430,6 +450,82 @@ void RoutineMap::loadFromIdaFile(const std::string &path) {
         }
         lineno++;
     }
+}
+
+bool OffsetMap::codeMatch(const Address from, const Address to) {
+    // mapping already exists
+    if (codeMap.count(from) > 0) {
+        if (codeMap[from] == to) {
+            debug("Existing code address mapping " + from.toString() + " -> " + to.toString() + " matches");
+            return true;
+        }
+        return false;
+    }
+    // otherwise save new mapping
+    debug("Registering new code address mapping: " + from.toString() + " -> " + to.toString());
+    codeMap[from] = to;
+    return true;    
+}
+
+bool OffsetMap::dataMatch(const SOffset from, const SOffset to) {
+    auto &mappings = dataMap[from];
+    // matching mapping already exists in map
+    if (std::find(begin(mappings), end(mappings), to) != mappings.end()) {
+        debug("Existing data offset mapping " + hexVal(from) + " -> " + dataStr(mappings) + " matches");
+        return true;
+    }
+    // mapping does not exist, but still room left, so save it and carry on
+    else if (mappings.size() < maxData) {
+        debug("Registering new data offset mapping: " + hexVal(from) + " -> " + hexVal(to));
+        mappings.push_back(to);
+        return true;
+    }
+    // no matching mapping and limit already reached
+    else {
+        debug("Existing data offset mapping " + hexVal(from) + " -> " + dataStr(mappings) + " conflicts with " + hexVal(to));
+        return false;
+    }
+}
+
+bool OffsetMap::stackMatch(const SOffset from, const SOffset to) {
+    // mapping already exists
+    if (stackMap.count(from) > 0) {
+        if (stackMap[from] == to) {
+            debug("Existing stack offset mapping " + hexVal(from) + " -> " + hexVal(to) + " matches");
+            return true;
+        }
+        return false;
+    }
+    // otherwise save new mapping
+    debug("Registering new stack offset mapping: " + hexVal(from) + " -> " + hexVal(to));
+    stackMap[from] = to;
+    return true;
+}
+
+std::string OffsetMap::dataStr(const MapSet &ms) const {
+    ostringstream str;
+    int idx = 0;
+    for (SOffset o : ms) {
+        if (idx != 0) str << "/";
+        str << hexVal(o);
+    }
+    return str.str();
+}
+
+Segment::Segment(const std::string &str) : type(SEG_NONE) {
+    static const regex 
+        CODE_RE{"^CODE/0x([0-9a-fA-F]{1,4})"}, 
+        DATA_RE{"^DATA/0x([0-9a-fA-F]{1,4})"},
+        STACK_RE{"^STACK/0x([0-9a-fA-F]{1,4})"};
+    
+    smatch match;
+    if (regex_match(str, match, CODE_RE)) type = SEG_CODE;
+    else if (regex_match(str, match, DATA_RE)) type = SEG_DATA;
+    else if (regex_match(str, match, STACK_RE)) type = SEG_STACK;
+
+    const string valstr = match.str(1);
+    if (type != SEG_NONE) value = stoi(valstr, nullptr, 16);
+    else throw ArgError("Invalid segment string: " + str);
 }
 
 std::string Segment::toString() const {
@@ -756,6 +852,7 @@ Branch Executable::getBranch(const Instruction &i, const RegisterState &regs) co
 }
 
 void Executable::applyMov(const Instruction &i, RegisterState &regs) {
+    // we only care about mov-s into registers
     if (i.iclass != INS_MOV || !operandIsReg(i.op1.type)) return;
 
     const Register dest = i.op1.regId();
@@ -780,22 +877,29 @@ void Executable::applyMov(const Instruction &i, RegisterState &regs) {
         set = true;
     }
     // mov reg, mem
-    else if (operandIsMemImmediate(i.op2.type) && regs.isKnown(prefixRegId(i.prefix))) {
-        Address memAddr(regs.getValue(prefixRegId(i.prefix)), i.op2.immval.u16);
-        if (codeExtents.contains(memAddr)) switch(i.op2.size) {
-        case OPRSZ_BYTE:
-            regs.setValue(dest, code.readByte(memAddr)); 
-            set = true;
-            break;
-        case OPRSZ_WORD:
-            regs.setValue(dest, code.readWord(memAddr));
-            set = true;
-            break;
+    else if (operandIsMemImmediate(i.op2.type)) {
+        const Register segReg = prefixRegId(i.prefix);
+        // ignore data located in the stack segment, it's not reliable even if within code extents
+        if (segReg == REG_SS || !regs.isKnown(segReg)) return;
+        Address srcAddr(regs.getValue(segReg), i.op2.immval.u16);
+        if (codeExtents.contains(srcAddr)) {
+            switch(i.op2.size) {
+            case OPRSZ_BYTE:
+                searchMessage("source address for byte: " + srcAddr.toString());
+                regs.setValue(dest, code.readByte(srcAddr)); 
+                set = true;
+                break;
+            case OPRSZ_WORD:
+                searchMessage("source address for word: " + srcAddr.toString());
+                regs.setValue(dest, code.readWord(srcAddr));
+                set = true;
+                break;
+            }
         }
-        else searchMessage("mov source address outside code extents: "s + memAddr.toString());
+        else searchMessage("mov source address outside code extents: "s + srcAddr.toString());
     }
     if (set) {
-        searchMessage("encountered move to register: "s + i.toString());
+        searchMessage("executed move to register: "s + i.toString());
         if (i.op1.type == OPR_REG_DS) storeSegment({Segment::SEG_DATA, regs.getValue(REG_DS)});
         else if (i.op1.type == OPR_REG_SS) storeSegment({Segment::SEG_STACK, regs.getValue(REG_SS)});
     }
@@ -831,28 +935,29 @@ bool Executable::instructionsMatch(const Instruction &ref, const Instruction &ob
     if (result == INS_MATCH_DIFFOP1 || result == INS_MATCH_DIFFOP2) {
         const auto &refop = (result == INS_MATCH_DIFFOP1 ? ref.op1 : ref.op2);
         const auto &objop = (result == INS_MATCH_DIFFOP1 ? obj.op1 : obj.op2);
-        if (operandIsMemWithOffset(refop.type)) {
-            // TODO: use actual data segment value, need register state? or save segments to memory map from findRoutines()?
-            Address refAddr = refop.memAddress(loadSegment);
-            Address objAddr = objop.memAddress(loadSegment);
-            // look up the memory address of the reference instruction in the address translation map
-            Address existAddr = addrMap[refAddr];
-            if (!existAddr.isValid()) {
-                debug("Saving mapping " + refAddr.toString() + " -> " + objAddr.toString());
-                addrMap[refAddr] = objAddr;
-                match = true;
+        if (ref.isBranch()) {
+            Branch refBranch = getBranch(ref), objObranch = getBranch(obj);
+            if (refBranch.destination.isValid() && objObranch.destination.isValid()) {
+                match = offMap.codeMatch(refBranch.destination, objObranch.destination);
             }
-            else if (existAddr == objAddr) {
-                debug("Existing mapping " + refAddr.toString() + " -> " + existAddr.toString());
-                match = true;
-            }
-            else {
-                debug("Existing mapping " + refAddr.toString() + " -> " + existAddr.toString() + " conflicts with " + objAddr.toString());
+        }
+        else if (operandIsMemWithOffset(refop.type)) {
+            SOffset refOfs = ref.memOffset(), objOfs = obj.memOffset();
+            switch (ref.memSegmentId()) {
+            case REG_DS:
+                match = offMap.dataMatch(refOfs, objOfs);
+                break;
+            case REG_SS:
+                // in strict mode, the stack is expected to have exactly matching layout, with no translation
+                if (!opt.strict) match = offMap.stackMatch(refOfs, objOfs);
+                break;
             }
         }
         else if (operandIsImmediate(refop.type)) {
-            // ignore immediate differences in loose mode
-            if (!opt.strict) match = true;
+            if (!opt.strict) {
+                debug("Ignoring immediate value difference in loose mode");
+                match = true;
+            } 
         }
     }
     
@@ -861,8 +966,23 @@ bool Executable::instructionsMatch(const Instruction &ref, const Instruction &ob
 }
 
 void Executable::storeSegment(const Segment &seg) {
+    // ignore segments which are already known
     auto found = std::find(segments.begin(), segments.end(), seg);
     if (found != segments.end()) return;
+    // check if an existing segment of a different type has the same address
+    found = std::find_if(segments.begin(), segments.end(), [&](const Segment &s){ 
+        return s.value == seg.value; 
+    });
+    if (found != segments.end()) {
+        const Segment &existing = *found;
+        // existing code segments cannot share an address with another segment
+        if (existing.type == Segment::SEG_CODE) return;
+        // a new data segment trumps an existing stack segment
+        else if (existing.type == Segment::SEG_STACK && seg.type == Segment::SEG_DATA) {
+            segments.erase(found);
+        }
+        else return;
+    }
     debug("Found new segment: " + seg.toString());
     segments.push_back(seg);
 }
@@ -927,7 +1047,7 @@ RoutineMap Executable::findRoutines() {
             // mark memory map items corresponding to the current instruction as belonging to the current routine
             searchQ.setRoutineId(csip.toLinear(), i.length);
             // interpret the instruction
-            if (instructionIsBranch(i)) {
+            if (i.isBranch()) {
                 const Branch branch = getBranch(i, regs);
                 // if the destination of the branch can be established, place it in the search queue
                 saveBranch(branch, regs, codeExtents, searchQ);
@@ -937,7 +1057,7 @@ RoutineMap Executable::findRoutines() {
                     break;
                 }
             }
-            else if (instructionIsReturn(i)) {
+            else if (i.isReturn()) {
                 searchMessage("routine scan interrupted by return");
                 break;
             }
@@ -969,14 +1089,17 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
     }
     verbose("Comparing code between reference (entrypoint "s + entrypoint.toString() + ") and other (entrypoint " + other.entrypoint.toString() + ") executables\n" +
          "Routine map of reference binary has " + to_string(routineMap.size()) + " entries");
+    offMap = OffsetMap(routineMap.segmentCount(Segment::SEG_DATA));
     opt = options;
     RegisterState initRegs{entrypoint, stack};
     debug("initial register values:\n"s + initRegs.toString());
     // map of equivalent addresses in the compared binaries, seed with the two entrypoints
-    addrMap = {{entrypoint, other.entrypoint}};
+    offMap.setCode(entrypoint, other.entrypoint);
     // queue of locations (in reference binary) for comparison, likewise seeded with the entrypoint
+    // TODO: use routine map to fill compareQ in advance
     ScanQueue compareQ(Destination(entrypoint, 1, true, initRegs));
     const RoutineId VISITED_ID = 1;
+    string prevRoutineName;
     while (!compareQ.empty()) {
         // get next location for linear scan and comparison of instructions
         const Destination compare = compareQ.nextPoint(false);
@@ -989,7 +1112,12 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
             debug("Could not find address "s + csip.toString() + " in routine map, skipping location");
             continue;
         }
-        Address otherCsip = addrMap[csip];
+        // when changing into a different routine, forget all the current stack offset mappings
+        if (routine.name != prevRoutineName) {
+            offMap.resetStack();
+            prevRoutineName = routine.name;
+        }
+        Address otherCsip = offMap.getCode(csip);
         if (!otherCsip.isValid()) {
             debug("Could not find equivalent address for "s + csip.toString() + " in address map, skipping location");
             continue;
@@ -1010,36 +1138,10 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
             compareQ.setRoutineId(csip.toLinear(), iRef.length, VISITED_ID);
             // compare instructions
             if (!instructionsMatch(iRef, iObj, routine)) return false;
-            // comparison okay, determine where to go next based on instruction contents
-            if (instructionIsBranch(iRef)) {
-                Branch branch = getBranch(iRef, regs);
-                // do not differentiate calls, we don't need the queue to track them since we already have the routine map
-                branch.isCall = false; 
-                // if the destination of the branch can be established, place it in the queue
-                saveBranch(branch, regs, codeExtents, compareQ);
-                if (branch.destination.isValid()) {
-                    // branch destination in compared binary may be different, so calculate and save in address translation map for future reference
-                    // TODO: support saving second set of regs for other
-                    Branch objObranch = getBranch(iObj, regs);
-                    if (objObranch.destination.isValid()) {
-                        // check if mapping not already present in map
-                        Address objAddr = addrMap[branch.destination];
-                        // not present, add new mapping
-                        if (!objAddr.isValid()) { 
-                            addrMap[branch.destination] = objObranch.destination;
-                            debug("Reference branch destination "s + branch.destination.toString() + " mapped to other " + objObranch.destination.toString());
-                        }
-                        // already present, make sure it matches the current value
-                        else if (objAddr != objObranch.destination) { 
-                            verbose("Reference branch destination "s + branch.destination.toString() + " previously mapped to other " + objAddr.toString() + " now resolves to " + objObranch.destination.toString());
-                            return false;
-                        }
-                    }
-                    if (branch.isUnconditional) {
-                        searchMessage("routine scan interrupted by unconditional branch");
-                        break;
-                    }
-                }
+            // check if we need to stop comparing due to an unconditional jump
+            if (iRef.isUnconditionalJump()) {
+                searchMessage("linear compare scan interrupted by unconditional branch");
+                break;
             }
             // advance to next instruction pair
             csip += iRef.length;

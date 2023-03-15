@@ -5,6 +5,7 @@
 #include "dos/registers.h"
 #include "dos/modrm.h"
 #include "dos/address.h"
+#include "dos/opcodes.h"
 
 #include <string>
 #include <vector>
@@ -113,6 +114,7 @@ INSTRUCTION_PREFIX
 #undef X
 };
 
+inline bool prefixIsSegment(const InstructionPrefix p) { return p >= PRF_SEG_ES && p <= PRF_SEG_DS; }
 Register prefixRegId(const InstructionPrefix p);
 
 // the offsets in memory operands (OFF8/OFF16) are signed, except for OPR_MEM_OFF16 (e.g. [0x9000])
@@ -208,6 +210,8 @@ inline bool operandIsImmediate(const OperandType ot) {
     return ot >= OPR_IMM0 && ot <= OPR_IMM32;
 }
 
+Register defaultMemSegment(const OperandType ot);
+
 #define OPERAND_SIZE \
     X(OPRSZ_UNK) \
     X(OPRSZ_NONE) \
@@ -265,7 +269,6 @@ public:
         std::string toString() const;
         InstructionMatch match(const Operand &other) const;
         Register regId() const;
-        Address memAddress(const Word segment) const;
     } op1, op2;
 
     Instruction();
@@ -276,19 +279,24 @@ public:
     Word relativeOffset() const;
     Address relativeAddress() const;
     std::vector<Register> touchedRegs() const;
+    SOffset memOffset() const;
+    Register memSegmentId() const;
+
+    bool isJump() const { return iclass == INS_JMP || iclass == INS_JMP_FAR; }
+    bool isUnconditionalJump() const { return isJump() && !opcodeIsConditionalJump(opcode); }
+    bool isCall() const { return iclass == INS_CALL || iclass == INS_CALL_FAR; }
+    bool isLoop() const { return iclass == INS_LOOP || iclass == INS_LOOPZ || iclass == INS_LOOPNZ; }
+    bool isBranch() const { return isJump() || isCall() || isLoop(); }
+    bool isReturn() const { return iclass == INS_RET || iclass == INS_RETF || iclass == INS_IRET; }
 
 private:
     OperandType getModrmOperand(const Byte modrm, const ModrmOperand op);
     Size loadImmediate(Operand &op, const Byte *data);
+    const Operand* memOperand() const;
 };
 
 // TODO: this is useless, remove
 InstructionClass instr_class(const Byte opcode);
-
-inline bool instructionIsJump(const Instruction i) { return i.iclass == INS_JMP || i.iclass == INS_JMP_FAR; }
-inline bool instructionIsCall(const Instruction i) { return i.iclass == INS_CALL || i.iclass == INS_CALL_FAR; }
-inline bool instructionIsLoop(const Instruction i) { return i.iclass == INS_LOOP || i.iclass == INS_LOOPZ || i.iclass == INS_LOOPNZ; }
-inline bool instructionIsBranch(const Instruction &i) { return instructionIsJump(i) || instructionIsCall(i) || instructionIsLoop(i); }
-inline bool instructionIsReturn(const Instruction &i) { return i.iclass == INS_RET || i.iclass == INS_RETF || i.iclass == INS_IRET; }
+// TODO: make into members
 
 #endif // INSTRUCTION_H

@@ -431,7 +431,8 @@ TEST_F(CpuTest, Instruction) {
     Size codeofs = 0;
     for (int i = 0; i < icount; ++i) {
         Instruction ins(Address(0, codeofs), code + codeofs);
-        TRACELN("--- " << hexVal(ins.addr.toLinear()) << ": instruction " << i + 1 << ": '" << ins.toString() << "' (length = " << static_cast<int>(ins.length) << ")");
+        TRACELN("--- " << hexVal(ins.addr.toLinear()) << ": instruction " << i + 1 << ": '" << ins.toString() 
+            << "' (length = " << static_cast<int>(ins.length) << ")" << ", memOfs = " << ins.memOffset() << "/" << hexVal(ins.memOffset()));
         ASSERT_EQ(ins.toString(), instructions[i]);
         ASSERT_EQ(ins.length, lengths[i]);
         codeofs += ins.length;
