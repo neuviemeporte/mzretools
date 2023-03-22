@@ -453,6 +453,9 @@ void RoutineMap::loadFromIdaFile(const std::string &path) {
 }
 
 bool OffsetMap::codeMatch(const Address from, const Address to) {
+    if (!(from.isValid() && to.isValid()))
+        return false;
+
     // mapping already exists
     if (codeMap.count(from) > 0) {
         if (codeMap[from] == to) {
@@ -690,7 +693,7 @@ vector<Routine> ScanQueue::getRoutines() const {
 
 // function call, create new routine at destination if either not visited, 
 // or visited but destination was not yet discovered as a routine entrypoint and this call now takes precedence and will replace it
-void ScanQueue::saveCall(const Address &dest, const RegisterState &regs) {
+bool ScanQueue::saveCall(const Address &dest, const RegisterState &regs) {
     const RoutineId destId = getRoutineId(dest.toLinear());
     if (isEntrypoint(dest)) 
         debug("Address "s + dest.toString() + " already registered as entrypoint for routine " + to_string(destId));
@@ -704,11 +707,13 @@ void ScanQueue::saveCall(const Address &dest, const RegisterState &regs) {
             debug("call destination belonging to routine " + to_string(destId) + ", reclaiming as entrypoint for new routine " + to_string(newRoutineId));
         queue.emplace_front(Destination(dest, newRoutineId, true, regs));
         entrypoints.emplace_back(RoutineEntrypoint(dest, newRoutineId));
+        return true;
     }
+    return false;
 }
 
 // conditional jump, save as destination to be investigated, belonging to current routine
-void ScanQueue::saveJump(const Address &dest, const RegisterState &regs) {
+bool ScanQueue::saveJump(const Address &dest, const RegisterState &regs) {
     const RoutineId destId = getRoutineId(dest.toLinear());
     if (destId != NULL_ROUTINE) 
         debug("Jump destination already visited from routine "s + to_string(destId));
@@ -717,7 +722,9 @@ void ScanQueue::saveJump(const Address &dest, const RegisterState &regs) {
     else { // not claimed by any routine and not yet in queue
         queue.emplace_front(Destination(dest, curSearch.routineId, false, regs));
         debug("Jump destination not yet visited, scheduled visit from routine " + to_string(curSearch.routineId) + ", queue size = " + to_string(size()));
+        return true;
     }
+    return false;
 }
 
 // This is very slow!
@@ -909,6 +916,8 @@ void Executable::setEntrypoint(const Address &addr) {
     entrypoint = addr;
 }
 
+// TODO: include status of existing address mapping contributing to a match in the output
+// TODO: make jump instructions compare the match with the relative offset value
 static string compareStatus(const Instruction &i1, const Instruction &i2, const bool align) {
     static const int ALIGN = 50;
     string status = i1.addr.toString() + ": " + i1.toString();
@@ -987,17 +996,17 @@ void Executable::storeSegment(const Segment &seg) {
 }
 
 // TODO: this should be a member of SearchQueue
-void Executable::saveBranch(const Branch &branch, const RegisterState &regs, const Block &codeExtents, ScanQueue &sq) const {
+bool Executable::saveBranch(const Branch &branch, const RegisterState &regs, const Block &codeExtents, ScanQueue &sq) const {
     if (!branch.destination.isValid())
-        return;
+        return false;
 
     if (codeExtents.contains(branch.destination)) {
-        if (branch.isCall) sq.saveCall(branch.destination, regs);
-        else sq.saveJump(branch.destination, regs);
+        return branch.isCall ? sq.saveCall(branch.destination, regs) : sq.saveJump(branch.destination, regs);
     }
     else {
         searchMessage("branch destination outside code boundaries: "s + branch.destination.toString());
-    } 
+    }
+    return false; 
 }
 
 // explore the code without actually executing instructions, discover routine boundaries
@@ -1082,47 +1091,51 @@ RoutineMap Executable::findRoutines() {
 }
 
 bool Executable::compareCode(const RoutineMap &routineMap, const Executable &other, const AnalysisOptions &options) {
-    if (routineMap.empty()) {
-        throw AnalysisError("Unable to compare executables, routine map is empty");
-    }
     verbose("Comparing code between reference (entrypoint "s + entrypoint.toString() + ") and other (entrypoint " + other.entrypoint.toString() + ") executables\n" +
          "Routine map of reference binary has " + to_string(routineMap.size()) + " entries");
     offMap = OffsetMap(routineMap.segmentCount(Segment::SEG_DATA));
     opt = options;
-    RegisterState initRegs{entrypoint, stack};
-    debug("initial register values:\n"s + initRegs.toString());
     // map of equivalent addresses in the compared binaries, seed with the two entrypoints
     offMap.setCode(entrypoint, other.entrypoint);
+    const RoutineId VISITED_ID = 1;
     // queue of locations (in reference binary) for comparison, likewise seeded with the entrypoint
     // TODO: use routine map to fill compareQ in advance
-    ScanQueue compareQ(Destination(entrypoint, 1, true, initRegs));
-    const RoutineId VISITED_ID = 1;
-    string prevRoutineName;
+    // TODO: implement register value tracing
+    ScanQueue compareQ(Destination(entrypoint, VISITED_ID, true, {}));
     while (!compareQ.empty()) {
         // get next location for linear scan and comparison of instructions
         const Destination compare = compareQ.nextPoint(false);
         debug("Now at reference location "s + compare.address.toString() + ", queue size = " + to_string(compareQ.size()));
-        // get corresponding address in other binary
+        // when entering a routine, forget all the current stack offset mappings
+        if (compare.isCall) {
+            offMap.resetStack();
+        }
         csip = compare.address;
-        const Routine routine = routineMap.getRoutine(csip);
-        // make sure we are inside a reachable block of a know routine from reference binary
-        if (!routine.isValid()) {
-            debug("Could not find address "s + csip.toString() + " in routine map, skipping location");
+        if (compareQ.getRoutineId(csip.toLinear()) != NULL_ROUTINE) {
+            debug("Location already compared, skipping");
             continue;
         }
-        // when changing into a different routine, forget all the current stack offset mappings
-        if (routine.name != prevRoutineName) {
-            offMap.resetStack();
-            prevRoutineName = routine.name;
-        }
+        // get corresponding address in other binary
         Address otherCsip = offMap.getCode(csip);
         if (!otherCsip.isValid()) {
             debug("Could not find equivalent address for "s + csip.toString() + " in address map, skipping location");
             continue;
         }
-        const Block compareBlock = routine.blockContaining(compare.address);
-        verbose("Comparing reference @ "s + csip.toString() + ", routine " + routine.toString(false) + ", block " + compareBlock.toString(true) +  " with other @ " + otherCsip.toString());
-        RegisterState regs = compare.regs;
+        Routine routine{"unknown", {}};
+        Block compareBlock;
+        if (!routineMap.empty()) { // comparing with a map
+            routine = routineMap.getRoutine(csip);
+            // make sure we are inside a reachable block of a know routine from reference binary
+            if (!routine.isValid()) {
+                debug("Could not find address "s + csip.toString() + " in routine map, skipping location");
+                continue;
+            }
+            compareBlock = routine.blockContaining(compare.address);
+            verbose("Comparing reference @ "s + csip.toString() + ", routine " + routine.toString(false) + ", block " + compareBlock.toString(true) +  " with other @ " + otherCsip.toString());
+        }
+        else { // comparing without a map
+            verbose("Comparing reference @ "s + csip.toString() + " with other @ " + otherCsip.toString());
+        }
         // keep comparing subsequent instructions at current location between the reference and other binary
         Size skipCount = 0;
         while (true) {
@@ -1134,6 +1147,7 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
             Instruction 
                 iRef{csip, code.pointer(csip)}, 
                 iObj{otherCsip, other.code.pointer(otherCsip)};
+            // mark this insruction as visited, unlike the routine finding algorithm, we do not differentiate between routine IDs
             compareQ.setRoutineId(csip.toLinear(), iRef.length, VISITED_ID);
             // compare instructions
             const bool matchOk = instructionsMatch(iRef, iObj);
@@ -1149,9 +1163,30 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
                 // an instruction match resets the allowed skip counter
                 skipCount = 0;
             }
-            // check if we need to stop comparing due to an unconditional jump
-            if (iRef.isUnconditionalJump()) {
-                searchMessage("linear compare scan interrupted by unconditional branch");
+            // comparison result okay, interpret the instructions
+            if (iRef.isBranch()) {
+                const Branch 
+                    refBranch = getBranch(iRef, {}),
+                    objBranch = getBranch(iObj, {});
+                if (!opt.noCall) {
+                    // if the destination of the branch can be established, place it in the compare queue
+                    if (saveBranch(refBranch, {}, codeExtents, compareQ)) {
+                        // if the branch destination was accepted, save the address mapping of the branch destination between the reference and object
+                        offMap.codeMatch(refBranch.destination, objBranch.destination);
+                    }
+                    // even if the branch destination is not known, we cannot keep comparing here if it was unconditional
+                    if (refBranch.isUnconditional) {
+                        searchMessage("linear compare scan interrupted by unconditional branch");
+                        break;
+                    }
+                }
+            }
+            else if (iRef.isReturn()) {
+                searchMessage("linear compare scan interrupted by return");
+                break;
+            }
+            if (compareBlock.isValid() && csip > compareBlock.end) {
+                debug("Reached end of comparison block @ "s + csip.toString());
                 break;
             }
             // advance to next instruction pair
@@ -1163,10 +1198,6 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
             }
             else {
                 debug("Skipping over instruction mismatch, allowed " + to_string(skipCount) + " out of " + to_string(opt.skipDiff));
-            }
-            if (csip > compareBlock.end) {
-                debug("Reached end of comparison block @ "s + csip.toString());
-                break;
             }
         } // iterate over instructions at comparison location
     } // iterate over comparison queue

@@ -18,15 +18,17 @@ using namespace std;
 // - mode to figure out main() address automatically, call to main seems to be always at offset 0x8d into MSC start function code
 
 void usage() {
-    output("usage: mzdiff <base.exe[:entrypoint]> <base.map> <compare.exe[:entrypoint]> [options]\n"
+    output("usage: mzdiff [options] base.exe[:entrypoint] compare.exe[:entrypoint]\n"
            "Compares two DOS MZ executables instruction by instruction, accounting for differences in code layout\n"
            "Options:\n"
-           "--verbose:      show more detailed information, including compared instructions\n"
-           "--debug:        show additional debug information\n"
-           "--dbgcpu:       include CPU-related debug information like instruction decoding\n"
-           "--idiff:        ignore differences completely\n"
-           "--sdiff count:  skip differences, ignore up to 'count' consecutive mismatching instructions in the base executable\n"
-           "--loose:        non-strict matching, allows e.g for literal argument differences",
+           "--map basemap  map file of base executable to use, if present\n"
+           "--verbose      show more detailed information, including compared instructions\n"
+           "--debug        show additional debug information\n"
+           "--dbgcpu       include CPU-related debug information like instruction decoding\n"
+           "--idiff        ignore differences completely\n"
+           "--nocall       do not follow calls, useful for comparing single functions\n"
+           "--sdiff count  skip differences, ignore up to 'count' consecutive mismatching instructions in the base executable\n"
+           "--loose        non-strict matching, allows e.g for literal argument differences",
            LOG_OTHER, LOG_ERROR);
     exit(1);
 }
@@ -82,30 +84,41 @@ int main(int argc, char *argv[]) {
     const Word loadSeg = 0x1000;
     setOutputLevel(LOG_WARN);
     setModuleVisibility(LOG_CPU, false);
-    if (argc < 4) {
+    if (argc < 3) {
         usage();
     }
     AnalysisOptions opt;
-    bool sdiff = false;
-    for (int aidx = 4; aidx < argc; ++aidx) {
+    string baseSpec, pathMap, compareSpec;
+    int posarg = 0;
+    for (int aidx = 1; aidx < argc; ++aidx) {
         string arg(argv[aidx]);
         if (arg == "--debug") setOutputLevel(LOG_DEBUG);
         else if (arg == "--verbose") setOutputLevel(LOG_VERBOSE);
         else if (arg == "--dbgcpu") setModuleVisibility(LOG_CPU, true);
         else if (arg == "--idiff") opt.ignoreDiff = true;
-        else if (arg == "--sdiff") sdiff = true;
-        else if (arg == "--loose") opt.strict = false;
-        else if (sdiff) {
-            opt.skipDiff = stoi(arg, nullptr, 10);
-            sdiff = false;
+        else if (arg == "--nocall") opt.noCall = true;
+        else if (arg == "--sdiff") {
+            if (aidx + 1 >= argc) fatal("Option requires an argument: --sdiff");
+            opt.skipDiff = stoi(argv[++aidx], nullptr, 10);
         }
-        else fatal("Unrecognized parameter: "s + arg);
+        else if (arg == "--map") {
+            if (aidx + 1 >= argc) fatal("Option requires an argument: --map");
+            pathMap = argv[++aidx];
+        }        
+        else if (arg == "--loose") opt.strict = false;
+        else { // positional arguments
+            switch (++posarg) {
+            case 1: baseSpec = arg; break;
+            case 2: compareSpec = arg; break;
+            default: fatal("Unrecognized argument: " + arg);
+            }
+        }
     }
-    const string baseSpec{argv[1]}, pathMap{argv[2]}, compareSpec{argv[3]};
     try {
         Executable exeBase = loadExe(baseSpec, loadSeg);
         Executable exeCompare = loadExe(compareSpec, loadSeg);
-        RoutineMap map(pathMap, loadSeg);
+        RoutineMap map;
+        if (!pathMap.empty()) map = {pathMap, loadSeg};
         if (!exeBase.compareCode(map, exeCompare, opt)) return 1;
     }
     catch (Error &e) {

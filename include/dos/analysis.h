@@ -101,8 +101,8 @@ public:
     Address startAddress() const { return start; }
     Destination nextPoint(const bool front = true);
     bool hasPoint(const Address &dest, const bool call) const;
-    void saveCall(const Address &dest, const RegisterState &regs);
-    void saveJump(const Address &dest, const RegisterState &regs);
+    bool saveCall(const Address &dest, const RegisterState &regs);
+    bool saveJump(const Address &dest, const RegisterState &regs);
     // discovered locations operations
     Size routineCount() const { return entrypoints.size(); }
     std::string statusString() const;
@@ -142,6 +142,7 @@ class RoutineMap {
     RoutineId curId, prevId, curBlockId, prevBlockId;
 
 public:
+    RoutineMap() : reloc(0) {}
     RoutineMap(const ScanQueue &sq, const Word loadSegment, const Size codeSize);
     RoutineMap(const std::string &path, const Word reloc = 0);
 
@@ -158,7 +159,6 @@ public:
     Size segmentCount(const Segment::Type type) const;
     
 private:
-    RoutineMap() : reloc(0) {}
     void closeBlock(Block &b, const Offset off, const ScanQueue &sq);
     Block moveBlock(const Block &b, const Word segment) const;
     void sort();
@@ -196,9 +196,9 @@ struct Branch {
 };
 
 struct AnalysisOptions {
-    bool strict, ignoreDiff;
+    bool strict, ignoreDiff, noCall;
     Size skipDiff;
-    AnalysisOptions() : strict(true), ignoreDiff(false), skipDiff(0) {}
+    AnalysisOptions() : strict(true), ignoreDiff(false), noCall(false), skipDiff(0) {}
 };
 
 class Executable {
@@ -222,7 +222,7 @@ public:
 private:
     void searchMessage(const std::string &msg) const;
     Branch getBranch(const Instruction &i, const RegisterState &regs = {}) const;
-    void saveBranch(const Branch &branch, const RegisterState &regs, const Block &codeExtents, ScanQueue &sq) const;
+    bool saveBranch(const Branch &branch, const RegisterState &regs, const Block &codeExtents, ScanQueue &sq) const;
     void applyMov(const Instruction &i, RegisterState &regs);
 
     void setEntrypoint(const Address &addr);
