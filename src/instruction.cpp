@@ -483,6 +483,7 @@ std::string Instruction::Operand::toString() const {
 InstructionMatch Instruction::Operand::match(const Operand &other) const {
     if (type != other.type || size != other.size)
         return INS_MATCH_MISMATCH;
+
     // check operands' immediate values for difference
     switch(type) {
     case OPR_MEM_OFF8:
@@ -555,9 +556,9 @@ std::string Instruction::toString() const {
         // segment override prefix if present
         if (prefix > PRF_NONE && prefix < PRF_CHAIN_REPNZ && operandIsMem(op1.type))
             str << PRF_NAME[prefix];
-        // for call and jump instructions, the immediate offset operand is added to the address of the byte past the current instruction
+        // for near branch instructions (call, jump, loop), the immediate offset operand is added to the address of the byte past the current instruction
         // to form a relative offset
-        if ((iclass == INS_CALL || iclass == INS_JMP) && operandIsImmediate(op1.type)) 
+        if (isNearBranch() && operandIsImmediate(op1.type)) 
             str << hexVal(relativeOffset(), true, false);
         else
             str << op1.toString();

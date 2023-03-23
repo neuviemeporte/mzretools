@@ -108,7 +108,7 @@ MzImage::MzImage(const std::string &path) : path_(path), loadModuleData_(nullptr
         reloc.value = relocVal;
     }
     fclose(mzFile);
-    info("Loaded MZ exe header from "s + path_ + ", entrypoint @ " + entrypoint().toString() + ", stack @ " + stackPointer().toString());
+    debug("Loaded MZ exe header from "s + path_ + ", entrypoint @ " + entrypoint().toString() + ", stack @ " + stackPointer().toString());
 }
 
 MzImage::~MzImage() {
@@ -169,7 +169,7 @@ std::string MzImage::dump() const {
 
 // read actual load module data
 void MzImage::load(const Word loadSegment) {
-    info("Loading executable code: size = "s + hexVal(loadModuleSize_) + " bytes starting at file offset "s + hexVal(loadModuleOffset_) + ", relocation factor " + hexVal(loadSegment));
+    debug("Loading executable code: size = "s + hexVal(loadModuleSize_) + " bytes starting at file offset "s + hexVal(loadModuleOffset_) + ", relocation factor " + hexVal(loadSegment));
     ifstream mzFile(path_, ios::binary);
     if (!mzFile.is_open()) throw IoError("Unable to open exe file: " + path_);
     mzFile.seekg(loadModuleOffset_);

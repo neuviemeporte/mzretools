@@ -287,6 +287,7 @@ public:
     bool isCall() const { return iclass == INS_CALL || iclass == INS_CALL_FAR; }
     bool isLoop() const { return iclass == INS_LOOP || iclass == INS_LOOPZ || iclass == INS_LOOPNZ; }
     bool isBranch() const { return isJump() || isCall() || isLoop(); }
+    bool isNearBranch() const { return iclass == INS_JMP || iclass == INS_CALL || isLoop(); }
     bool isReturn() const { return iclass == INS_RET || iclass == INS_RETF || iclass == INS_IRET; }
 
 private:

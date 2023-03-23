@@ -760,7 +760,7 @@ Executable::Executable(const MzImage &mz, const Address &ep, const AnalysisOptio
     // relocate entrypoint and stack
     entrypoint.segment += loadSegment;
     stack.segment += loadSegment;
-    verbose("Loaded executable data into memory, code at "s + codeExtents.toString() + ", relocated entrypoint " + entrypoint.toString() + ", stack " + stack.toString());
+    debug("Loaded executable data into memory, code at "s + codeExtents.toString() + ", relocated entrypoint " + entrypoint.toString() + ", stack " + stack.toString());
 }
 
 void Executable::searchMessage(const string &msg) const {
@@ -1091,8 +1091,8 @@ RoutineMap Executable::findRoutines() {
 }
 
 bool Executable::compareCode(const RoutineMap &routineMap, const Executable &other, const AnalysisOptions &options) {
-    verbose("Comparing code between reference (entrypoint "s + entrypoint.toString() + ") and other (entrypoint " + other.entrypoint.toString() + ") executables\n" +
-         "Routine map of reference binary has " + to_string(routineMap.size()) + " entries");
+    verbose("Comparing code between reference (entrypoint "s + entrypoint.toString() + ") and other (entrypoint " + other.entrypoint.toString() + ") executables");
+    debug("Routine map of reference binary has " + to_string(routineMap.size()) + " entries");
     offMap = OffsetMap(routineMap.segmentCount(Segment::SEG_DATA));
     opt = options;
     // map of equivalent addresses in the compared binaries, seed with the two entrypoints
@@ -1131,10 +1131,10 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
                 continue;
             }
             compareBlock = routine.blockContaining(compare.address);
-            verbose("Comparing reference @ "s + csip.toString() + ", routine " + routine.toString(false) + ", block " + compareBlock.toString(true) +  " with other @ " + otherCsip.toString());
+            verbose("Reference location @"s + csip.toString() + ", routine " + routine.toString(false) + ", block " + compareBlock.toString(true) +  ", other @" + otherCsip.toString());
         }
         else { // comparing without a map
-            verbose("Comparing reference @ "s + csip.toString() + " with other @ " + otherCsip.toString());
+            verbose("Reference location @"s + csip.toString() + ", other @" + otherCsip.toString());
         }
         // keep comparing subsequent instructions at current location between the reference and other binary
         Size skipCount = 0;
