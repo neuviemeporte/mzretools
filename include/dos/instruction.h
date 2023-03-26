@@ -60,6 +60,7 @@
     X(INS_LDS) \
     X(INS_RETF) \
     X(INS_INT) \
+    X(INS_INT3) \
     X(INS_INTO) \
     X(INS_IRET) \
     X(INS_AAM) \

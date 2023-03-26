@@ -53,7 +53,7 @@ INS_ERR,    INS_ERR,   INS_ERR,   INS_ERR,  INS_TEST,  INS_TEST,  INS_XCHG,  INS
 INS_NOP,    INS_XCHG,  INS_XCHG,  INS_XCHG, INS_XCHG,  INS_XCHG,  INS_XCHG,  INS_XCHG,  INS_CBW,  INS_CWD,  INS_CALL_FAR, INS_WAIT,  INS_PUSHF, INS_POPF,  INS_SAHF,  INS_LAHF,  // 9
 INS_MOV,    INS_MOV,   INS_MOV,   INS_MOV,  INS_MOVSB, INS_MOVSW, INS_CMPSB, INS_CMPSW, INS_TEST, INS_TEST, INS_STOSB,    INS_STOSW, INS_LODSB, INS_LODSW, INS_SCASB, INS_SCASW, // A
 INS_MOV,    INS_MOV,   INS_MOV,   INS_MOV,  INS_MOV,   INS_MOV,   INS_MOV,   INS_MOV,   INS_MOV,  INS_MOV,  INS_MOV,      INS_MOV,   INS_MOV,   INS_MOV,   INS_MOV,   INS_MOV,   // B
-INS_ERR,    INS_ERR,   INS_RET,   INS_RET,  INS_LES,   INS_LDS,   INS_MOV,   INS_MOV,   INS_ERR,  INS_ERR,  INS_RETF,     INS_RETF,  INS_INT,   INS_INT,   INS_INTO,  INS_IRET,  // C
+INS_ERR,    INS_ERR,   INS_RET,   INS_RET,  INS_LES,   INS_LDS,   INS_MOV,   INS_MOV,   INS_ERR,  INS_ERR,  INS_RETF,     INS_RETF,  INS_INT3,   INS_INT,   INS_INTO,  INS_IRET,  // C
 INS_ERR,    INS_ERR,   INS_ERR,   INS_ERR,  INS_AAM,   INS_AAD,   INS_ERR,   INS_XLAT,  INS_ERR,  INS_ERR,  INS_ERR,      INS_ERR,   INS_ERR,   INS_ERR,   INS_ERR,   INS_ERR,   // D
 INS_LOOPNZ, INS_LOOPZ, INS_LOOP,  INS_JMP,  INS_IN,    INS_IN,    INS_OUT,   INS_OUT,   INS_CALL, INS_JMP,  INS_JMP_FAR,  INS_JMP,   INS_IN,    INS_IN,    INS_OUT,   INS_OUT,   // E
 INS_LOCK,   INS_ERR,   INS_REPNZ, INS_REPZ, INS_HLT,   INS_CMC,   INS_ERR,   INS_ERR,   INS_CLC,  INS_STC,  INS_CLI,      INS_STI,   INS_CLD,   INS_STD,   INS_ERR,   INS_ERR,   // F
@@ -432,7 +432,7 @@ Register Instruction::memSegmentId() const {
 static const char* INS_NAME[] = {
     "???", "add", "push", "pop", "or", "adc", "sbb", "and", "daa", "sub", "das", "xor", "aaa", "cmp", "aas", "inc", "dec", "jmp", "jmp far", "test", "xchg", "mov", "lea", "nop", "cbw", "cwd",
     "call", "call far", "wait", "pushf", "popf", "sahf", "lahf", "movsb", "movsw", "cmpsb", "cmpsw", "stosb", "stosw", "lodsb", "lodsw", "scasb", "scasw", "ret", "les", "lds", "retf", "int",
-    "into", "iret", "aam", "aad", "xlat", "loopnz", "loopz", "loop", "in", "out", "lock", "repnz", "repz", "hlt", "cmc", "clc", "stc", "cli", "sti", "cld", "std",
+    "int3", "into", "iret", "aam", "aad", "xlat", "loopnz", "loopz", "loop", "in", "out", "lock", "repnz", "repz", "hlt", "cmc", "clc", "stc", "cli", "sti", "cld", "std",
     "rol", "ror", "rcl", "rcr", "shl", "shr", "sar", "not", "neg", "mul", "imul", "div", "idiv"
 };
 
