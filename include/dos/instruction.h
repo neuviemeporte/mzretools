@@ -274,7 +274,7 @@ public:
 
     Instruction();
     Instruction(const Address &addr, const Byte *data);
-    std::string toString() const;
+    std::string toString(const bool extended = false) const;
     InstructionMatch match(const Instruction &other) const;
     void load(const Byte *data);
     Word relativeOffset() const;

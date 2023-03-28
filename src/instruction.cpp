@@ -519,7 +519,7 @@ InstructionMatch Instruction::Operand::match(const Operand &other) const {
     return INS_MATCH_FULL;
 }
 
-std::string Instruction::toString() const {
+std::string Instruction::toString(const bool extended) const {
     ostringstream str;
     // output chain prefix if present
     if (prefix > PRF_SEG_DS)
@@ -558,10 +558,17 @@ std::string Instruction::toString() const {
             str << PRF_NAME[prefix];
         // for near branch instructions (call, jump, loop), the immediate offset operand is added to the address of the byte past the current instruction
         // to form a relative offset
-        if (isNearBranch() && operandIsImmediate(op1.type)) 
-            str << hexVal(relativeOffset(), true, false);
-        else
+        if (isNearBranch() && operandIsImmediate(op1.type)) {
+            const Word roff = relativeOffset();
+            str << hexVal(roff, true, false);
+            if (extended) {
+                if (roff > addr.offset) str << " (down)";
+                else str << " (up)";
+            }
+        }
+        else {
             str << op1.toString();
+        }
     }
     if (op2.type != OPR_NONE) {
         str << ", ";

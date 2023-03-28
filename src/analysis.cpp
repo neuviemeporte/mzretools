@@ -920,7 +920,7 @@ void Executable::setEntrypoint(const Address &addr) {
 // TODO: make jump instructions compare the match with the relative offset value
 static string compareStatus(const Instruction &i1, const Instruction &i2, const bool align) {
     static const int ALIGN = 50;
-    string status = i1.addr.toString() + ": " + i1.toString();
+    string status = i1.addr.toString() + ": " + i1.toString(align);
     if (align && status.length() < ALIGN) status.append(ALIGN - status.length(), ' ');
     switch (i1.match(i2)) {
     case INS_MATCH_FULL:     status += " == "; break;
@@ -929,7 +929,7 @@ static string compareStatus(const Instruction &i1, const Instruction &i2, const 
     case INS_MATCH_DIFFOP2:  status += " =~ "; break;
     case INS_MATCH_MISMATCH: status += " != "; break; 
     }
-    status += i2.addr.toString() + ": " + i2.toString();
+    status += i2.addr.toString() + ": " + i2.toString(align);
     return status;
 }
 
@@ -1163,8 +1163,8 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
                 // an instruction match resets the allowed skip counter
                 skipCount = 0;
             }
-            // comparison result okay, interpret the instructions
-            if (iRef.isBranch()) {
+            // comparison result okay (instructions match or skip permitted), interpret the instructions
+            if (iRef.isBranch() && iObj.isBranch()) {
                 const Branch 
                     refBranch = getBranch(iRef, {}),
                     objBranch = getBranch(iObj, {});
