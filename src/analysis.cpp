@@ -922,7 +922,8 @@ static string compareStatus(const Instruction &i1, const Instruction &i2, const 
     static const int ALIGN = 50;
     string status = i1.addr.toString() + ": " + i1.toString(align);
     if (align && status.length() < ALIGN) status.append(ALIGN - status.length(), ' ');
-    switch (i1.match(i2)) {
+    const auto match = i1.match(i2);
+    switch (match) {
     case INS_MATCH_FULL:     status += " == "; break;
     case INS_MATCH_DIFF:     status += " ~~ "; break;
     case INS_MATCH_DIFFOP1:  status += " ~= "; break;
@@ -930,7 +931,10 @@ static string compareStatus(const Instruction &i1, const Instruction &i2, const 
     case INS_MATCH_MISMATCH: status += " != "; break; 
     }
     status += i2.addr.toString() + ": " + i2.toString(align);
-    return status;
+    if (align && match == INS_MATCH_MISMATCH) {
+        return output_color(OUT_RED) + status + output_color(OUT_DEFAULT);
+    }
+    else return status;
 }
 
 bool Executable::instructionsMatch(const Instruction &ref, const Instruction &obj) {

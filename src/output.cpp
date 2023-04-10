@@ -30,3 +30,12 @@ void setOutputLevel(const LogPriority minPriority) {
 void setModuleVisibility(const LogModule mod, const bool visible) {
     moduleVisible[mod] = visible;
 }
+
+std::string output_color(const Color c) {
+    switch (c) {
+    case OUT_RED:
+        return "\033[30;31m";
+    default:
+        return "\033[0m";
+    }
+}

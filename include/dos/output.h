@@ -22,8 +22,14 @@ enum LogPriority {
     LOG_SILENT,
 };
 
+enum Color {
+    OUT_DEFAULT,
+    OUT_RED,
+};
+
 void output(const std::string &msg, const LogModule mod, const LogPriority pri = LOG_INFO, const bool suppressNewline = false);
 void setOutputLevel(const LogPriority minPriority);
 void setModuleVisibility(const LogModule mod, const bool visible);
+std::string output_color(const Color c);
 
 #endif // OUTPUT_H
