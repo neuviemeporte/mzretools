@@ -931,16 +931,11 @@ static string compareStatus(const Instruction &i1, const Instruction &i2, const 
     case INS_MATCH_MISMATCH: status += " != "; break; 
     }
     status += i2.addr.toString() + ": " + i2.toString(align);
-    if (align && match == INS_MATCH_MISMATCH) {
-        return output_color(OUT_RED) + status + output_color(OUT_DEFAULT);
-    }
-    else return status;
+    return status;
 }
 
 bool Executable::instructionsMatch(const Instruction &ref, const Instruction &obj) {
     auto result = ref.match(obj);
-    auto statusStr = compareStatus(ref, obj, true);
-    verbose(statusStr);
     if (opt.ignoreDiff) return true;
 
     bool match = (result == INS_MATCH_FULL);
@@ -997,6 +992,19 @@ void Executable::storeSegment(const Segment &seg) {
     }
     debug("Found new segment: " + seg.toString());
     segments.push_back(seg);
+}
+
+void Executable::diffContext(Address a1, const Memory &code2, Address a2) const {
+    static const int CONTEXT_COUNT = 10; // show 10 subsequent instructions after a mismatch
+    verbose(output_color(OUT_BLUE) + "Context information for " + to_string(CONTEXT_COUNT) + " additional instructions after mismatch location:" + output_color(OUT_DEFAULT));
+    Instruction i1, i2;
+    for (int i = 0; i <= CONTEXT_COUNT; ++i) {
+        i1 = Instruction{a1, code.pointer(a1)},
+        i2 = Instruction{a2, code2.pointer(a2)};
+        if (i != 0) verbose(compareStatus(i1, i2, true));
+        a1 += i1.length;
+        a2 += i2.length;
+    }
 }
 
 // TODO: this should be a member of SearchQueue
@@ -1155,16 +1163,23 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
             compareQ.setRoutineId(csip.toLinear(), iRef.length, VISITED_ID);
             // compare instructions
             const bool matchOk = instructionsMatch(iRef, iObj);
+            const string statusStr = compareStatus(iRef, iObj, true);
             if (!matchOk) {
                 // attempt to skip the difference, if permitted by the options
                 skipCount++;
                 if (skipCount > opt.skipDiff) {
+                    verbose(output_color(OUT_RED) + statusStr + output_color(OUT_DEFAULT));
                     error("Instruction mismatch in routine " + routine.name + " at " + compareStatus(iRef, iObj, false));
+                    diffContext(csip, other.code, otherCsip);
                     return false;
+                }
+                else {
+                    verbose(output_color(OUT_YELLOW) + statusStr + output_color(OUT_DEFAULT));
                 }
             }
             else {
                 // an instruction match resets the allowed skip counter
+                verbose(statusStr);
                 skipCount = 0;
             }
             // comparison result okay (instructions match or skip permitted), interpret the instructions

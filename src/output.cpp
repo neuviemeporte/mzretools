@@ -31,11 +31,21 @@ void setModuleVisibility(const LogModule mod, const bool visible) {
     moduleVisible[mod] = visible;
 }
 
-std::string output_color(const Color c) {
+string output_color(const Color c) {
+    string ret;
     switch (c) {
     case OUT_RED:
-        return "\033[30;31m";
+        ret = "\033[30;31m";
+        break;
+    case OUT_YELLOW:
+        ret = "\033[30;33m";
+        break;
+    case OUT_BLUE:
+        ret = "\033[30;94m";
+        break;
     default:
-        return "\033[0m";
+        ret = "\033[0m";
+        break;
     }
+    return ret;
 }

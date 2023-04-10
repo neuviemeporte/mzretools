@@ -228,6 +228,7 @@ private:
     void setEntrypoint(const Address &addr);
     bool instructionsMatch(const Instruction &ref, const Instruction &obj);
     void storeSegment(const Segment &seg);
+    void diffContext(const Address a1, const Memory &code2, const Address a2) const;
 };
 
 #endif // ANALYSIS_H
