@@ -934,15 +934,17 @@ static string compareStatus(const Instruction &i1, const Instruction &i2, const 
     return status;
 }
 
-bool Executable::instructionsMatch(const Instruction &ref, const Instruction &obj) {
-    auto result = ref.match(obj);
-    if (opt.ignoreDiff) return true;
+Executable::ComparisonResult Executable::instructionsMatch(const Instruction &ref, const Instruction &obj) {
+    if (opt.ignoreDiff) return CMP_MATCH;
 
-    bool match = (result == INS_MATCH_FULL);
+    auto insResult = ref.match(obj);
+    if (insResult == INS_MATCH_FULL) return CMP_MATCH;
+
+    bool match = false;
     // instructions differ in value of immediate or memory offset
-    if (result == INS_MATCH_DIFFOP1 || result == INS_MATCH_DIFFOP2) {
-        const auto &refop = (result == INS_MATCH_DIFFOP1 ? ref.op1 : ref.op2);
-        const auto &objop = (result == INS_MATCH_DIFFOP1 ? obj.op1 : obj.op2);
+    if (insResult == INS_MATCH_DIFFOP1 || insResult == INS_MATCH_DIFFOP2) {
+        const auto &refop = (insResult == INS_MATCH_DIFFOP1 ? ref.op1 : ref.op2);
+        const auto &objop = (insResult == INS_MATCH_DIFFOP1 ? obj.op1 : obj.op2);
         if (ref.isBranch()) {
             Branch refBranch = getBranch(ref), objObranch = getBranch(obj);
             if (refBranch.destination.isValid() && objObranch.destination.isValid()) {
@@ -964,12 +966,13 @@ bool Executable::instructionsMatch(const Instruction &ref, const Instruction &ob
         else if (operandIsImmediate(refop.type)) {
             if (!opt.strict) {
                 debug("Ignoring immediate value difference in loose mode");
-                match = true;
+                return CMP_DIFFVAL;
             } 
         }
     }
     
-    return match;
+    if (match) return CMP_MATCH;
+    else return CMP_MISMATCH;
 }
 
 void Executable::storeSegment(const Segment &seg) {
@@ -1162,9 +1165,15 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
             // mark this insruction as visited, unlike the routine finding algorithm, we do not differentiate between routine IDs
             compareQ.setRoutineId(csip.toLinear(), iRef.length, VISITED_ID);
             // compare instructions
-            const bool matchOk = instructionsMatch(iRef, iObj);
+            const auto matchType = instructionsMatch(iRef, iObj);
             const string statusStr = compareStatus(iRef, iObj, true);
-            if (!matchOk) {
+            switch (matchType) {
+            case CMP_MATCH:
+                // an instruction match resets the allowed skip counter
+                verbose(statusStr);
+                skipCount = 0;
+                break;
+            case CMP_MISMATCH:
                 // attempt to skip the difference, if permitted by the options
                 skipCount++;
                 if (skipCount > opt.skipDiff) {
@@ -1176,12 +1185,12 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
                 else {
                     verbose(output_color(OUT_YELLOW) + statusStr + output_color(OUT_DEFAULT));
                 }
+                break;
+            case CMP_DIFFVAL:
+                verbose(output_color(OUT_YELLOW) + statusStr + output_color(OUT_DEFAULT));
+                break;
             }
-            else {
-                // an instruction match resets the allowed skip counter
-                verbose(statusStr);
-                skipCount = 0;
-            }
+
             // comparison result okay (instructions match or skip permitted), interpret the instructions
             if (iRef.isBranch() && iObj.isBranch()) {
                 const Branch 
@@ -1212,11 +1221,12 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
             csip += iRef.length;
             // if the instructions did not match and we still got here, that means we are in difference skipping mode, 
             // so don't advance to the next instruction in the compared binary, maybe the next one from the reference will match
-            if (matchOk) {
-                otherCsip += iObj.length;
+            // TODO: support skipping of object as well?
+            if (matchType == CMP_MISMATCH) {
+                debug("Skipping over instruction mismatch, allowed " + to_string(skipCount) + " out of " + to_string(opt.skipDiff));
             }
             else {
-                debug("Skipping over instruction mismatch, allowed " + to_string(skipCount) + " out of " + to_string(opt.skipDiff));
+                otherCsip += iObj.length;
             }
         } // iterate over instructions at comparison location
     } // iterate over comparison queue

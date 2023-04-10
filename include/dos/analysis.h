@@ -213,6 +213,8 @@ class Executable {
     std::vector<Segment> segments;
     AnalysisOptions opt;
 
+    enum ComparisonResult { CMP_MATCH, CMP_MISMATCH, CMP_DIFFVAL };
+
 public:
     explicit Executable(const MzImage &mz, const Address &entrypoint = Address(), const AnalysisOptions &opt = AnalysisOptions());
     bool contains(const Address &addr) const { return codeExtents.contains(addr); }
@@ -226,7 +228,7 @@ private:
     void applyMov(const Instruction &i, RegisterState &regs);
 
     void setEntrypoint(const Address &addr);
-    bool instructionsMatch(const Instruction &ref, const Instruction &obj);
+    ComparisonResult instructionsMatch(const Instruction &ref, const Instruction &obj);
     void storeSegment(const Segment &seg);
     void diffContext(const Address a1, const Memory &code2, const Address a2) const;
 };

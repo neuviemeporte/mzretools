@@ -168,6 +168,48 @@ static const OperandSize MODRM_OPR_SIZE[] = {
     OPRSZ_BYTE,  // MODRM_CL
 };
 
+// convert an operand type with a memory offset or an immediate value to a word-sized equivalent, 
+// useful in fuzzy comparisons
+OperandType operandTypeToWord(const OperandType ot) {
+    OperandType ret = OPR_ERR;
+    switch (ot) {
+    case OPR_MEM_OFF8:
+        ret = OPR_MEM_OFF16;
+        break;
+    case OPR_MEM_BX_SI_OFF8:
+        ret = OPR_MEM_BX_SI_OFF16;
+        break;
+    case OPR_MEM_BX_DI_OFF8:
+        ret = OPR_MEM_BX_DI_OFF16;
+        break;
+    case OPR_MEM_BP_SI_OFF8:
+        ret = OPR_MEM_BP_SI_OFF16;
+        break;
+    case OPR_MEM_BP_DI_OFF8:
+        ret = OPR_MEM_BP_DI_OFF16;
+        break;
+    case OPR_MEM_SI_OFF8:
+        ret = OPR_MEM_SI_OFF16;
+        break;
+    case OPR_MEM_DI_OFF8:
+        ret = OPR_MEM_DI_OFF16;
+        break;
+    case OPR_MEM_BP_OFF8:
+        ret = OPR_MEM_BP_OFF16;
+        break;
+    case OPR_MEM_BX_OFF8:
+        ret = OPR_MEM_BX_OFF16;
+        break;
+    case OPR_IMM8:
+        ret = OPR_IMM16;
+        break;
+    default:
+        ret = ot;
+        break;
+    }
+    return ret;
+}
+
 Register defaultMemSegment(const OperandType ot) {
     if (!operandIsMem(ot)) return REG_NONE;
     Register ret = REG_NONE;
@@ -481,41 +523,24 @@ std::string Instruction::Operand::toString() const {
 }
 
 InstructionMatch Instruction::Operand::match(const Operand &other) const {
-    if (type != other.type || size != other.size)
-        return INS_MATCH_MISMATCH;
-
-    // check operands' immediate values for difference
-    switch(type) {
-    case OPR_MEM_OFF8:
-    case OPR_MEM_BX_SI_OFF8:
-    case OPR_MEM_BX_DI_OFF8:
-    case OPR_MEM_BP_SI_OFF8:
-    case OPR_MEM_BP_DI_OFF8:
-    case OPR_MEM_SI_OFF8:
-    case OPR_MEM_DI_OFF8:
-    case OPR_MEM_BP_OFF8:
-    case OPR_MEM_BX_OFF8:
-    case OPR_IMM8:
-        if (immval.u8 != other.immval.u8) return INS_MATCH_DIFF;
-        else break;
-    case OPR_MEM_OFF16:
-    case OPR_MEM_BX_SI_OFF16:
-    case OPR_MEM_BX_DI_OFF16:
-    case OPR_MEM_BP_SI_OFF16:
-    case OPR_MEM_BP_DI_OFF16:
-    case OPR_MEM_SI_OFF16:
-    case OPR_MEM_DI_OFF16:
-    case OPR_MEM_BP_OFF16:
-    case OPR_MEM_BX_OFF16:
-    case OPR_IMM16:
-        if (immval.u16 != other.immval.u16) return INS_MATCH_DIFF;
-        else break;
-    case OPR_IMM32:
-        if (immval.u32 != other.immval.u32) return INS_MATCH_DIFF;
-        else break;
-    default:
-        break;
+    if (type != other.type || size != other.size) {
+        // accept differing operand types if they are different-sized equivalents
+        if (operandTypeToWord(type) == operandTypeToWord(other.type)) {
+            // compare offset/immediate values
+            if (wordValue() == other.wordValue()) return INS_MATCH_FULL;
+            else return INS_MATCH_DIFF;
+        }
+        else return INS_MATCH_MISMATCH;
     }
+
+    // the rest assumes the types and sizes are the same
+    if (operandIsMemWithOffset(type) || type == OPR_IMM8 || type == OPR_IMM16) {
+        return wordValue() == other.wordValue() ? INS_MATCH_FULL : INS_MATCH_DIFF;
+    }
+    else if (type == OPR_IMM32) {
+        return immval.u32 == other.immval.u32 ? INS_MATCH_FULL : INS_MATCH_DIFF;
+    }
+    // operands not having an offset/immval component
     return INS_MATCH_FULL;
 }
 
@@ -582,7 +607,7 @@ std::string Instruction::toString(const bool extended) const {
 }
 
 InstructionMatch Instruction::match(const Instruction &other) const {
-    if (prefix != other.prefix || opcode != other.opcode || iclass != other.iclass || iclass != other.iclass)
+    if (prefix != other.prefix || iclass != other.iclass || iclass != other.iclass)
         return INS_MATCH_MISMATCH;
 
     const InstructionMatch 
@@ -734,6 +759,13 @@ Register Instruction::Operand::regId() const {
     const int idx = type - OPR_REG_AX;
     assert(idx >= 0 && idx < sizeof(regs) / sizeof(regs[0]));
     return regs[idx];
+}
+
+Word Instruction::Operand::wordValue() const {
+    Word ret = 0;
+    if (size == OPRSZ_WORD) ret = immval.u16;
+    else if (size == OPRSZ_BYTE) ret = immval.u8;
+    return ret;
 }
 
 Register prefixRegId(const InstructionPrefix p) {

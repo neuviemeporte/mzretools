@@ -211,6 +211,8 @@ inline bool operandIsImmediate(const OperandType ot) {
     return ot >= OPR_IMM0 && ot <= OPR_IMM32;
 }
 
+OperandType operandTypeToWord(const OperandType ot);
+
 Register defaultMemSegment(const OperandType ot);
 
 #define OPERAND_SIZE \
@@ -270,6 +272,7 @@ public:
         std::string toString() const;
         InstructionMatch match(const Operand &other) const;
         Register regId() const;
+        Word wordValue() const;
     } op1, op2;
 
     Instruction();
