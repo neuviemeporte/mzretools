@@ -607,7 +607,7 @@ std::string Instruction::toString(const bool extended) const {
 }
 
 InstructionMatch Instruction::match(const Instruction &other) const {
-    if (prefix != other.prefix || iclass != other.iclass || iclass != other.iclass)
+    if (prefix != other.prefix || iclass != other.iclass || (iclass == INS_JMP && opcode != other.opcode)) 
         return INS_MATCH_MISMATCH;
 
     const InstructionMatch 
