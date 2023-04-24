@@ -53,15 +53,14 @@ string mzInfo(const MzImage &mz) {
     return str.str();
 }
 
-Executable loadExe(const string &spec, const Word segment) {
+Executable loadExe(const string &spec, const Word segment, AnalysisOptions &opt) {
     // TODO: support providing segment for entrypoint
-    static const regex EXESPEC_RE{"([-_./a-zA-Z0-9]*)(:([a-fA-F0-9]+))?"};
+    static const regex EXESPEC_RE{"([-_./a-zA-Z0-9]*)(:([xa-fA-F0-9]+)(-([xa-fA-F0-9]+))?)?"};
     smatch match;
     if (!regex_match(spec, match, EXESPEC_RE)) {
         fatal("Invalid exe spec string: "s + spec);
     }
-    string path = match[1].str(), entrypoint;
-    if (match.size() > 3) entrypoint = match[3].str();
+    string path = match[1].str();
     const auto stat = checkFile(path);
     if (!stat.exists) fatal("File does not exist: "s + path);
     else if (stat.size <= MZ_HEADER_SIZE) fatal("File too small ("s + to_string(stat.size) + "B): " + path); 
@@ -69,15 +68,25 @@ Executable loadExe(const string &spec, const Word segment) {
     MzImage mz{path};
     mz.load(segment);
     debug(mzInfo(mz));
-    if (entrypoint.empty())
-        return Executable(mz);
-    else {
-        Offset epOffset = static_cast<Offset>(stoi(entrypoint, nullptr, 16));
-        Address epAddr(epOffset);
-        epAddr.move(0);
+    Executable exe{mz};
+
+    // handle entrypoint override from command line
+    if (!match[3].str().empty()) {
+        Address epAddr{match[3].str(), false}; // do not normalize address
         debug("Entrypoint override: "s + epAddr.toString());
-        return Executable(mz, epAddr);
+        exe.setEntrypoint(epAddr);
     }
+    // handle stop address on command line
+    if (!match[5].str().empty() && !opt.stopAddr.isValid()) {
+        Address stopAddr{match[5].str(), false};
+        stopAddr.relocate(segment);
+        if (stopAddr <= exe.entrypoint()) 
+            fatal("Stop address " + stopAddr.toString() + " before executable entrypoint " + exe.entrypoint().toString());
+        debug("Stop address: "s + stopAddr.toString());
+        opt.stopAddr = stopAddr;
+    }
+
+    return exe;
 }
 
 int main(int argc, char *argv[]) {
@@ -115,8 +124,8 @@ int main(int argc, char *argv[]) {
         }
     }
     try {
-        Executable exeBase = loadExe(baseSpec, loadSeg);
-        Executable exeCompare = loadExe(compareSpec, loadSeg);
+        Executable exeBase = loadExe(baseSpec, loadSeg, opt);
+        Executable exeCompare = loadExe(compareSpec, loadSeg, opt);
         RoutineMap map;
         if (!pathMap.empty()) map = {pathMap, loadSeg};
         if (!exeBase.compareCode(map, exeCompare, opt)) return 1;

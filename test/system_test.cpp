@@ -28,7 +28,6 @@ protected:
     auto emptyScanQueue() { return ScanQueue(); }
     auto& sqVisited(ScanQueue &sq) { return sq.visited; }
     auto& sqEntrypoints(ScanQueue &sq) { return sq.entrypoints; }
-    void setEntrypoint(Executable &e, const Address &addr) { e.setEntrypoint(addr); }
 };
 
 TEST_F(SystemTest, DISABLED_HelloWorld) {
@@ -225,8 +224,8 @@ TEST_F(SystemTest, CodeCompare) {
     ASSERT_TRUE(e1.compareCode(map, e2, {}));
 
     // compare different
-    setEntrypoint(e1, Address(0x115e)); // getnum
-    setEntrypoint(e2, Address(0x8d0)); // _fflush
+    e1.setEntrypoint(Address(0x115e)); // getnum
+    e2.setEntrypoint(Address(0x8d0)); // _fflush
     ASSERT_FALSE(e1.compareCode(map, e2, {}));
 }
 

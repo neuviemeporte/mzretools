@@ -198,6 +198,7 @@ struct Branch {
 struct AnalysisOptions {
     bool strict, ignoreDiff, noCall;
     Size skipDiff;
+    Address stopAddr;
     AnalysisOptions() : strict(true), ignoreDiff(false), noCall(false), skipDiff(0) {}
 };
 
@@ -206,17 +207,19 @@ class Executable {
     const Memory code;
     Word loadSegment;
     Size codeSize;
-    Address entrypoint;
+    Address ep;
     Address csip, stack;
     Block codeExtents;
     OffsetMap offMap;
     std::vector<Segment> segments;
-    AnalysisOptions opt;
 
     enum ComparisonResult { CMP_MATCH, CMP_MISMATCH, CMP_DIFFVAL };
 
 public:
-    explicit Executable(const MzImage &mz, const Address &entrypoint = Address(), const AnalysisOptions &opt = AnalysisOptions());
+    explicit Executable(const MzImage &mz);
+    const Address& entrypoint() const { return ep; }
+    void setEntrypoint(const Address &addr);
+
     bool contains(const Address &addr) const { return codeExtents.contains(addr); }
     RoutineMap findRoutines();
     bool compareCode(const RoutineMap &map, const Executable &other, const AnalysisOptions &options);
@@ -227,8 +230,7 @@ private:
     bool saveBranch(const Branch &branch, const RegisterState &regs, const Block &codeExtents, ScanQueue &sq) const;
     void applyMov(const Instruction &i, RegisterState &regs);
 
-    void setEntrypoint(const Address &addr);
-    ComparisonResult instructionsMatch(const Instruction &ref, const Instruction &obj);
+    ComparisonResult instructionsMatch(const Instruction &ref, const Instruction &obj, const AnalysisOptions &opt);
     void storeSegment(const Segment &seg);
     void diffContext(const Address a1, const Memory &code2, const Address a2) const;
 };

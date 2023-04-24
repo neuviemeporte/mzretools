@@ -7,6 +7,7 @@
 
 static constexpr Size MEM_TOTAL = 1_MB;
 static constexpr Size SEGMENT_SIZE = 64_kB;
+static constexpr int SEGMENT_MASK = 0xf0000;
 // amount of right shift needed to convert linear offset values into segment values (losing the 16 byte aliasing factor), or left shift for the opposite (segment to linear)
 static constexpr int SEGMENT_SHIFT = 4; 
 // amount of shift needed to obtain the count of full, 64k size segments covered by a linear offset
@@ -34,7 +35,7 @@ struct Address {
     Word segment, offset;
     Address(const Word segment, const Word offset) : segment(segment), offset(offset) {}
     Address(const Offset linear);
-    Address(const std::string &str);
+    Address(const std::string &str, const bool fixNormal = false);
     Address(const Address &other, const SWord displacement);
     Address() : Address(ADDR_INVALID, ADDR_INVALID) {}
 
@@ -55,7 +56,7 @@ struct Address {
     Address& operator+=(const SByte adjust) { offset += adjust; return *this; }
     Address& operator+=(const Byte adjust) { offset += adjust; return *this; }
 
-    void set(const Offset linear, const bool normal);
+    void set(const Offset linear);
     std::string toString(const bool brief = false) const;
     inline Offset toLinear() const { return SEG_TO_OFFSET(segment) + offset; }
     bool isNull() const { return segment == 0 && offset == 0; }

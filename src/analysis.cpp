@@ -748,19 +748,22 @@ void ScanQueue::dumpVisited(const string &path, const Offset start, Size size) c
     }
 }
 
-Executable::Executable(const MzImage &mz, const Address &ep, const AnalysisOptions &opt) : 
+Executable::Executable(const MzImage &mz) : 
     code(mz.loadSegment(), mz.loadModuleData(), mz.loadModuleSize()),
     loadSegment(mz.loadSegment()),
     codeSize(mz.loadModuleSize()),
-    entrypoint(ep.isValid() ? ep : mz.entrypoint()), 
     stack(mz.stackPointer()), 
-    codeExtents({loadSegment, Word(0)}, Address(SEG_TO_OFFSET(loadSegment) + codeSize)),
-    opt(opt)
+    codeExtents({loadSegment, Word(0)}, Address(SEG_TO_OFFSET(loadSegment) + codeSize))
 {
     // relocate entrypoint and stack
-    entrypoint.segment += loadSegment;
-    stack.segment += loadSegment;
-    debug("Loaded executable data into memory, code at "s + codeExtents.toString() + ", relocated entrypoint " + entrypoint.toString() + ", stack " + stack.toString());
+    setEntrypoint(mz.entrypoint());
+    stack.relocate(loadSegment);
+    debug("Loaded executable data into memory, code at "s + codeExtents.toString() + ", relocated entrypoint " + entrypoint().toString() + ", stack " + stack.toString());
+}
+
+void Executable::setEntrypoint(const Address &addr) {
+    ep = addr;
+    ep.relocate(loadSegment);
 }
 
 void Executable::searchMessage(const string &msg) const {
@@ -912,10 +915,6 @@ void Executable::applyMov(const Instruction &i, RegisterState &regs) {
     }
 }
 
-void Executable::setEntrypoint(const Address &addr) {
-    entrypoint = addr;
-}
-
 // TODO: include status of existing address mapping contributing to a match in the output
 // TODO: make jump instructions compare the match with the relative offset value
 static string compareStatus(const Instruction &i1, const Instruction &i2, const bool align) {
@@ -934,7 +933,7 @@ static string compareStatus(const Instruction &i1, const Instruction &i2, const 
     return status;
 }
 
-Executable::ComparisonResult Executable::instructionsMatch(const Instruction &ref, const Instruction &obj) {
+Executable::ComparisonResult Executable::instructionsMatch(const Instruction &ref, const Instruction &obj, const AnalysisOptions &opt) {
     if (opt.ignoreDiff) return CMP_MATCH;
 
     auto insResult = ref.match(obj);
@@ -1029,11 +1028,11 @@ bool Executable::saveBranch(const Branch &branch, const RegisterState &regs, con
 // TODO: trace usage of bp register (sub/add) to determine stack frame size of routines
 // TODO: store references to potential jump tables (e.g. jmp cs:[bx+0xc08]), if unclaimed after initial search, try treating entries as pointers and run second search before coalescing blocks?
 RoutineMap Executable::findRoutines() {
-    RegisterState initRegs{entrypoint, stack};
+    RegisterState initRegs{entrypoint(), stack};
     storeSegment({Segment::SEG_STACK, stack.segment});
     debug("initial register values:\n"s + initRegs.toString());
     // queue for BFS search
-    ScanQueue searchQ{Destination(entrypoint, 1, true, initRegs)};
+    ScanQueue searchQ{Destination(entrypoint(), 1, true, initRegs)};
     info("Analyzing code within extents: "s + codeExtents);
 
     // iterate over entries in the search queue
@@ -1106,17 +1105,16 @@ RoutineMap Executable::findRoutines() {
 }
 
 bool Executable::compareCode(const RoutineMap &routineMap, const Executable &other, const AnalysisOptions &options) {
-    verbose("Comparing code between reference (entrypoint "s + entrypoint.toString() + ") and other (entrypoint " + other.entrypoint.toString() + ") executables");
+    verbose("Comparing code between reference (entrypoint "s + entrypoint().toString() + ") and other (entrypoint " + other.entrypoint().toString() + ") executables");
     debug("Routine map of reference binary has " + to_string(routineMap.size()) + " entries");
     offMap = OffsetMap(routineMap.segmentCount(Segment::SEG_DATA));
-    opt = options;
     // map of equivalent addresses in the compared binaries, seed with the two entrypoints
-    offMap.setCode(entrypoint, other.entrypoint);
+    offMap.setCode(entrypoint(), other.entrypoint());
     const RoutineId VISITED_ID = 1;
     // queue of locations (in reference binary) for comparison, likewise seeded with the entrypoint
     // TODO: use routine map to fill compareQ in advance
     // TODO: implement register value tracing
-    ScanQueue compareQ(Destination(entrypoint, VISITED_ID, true, {}));
+    ScanQueue compareQ(Destination(entrypoint(), VISITED_ID, true, {}));
     while (!compareQ.empty()) {
         // get next location for linear scan and comparison of instructions
         const Destination compare = compareQ.nextPoint(false);
@@ -1126,6 +1124,10 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
             offMap.resetStack();
         }
         csip = compare.address;
+        if (options.stopAddr.isValid() && csip >= options.stopAddr) {
+            verbose("Reached stop address: " + csip.toString());
+            goto success;
+        }        
         if (compareQ.getRoutineId(csip.toLinear()) != NULL_ROUTINE) {
             debug("Location already compared, skipping");
             continue;
@@ -1165,7 +1167,7 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
             // mark this insruction as visited, unlike the routine finding algorithm, we do not differentiate between routine IDs
             compareQ.setRoutineId(csip.toLinear(), iRef.length, VISITED_ID);
             // compare instructions
-            const auto matchType = instructionsMatch(iRef, iObj);
+            const auto matchType = instructionsMatch(iRef, iObj, options);
             const string statusStr = compareStatus(iRef, iObj, true);
             switch (matchType) {
             case CMP_MATCH:
@@ -1176,7 +1178,7 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
             case CMP_MISMATCH:
                 // attempt to skip the difference, if permitted by the options
                 skipCount++;
-                if (skipCount > opt.skipDiff) {
+                if (skipCount > options.skipDiff) {
                     verbose(output_color(OUT_RED) + statusStr + output_color(OUT_DEFAULT));
                     error("Instruction mismatch in routine " + routine.name + " at " + compareStatus(iRef, iObj, false));
                     diffContext(csip, other.code, otherCsip);
@@ -1196,7 +1198,7 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
                 const Branch 
                     refBranch = getBranch(iRef, {}),
                     objBranch = getBranch(iObj, {});
-                if (!opt.noCall) {
+                if (!options.noCall) {
                     // if the destination of the branch can be established, place it in the compare queue
                     if (saveBranch(refBranch, {}, codeExtents, compareQ)) {
                         // if the branch destination was accepted, save the address mapping of the branch destination between the reference and object
@@ -1219,11 +1221,15 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
             }
             // advance to next instruction pair
             csip += iRef.length;
+            if (options.stopAddr.isValid() && csip >= options.stopAddr) {
+                verbose("Reached stop address: " + csip.toString());
+                goto success;
+            }
             // if the instructions did not match and we still got here, that means we are in difference skipping mode, 
             // so don't advance to the next instruction in the compared binary, maybe the next one from the reference will match
             // TODO: support skipping of object as well?
             if (matchType == CMP_MISMATCH) {
-                debug("Skipping over instruction mismatch, allowed " + to_string(skipCount) + " out of " + to_string(opt.skipDiff));
+                debug("Skipping over instruction mismatch, allowed " + to_string(skipCount) + " out of " + to_string(options.skipDiff));
             }
             else {
                 otherCsip += iObj.length;
@@ -1231,6 +1237,7 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
         } // iterate over instructions at comparison location
     } // iterate over comparison queue
 
+success:
     verbose("Comparison result positive");
     return true;
 }

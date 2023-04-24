@@ -57,7 +57,6 @@ Executable loadExe(const string &spec, const Word loadSegment) {
         fatal("Invalid exe spec string: "s + spec);
     }
     string path = match[1].str(), entrypoint;
-    if (match.size() > 3) entrypoint = match[3].str();
     const auto stat = checkFile(path);
     if (!stat.exists) fatal("File does not exist: "s + path);
     else if (stat.size <= MZ_HEADER_SIZE) fatal("File too small ("s + to_string(stat.size) + "B): " + path); 
@@ -65,14 +64,14 @@ Executable loadExe(const string &spec, const Word loadSegment) {
     MzImage mz{path};
     mz.load(loadSegment);
     debug(mzInfo(mz));
-    if (entrypoint.empty())
-        return Executable(mz);
-    else {
-        Offset epOffset = static_cast<Offset>(stoi(entrypoint, nullptr, 16));
-        Address epAddr(epOffset);
+    Executable exe{mz};
+
+    if (match.size() > 3) {
+        Address epAddr(match[3].str(), false);
         debug("Entrypoint override: "s + epAddr.toString());
-        return Executable(mz, epAddr);
+        exe.setEntrypoint(epAddr);
     }
+    return exe;
 }
 
 int main(int argc, char *argv[]) {

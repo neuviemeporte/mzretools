@@ -16,12 +16,24 @@ TEST_F(MemoryTest, AddressFromString) {
     TRACELN("addr1 = "s + addr1.toString());
     ASSERT_EQ(addr1.segment, 0x1234);
     ASSERT_EQ(addr1.offset, 0xabcd);
-    Address addr2{"0x1234"};
+    
+    // normalization
+    Address addr2{"0x1234", true};
     TRACELN("addr2 = "s + addr2.toString());
     ASSERT_EQ(addr2.toLinear(), 0x1234);
+    ASSERT_EQ(addr2.segment, 0x123);
+    ASSERT_EQ(addr2.offset, 0x4);
+    
     Address addr3{"1234"};
     TRACELN("addr3 = "s + addr3.toString());
     ASSERT_EQ(addr3.toLinear(), 1234);
+
+    // no normalization
+    Address addr4{"0x5678", false};
+    TRACELN("addr4 = "s + addr4.toString());
+    ASSERT_EQ(addr4.toLinear(), 0x5678);
+    ASSERT_EQ(addr4.segment, 0);
+    ASSERT_EQ(addr4.offset, 0x5678);    
 }
 
 TEST_F(MemoryTest, Segmentation) {

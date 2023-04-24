@@ -16,34 +16,33 @@ static const regex
     DECSIZE_RE{"\\+([0-9]{1,7})"};
 
 Address::Address(const Offset linear) {
-    set(linear, true);
+    set(linear);
 }
 
-Address::Address(const std::string &str) {
+Address::Address(const std::string &str, const bool fixNormal) {
     smatch match;
     if (regex_match(str, match, FARADDR_RE)) {
         segment = stoi(match.str(1), nullptr, 16),
         offset  = stoi(match.str(2), nullptr, 16);
     }
     else if (regex_match(str, match, HEXOFFSET_RE)) {
-        set(stoi(match.str(1), nullptr, 16), true);
+        set(stoi(match.str(1), nullptr, 16));
     }
     else if (regex_match(str, match, DECOFFSET_RE)) {
-        set(stoi(match.str(1), nullptr, 10), true);
+        set(stoi(match.str(1), nullptr, 10));
     }
-    else
-        throw ArgError("Invalid address string: "s + str);
+    else throw ArgError("Invalid address string: "s + str);
+    if (fixNormal) normalize();
 }
 
 Address::Address(const Address &other, const SWord displacement) : segment(other.segment), offset(other.offset) {
     offset += displacement;
 }
 
-void Address::set(const Offset linear, const bool normal) {
+void Address::set(const Offset linear) {
     if (linear >= MEM_TOTAL) throw MemoryError("Linear address too big while converting to segmented representation: "s + hexVal(linear));
-    segment = static_cast<Word>(linear >> SEGMENT_SHIFT);
-    offset = static_cast<Word>(linear & OFFSET_NORMAL_MASK);
-    if (normal) normalize();
+    segment = static_cast<Word>((linear & SEGMENT_MASK) >> SEGMENT_SHIFT);
+    offset = static_cast<Word>(linear & OFFSET_MASK);
 }
 
 Address Address::operator+(const DWord arg) const {
@@ -71,7 +70,7 @@ void Address::rebase(const Word base) {
     auto linear = toLinear(), baseLinear = SEG_TO_OFFSET(base);
     if (linear < baseLinear) throw MemoryError("Unable to rebase address " + toString() + " to " + hexVal(base));
     linear -= baseLinear;
-    set(linear, true);
+    set(linear);
 }
 
 // move address to another segment, if possible
