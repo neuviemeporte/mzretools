@@ -58,6 +58,7 @@ public:
     ~MzImage();
     const std::string& path() const { return path_; }
     std::string dump() const;
+    Size headerLength() const { return header_.header_paragraphs * PARAGRAPH_SIZE; }
     Size loadModuleSize() const { return loadModuleSize_; }
     Offset loadModuleOffset() const { return loadModuleOffset_; }
     const Byte* loadModuleData() const { return loadModuleData_; }
