@@ -191,15 +191,15 @@ private:
 };
 
 struct Branch {
-    Address destination;
+    Address source, destination;
     bool isCall, isUnconditional;
 };
 
 struct AnalysisOptions {
-    bool strict, ignoreDiff, noCall;
+    bool strict, ignoreDiff, noCall, variant;
     Size skipDiff;
     Address stopAddr;
-    AnalysisOptions() : strict(true), ignoreDiff(false), noCall(false), skipDiff(0) {}
+    AnalysisOptions() : strict(true), ignoreDiff(false), noCall(false), variant(false), skipDiff(0) {}
 };
 
 class Executable {
@@ -207,13 +207,11 @@ class Executable {
     const Memory code;
     Word loadSegment;
     Size codeSize;
-    Address ep;
-    Address csip, stack;
+    Address ep, stack;
     Block codeExtents;
-    OffsetMap offMap;
     std::vector<Segment> segments;
 
-    enum ComparisonResult { CMP_MATCH, CMP_MISMATCH, CMP_DIFFVAL };
+    enum ComparisonResult { CMP_MATCH, CMP_MISMATCH, CMP_DIFFVAL, CMP_VARIANT };
 
 public:
     explicit Executable(const MzImage &mz);
@@ -225,12 +223,19 @@ public:
     bool compareCode(const RoutineMap &map, const Executable &other, const AnalysisOptions &options);
 
 private:
-    void searchMessage(const std::string &msg) const;
+    struct Context {
+        const Executable &other;
+        const AnalysisOptions &options;
+        Address csip, otherCsip;
+        OffsetMap offMap;
+        Context(const Executable &other, const AnalysisOptions &opt, const Size maxData);
+    };
+    void searchMessage(const Address &addr, const std::string &msg) const;
     Branch getBranch(const Instruction &i, const RegisterState &regs = {}) const;
     bool saveBranch(const Branch &branch, const RegisterState &regs, const Block &codeExtents, ScanQueue &sq) const;
     void applyMov(const Instruction &i, RegisterState &regs);
 
-    ComparisonResult instructionsMatch(const Instruction &ref, const Instruction &obj, const AnalysisOptions &opt);
+    ComparisonResult instructionsMatch(Context &ctx, const Instruction &ref, const Instruction &obj);
     void storeSegment(const Segment &seg);
     void diffContext(const Address a1, const Memory &code2, const Address a2) const;
 };

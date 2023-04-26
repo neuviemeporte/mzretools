@@ -28,7 +28,8 @@ void usage() {
            "--idiff        ignore differences completely\n"
            "--nocall       do not follow calls, useful for comparing single functions\n"
            "--sdiff count  skip differences, ignore up to 'count' consecutive mismatching instructions in the base executable\n"
-           "--loose        non-strict matching, allows e.g for literal argument differences",
+           "--loose        non-strict matching, allows e.g for literal argument differences\n"
+           "--variant      treat instruction variants that do the same thing as matching",
            LOG_OTHER, LOG_ERROR);
     exit(1);
 }
@@ -115,6 +116,7 @@ int main(int argc, char *argv[]) {
             pathMap = argv[++aidx];
         }        
         else if (arg == "--loose") opt.strict = false;
+        else if (arg == "--variant") opt.variant = true;
         else { // positional arguments
             switch (++posarg) {
             case 1: baseSpec = arg; break;
