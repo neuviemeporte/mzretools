@@ -235,7 +235,7 @@ private:
     bool saveBranch(const Branch &branch, const RegisterState &regs, const Block &codeExtents, ScanQueue &sq) const;
     void applyMov(const Instruction &i, RegisterState &regs);
 
-    ComparisonResult instructionsMatch(Context &ctx, const Instruction &ref, const Instruction &obj);
+    ComparisonResult instructionsMatch(Context &ctx, const Instruction &ref, Instruction obj);
     void storeSegment(const Segment &seg);
     void diffContext(const Address a1, const Memory &code2, const Address a2) const;
 };

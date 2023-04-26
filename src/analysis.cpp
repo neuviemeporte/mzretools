@@ -922,34 +922,48 @@ void Executable::applyMov(const Instruction &i, RegisterState &regs) {
     }
 }
 
-// TODO: include status of existing address mapping contributing to a match in the output
+// TODO: include information of existing address mapping contributing to a match/mismatch in the output
 // TODO: make jump instructions compare the match with the relative offset value
-static string compareStatus(const Instruction &i1, const Instruction &i2, const bool align) {
+static string compareStatus(const Instruction &i1, const Instruction &i2, const bool align, InstructionMatch match = INS_MATCH_ERROR) {
     static const int ALIGN = 50;
-    string status = i1.addr.toString() + ": " + i1.toString(align);
-    if (align && status.length() < ALIGN) status.append(ALIGN - status.length(), ' ');
-    const auto match = i1.match(i2);
-    switch (match) {
-    case INS_MATCH_FULL:     status += " == "; break;
-    case INS_MATCH_DIFF:     status += " ~~ "; break;
-    case INS_MATCH_DIFFOP1:  status += " ~= "; break;
-    case INS_MATCH_DIFFOP2:  status += " =~ "; break;
-    case INS_MATCH_MISMATCH: status += " != "; break; 
+    string status;
+    if (i1.isValid()) {
+        status = i1.addr.toString() + ": " + i1.toString(align);
     }
+    if (align && status.length() < ALIGN) status.append(ALIGN - status.length(), ' ');
+    if (i1.isValid()) {
+        if (match == INS_MATCH_ERROR) match = i1.match(i2);
+        switch (match) {
+        case INS_MATCH_FULL:     status += " == "; break;
+        case INS_MATCH_DIFF:     status += " ~~ "; break;
+        case INS_MATCH_DIFFOP1:  status += " ~= "; break;
+        case INS_MATCH_DIFFOP2:  status += " =~ "; break;
+        case INS_MATCH_MISMATCH: status += " != "; break; 
+        }
+    }
+    else status.append(4, ' ');
     status += i2.addr.toString() + ": " + i2.toString(align);
     return status;
 }
 
+// dictionary of equivalent instruction sequences for variant-enabled comparison
 static const map<string, vector<vector<string>>> INSTR_VARIANT = {
-    { 
-        "add sp, 0x2", { 
+    { "add sp, 0x2", { 
             { "pop cx" }, 
             { "inc sp", "inc sp" },
         },
     },
+    { "add sp, 0x4", { 
+            { "pop cx", "pop cx" }, 
+        },
+    },
+    { "sub ax, ax", { 
+            { "xor ax, ax" }, 
+        },
+    },    
 };
 
-Executable::ComparisonResult Executable::instructionsMatch(Context &ctx, const Instruction &ref, const Instruction &obj) {
+Executable::ComparisonResult Executable::instructionsMatch(Context &ctx, const Instruction &ref, Instruction obj) {
     if (ctx.options.ignoreDiff) return CMP_MATCH;
 
     auto insResult = ref.match(obj);
@@ -961,9 +975,20 @@ Executable::ComparisonResult Executable::instructionsMatch(Context &ctx, const I
         const auto &refop = (insResult == INS_MATCH_DIFFOP1 ? ref.op1 : ref.op2);
         const auto &objop = (insResult == INS_MATCH_DIFFOP1 ? obj.op1 : obj.op2);
         if (ref.isBranch()) {
-            Branch refBranch = getBranch(ref), objObranch = getBranch(obj);
+            const Branch 
+                refBranch = getBranch(ref), 
+                objObranch = getBranch(obj);
             if (refBranch.destination.isValid() && objObranch.destination.isValid()) {
                 match = ctx.offMap.codeMatch(refBranch.destination, objObranch.destination);
+            }
+            // special case of jmp vs jmp short - allow only if variants enabled
+            if (match && ref.isUnconditionalJump() && ref.opcode != obj.opcode) {
+                if (ctx.options.variant) {
+                    verbose(output_color(OUT_YELLOW) + compareStatus(ref, obj, true, INS_MATCH_DIFF) + output_color(OUT_DEFAULT));
+                    ctx.otherCsip += obj.length;
+                    return CMP_VARIANT;
+                }
+                else return CMP_MISMATCH;
             }
         }
         else if (operandIsMemWithOffset(refop.type)) {
@@ -989,13 +1014,42 @@ Executable::ComparisonResult Executable::instructionsMatch(Context &ctx, const I
     if (match) return CMP_MATCH;
     // check for a variant match if allowed by options
     else if (ctx.options.variant && INSTR_VARIANT.count(ref.toString())) {
+        // get vector of allowed variants (themselves vectors of strings)
         const auto &variants = INSTR_VARIANT.at(ref.toString());
+        debug("Found "s + to_string(variants.size()) + " variants for instruction '" + ref.toString() + "'");
+        // compose string for showing the variant comparison instructions
+        string statusStr = compareStatus(ref, obj, true, INS_MATCH_DIFF);
+        string variantStr;
+        // iterate over the possible variants of this reference instruction
         for (auto &v : variants) {
-
+            variantStr.clear();
+            match = true;
+            // temporary code pointer for the compared binary while we scan its instructions ahead
+            Address tmpCsip = ctx.otherCsip;
+            int idx = 0;
+            // iterate over instructions inside this variant
+            for (auto &istr: v) {
+                debug(tmpCsip.toString() + ": " + obj.toString() + " == " + istr + " ? (" + to_string(idx+1) + "/" + to_string(v.size()) + ")");
+                // stringwise compare the next instruction in the variant to the current instruction
+                if (obj.toString() != istr) { match = false; break; }
+                // if this is not the last instruction in the variant, read the next instruction from the compared binary
+                tmpCsip += obj.length;
+                if (++idx < v.size()) {
+                    obj = Instruction{tmpCsip, ctx.other.code.pointer(tmpCsip)};
+                    variantStr += "\n" + compareStatus(Instruction(), obj, true);
+                }
+            }
+            if (match) {
+                debug("Got variant match, advancing compared binary to " + tmpCsip.toString());
+                verbose(output_color(OUT_YELLOW) + statusStr + variantStr + output_color(OUT_DEFAULT));
+                // in the case of a match, need to update the actual instruction pointer in the compared binary to account for the instructions we skipped
+                ctx.otherCsip = tmpCsip;
+                return CMP_VARIANT;
+            }
         }
-        return CMP_VARIANT;
     }
-    else return CMP_MISMATCH;
+    
+    return CMP_MISMATCH;
 }
 
 void Executable::storeSegment(const Segment &seg) {
@@ -1022,7 +1076,7 @@ void Executable::storeSegment(const Segment &seg) {
 
 void Executable::diffContext(Address a1, const Memory &code2, Address a2) const {
     static const int CONTEXT_COUNT = 10; // show 10 subsequent instructions after a mismatch
-    verbose(output_color(OUT_BLUE) + "Context information for " + to_string(CONTEXT_COUNT) + " additional instructions after mismatch location:" + output_color(OUT_DEFAULT));
+    verbose("--- Context information for " + to_string(CONTEXT_COUNT) + " additional instructions after mismatch location:");
     Instruction i1, i2;
     for (int i = 0; i <= CONTEXT_COUNT; ++i) {
         i1 = Instruction{a1, code.pointer(a1)},
@@ -1192,29 +1246,27 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
             compareQ.setRoutineId(ctx.csip.toLinear(), iRef.length, VISITED_ID);
             // compare instructions
             const auto matchType = instructionsMatch(ctx, iRef, iObj);
-            const string statusStr = compareStatus(iRef, iObj, true);
             switch (matchType) {
             case CMP_MATCH:
                 // an instruction match resets the allowed skip counter
-                verbose(statusStr);
+                verbose(compareStatus(iRef, iObj, true));
                 skipCount = 0;
                 break;
             case CMP_MISMATCH:
                 // attempt to skip the difference, if permitted by the options
                 skipCount++;
                 if (skipCount > options.skipDiff) {
-                    verbose(output_color(OUT_RED) + statusStr + output_color(OUT_DEFAULT));
+                    verbose(output_color(OUT_RED) + compareStatus(iRef, iObj, true) + output_color(OUT_DEFAULT));
                     error("Instruction mismatch in routine " + routine.name + " at " + compareStatus(iRef, iObj, false));
                     diffContext(ctx.csip, other.code, ctx.otherCsip);
                     return false;
                 }
                 else {
-                    verbose(output_color(OUT_YELLOW) + statusStr + output_color(OUT_DEFAULT));
+                    verbose(output_color(OUT_YELLOW) + compareStatus(iRef, iObj, true) + output_color(OUT_DEFAULT));
                 }
                 break;
             case CMP_DIFFVAL:
-            case CMP_VARIANT:
-                verbose(output_color(OUT_YELLOW) + statusStr + output_color(OUT_DEFAULT));
+                verbose(output_color(OUT_YELLOW) + compareStatus(iRef, iObj, true) + output_color(OUT_DEFAULT));
                 break;
             }
 
@@ -1250,19 +1302,25 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
                 verbose("Reached stop address: " + ctx.csip.toString());
                 goto success;
             }
-            // if the instructions did not match and we still got here, that means we are in difference skipping mode, 
-            // so don't advance to the next instruction in the compared binary, maybe the next one from the reference will match
-            // TODO: support skipping of object as well?
-            if (matchType == CMP_MISMATCH) {
+            switch (matchType) {
+            case CMP_MISMATCH:
+                // if the instructions did not match and we still got here, that means we are in difference skipping mode, 
+                // so don't advance to the next instruction in the compared (other) binary, maybe the next one from the reference will match
+                // TODO: support skipping of object as well?
                 debug("Skipping over instruction mismatch, allowed " + to_string(skipCount) + " out of " + to_string(options.skipDiff));
-            }
-            else {
+                break;
+            case CMP_VARIANT:
+                // in case of a variant match, the instruction pointer in the compared binary will have already been advanced by instructionsMatch()
+                debug("Variant match detected, comparison will continue at " + ctx.otherCsip.toString());
+                break;
+            default:
                 ctx.otherCsip += iObj.length;
+                break;
             }
         } // iterate over instructions at comparison location
     } // iterate over comparison queue
 
 success:
-    verbose("Comparison result positive");
+    verbose(output_color(OUT_GREEN) + "Comparison result positive" + output_color(OUT_DEFAULT));
     return true;
 }

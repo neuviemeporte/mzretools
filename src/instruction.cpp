@@ -562,6 +562,8 @@ std::string Instruction::toString(const bool extended) const {
     else {
         str << INS_NAME[iclass];
     }
+    // special extra label for short jump opcode
+    if (opcode == OP_JMP_Jb) str << " short";
 
     // output operands
     if (op1.type != OPR_NONE) {
@@ -607,7 +609,7 @@ std::string Instruction::toString(const bool extended) const {
 }
 
 InstructionMatch Instruction::match(const Instruction &other) const {
-    if (prefix != other.prefix || iclass != other.iclass || (iclass == INS_JMP && opcode != other.opcode)) 
+    if (prefix != other.prefix || iclass != other.iclass || (opcodeIsConditionalJump(opcode) && opcode != other.opcode)) 
         return INS_MATCH_MISMATCH;
 
     const InstructionMatch 

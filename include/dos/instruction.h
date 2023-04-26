@@ -242,6 +242,7 @@ INS_GROUP_IDX
 };
 
 #define INSTRUCTION_MATCH \
+    X(INS_MATCH_ERROR) \
     X(INS_MATCH_FULL) \
     X(INS_MATCH_DIFF) \
     X(INS_MATCH_DIFFOP1) \
@@ -286,6 +287,7 @@ public:
     SOffset memOffset() const;
     Register memSegmentId() const;
 
+    bool isValid() const { return iclass != INS_ERR; }
     bool isJump() const { return iclass == INS_JMP || iclass == INS_JMP_FAR; }
     bool isUnconditionalJump() const { return isJump() && !opcodeIsConditionalJump(opcode); }
     bool isCall() const { return iclass == INS_CALL || iclass == INS_CALL_FAR; }

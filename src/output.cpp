@@ -43,6 +43,9 @@ string output_color(const Color c) {
     case OUT_BLUE:
         ret = "\033[30;94m";
         break;
+    case OUT_GREEN:
+        ret = "\033[30;32m";
+        break;
     default:
         ret = "\033[0m";
         break;
