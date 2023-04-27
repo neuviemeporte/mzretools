@@ -1226,10 +1226,10 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
                 continue;
             }
             compareBlock = routine.blockContaining(compare.address);
-            verbose("Reference location @"s + ctx.csip.toString() + ", routine " + routine.toString(false) + ", block " + compareBlock.toString(true) +  ", other @" + ctx.otherCsip.toString());
+            verbose("--- Now @"s + ctx.csip.toString() + ", routine " + routine.toString(false) + ", block " + compareBlock.toString(true) +  ", compared @" + ctx.otherCsip.toString());
         }
         else { // comparing without a map
-            verbose("Reference location @"s + ctx.csip.toString() + ", other @" + ctx.otherCsip.toString());
+            verbose("--- Now @"s + ctx.csip.toString() + ", compared @" + ctx.otherCsip.toString());
         }
         // keep comparing subsequent instructions at current location between the reference and other binary
         Size skipCount = 0;
@@ -1242,7 +1242,7 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
             Instruction 
                 iRef{ctx.csip, code.pointer(ctx.csip)}, 
                 iObj{ctx.otherCsip, other.code.pointer(ctx.otherCsip)};
-            // mark this insruction as visited, unlike the routine finding algorithm, we do not differentiate between routine IDs
+            // mark this instruction as visited, unlike the routine finding algorithm, we do not differentiate between routine IDs
             compareQ.setRoutineId(ctx.csip.toLinear(), iRef.length, VISITED_ID);
             // compare instructions
             const auto matchType = instructionsMatch(ctx, iRef, iObj);
@@ -1271,21 +1271,14 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
             }
 
             // comparison result okay (instructions match or skip permitted), interpret the instructions
-            if (iRef.isBranch() && iObj.isBranch()) {
+            if (!options.noCall && iRef.isCall() && iObj.isCall()) {
                 const Branch 
                     refBranch = getBranch(iRef, {}),
                     objBranch = getBranch(iObj, {});
-                if (!options.noCall) {
-                    // if the destination of the branch can be established, place it in the compare queue
-                    if (saveBranch(refBranch, {}, codeExtents, compareQ)) {
-                        // if the branch destination was accepted, save the address mapping of the branch destination between the reference and object
-                        ctx.offMap.codeMatch(refBranch.destination, objBranch.destination);
-                    }
-                    // even if the branch destination is not known, we cannot keep comparing here if it was unconditional
-                    if (refBranch.isUnconditional) {
-                        searchMessage(ctx.csip, "linear compare scan interrupted by unconditional branch");
-                        break;
-                    }
+                // if the destination of the branch can be established, place it in the compare queue
+                if (saveBranch(refBranch, {}, codeExtents, compareQ)) {
+                    // if the branch destination was accepted, save the address mapping of the branch destination between the reference and object
+                    ctx.offMap.codeMatch(refBranch.destination, objBranch.destination);
                 }
             }
             else if (iRef.isReturn()) {
@@ -1296,12 +1289,13 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
                 debug("Reached end of comparison block @ "s + ctx.csip.toString());
                 break;
             }
-            // advance to next instruction pair
+            // advance to next instruction in the reference executable
             ctx.csip += iRef.length;
             if (options.stopAddr.isValid() && ctx.csip >= options.stopAddr) {
                 verbose("Reached stop address: " + ctx.csip.toString());
                 goto success;
             }
+            // advance to next instruction in the compared executable
             switch (matchType) {
             case CMP_MISMATCH:
                 // if the instructions did not match and we still got here, that means we are in difference skipping mode, 
@@ -1318,7 +1312,7 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
                 break;
             }
         } // iterate over instructions at comparison location
-    } // iterate over comparison queue
+    } // iterate over comparison location queue
 
 success:
     verbose(output_color(OUT_GREEN) + "Comparison result positive" + output_color(OUT_DEFAULT));
