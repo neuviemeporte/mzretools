@@ -534,14 +534,18 @@ InstructionMatch Instruction::Operand::match(const Operand &other) const {
     }
 
     // the rest assumes the types and sizes are the same
-    if (operandIsMemWithOffset(type) || type == OPR_IMM8 || type == OPR_IMM16) {
-        return wordValue() == other.wordValue() ? INS_MATCH_FULL : INS_MATCH_DIFF;
+    // default value of true covers operands not having an offset/immval component
+    bool match = true;
+    if (operandIsMemWithByteOffset(type) || type == OPR_IMM8) {
+        match = immval.u8 == other.immval.u8;
+    }
+    else if (operandIsMemWithWordOffset(type) || type == OPR_IMM16) {
+        match = immval.u16 == other.immval.u16;
     }
     else if (type == OPR_IMM32) {
-        return immval.u32 == other.immval.u32 ? INS_MATCH_FULL : INS_MATCH_DIFF;
+        match = immval.u32 == other.immval.u32;
     }
-    // operands not having an offset/immval component
-    return INS_MATCH_FULL;
+    return match ? INS_MATCH_FULL : INS_MATCH_DIFF;
 }
 
 std::string Instruction::toString(const bool extended) const {
