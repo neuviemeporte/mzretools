@@ -167,6 +167,35 @@ std::string MzImage::dump() const {
     return msg.str();
 }
 
+std::string byteBufString(const std::vector<Byte> &bytes) {
+    ostringstream str;
+    for (Byte b : bytes) { 
+        str << hexVal(b, false) << " ";
+    }
+    return str.str();
+}
+
+Address MzImage::find(const std::vector<SWord> &pattern) const {
+    // too lazy to implement Boyer-Moore
+    const Size patSize = pattern.size();
+    Address found;
+    vector<Byte> buffer(patSize);
+    for (Offset dataIdx = 0; dataIdx + patSize < loadModuleSize_; ++dataIdx) {
+        std::copy(loadModuleData_ + dataIdx, loadModuleData_ + dataIdx + patSize, buffer.begin());
+        //debug("dataIdx = " + hexVal(dataIdx) + ", buffer: " + byteBufString(buffer));
+        bool match = true;
+        // ouch, O(n^2)
+        for (Offset patIdx = 0; patIdx < pattern.size(); ++patIdx) {
+            const SWord pat = pattern[patIdx];
+            //debug(hexVal(pat, false) + " ");
+            if (pattern[patIdx] == -1) continue;
+            if (pattern[patIdx] != buffer[patIdx]) { match = false; break; }
+        }
+        if (match) { found = Address{dataIdx}; break; }
+    }
+    return found;
+}
+
 // read actual load module data
 void MzImage::load(const Word loadSegment) {
     debug("Loading executable code: size = "s + hexVal(loadModuleSize_) + " bytes starting at file offset "s + hexVal(loadModuleOffset_) + ", relocation factor " + hexVal(loadSegment));

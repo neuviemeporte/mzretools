@@ -8,6 +8,7 @@
 
 #include "dos/util.h"
 #include "dos/output.h"
+#include "dos/error.h"
 
 using namespace std;
 
@@ -222,4 +223,19 @@ void writeBinaryFile(const std::string &path, const Byte *buf, const Size size) 
 std::string binString(const Word &value) {
     bitset<16> bits{value};
     return bits.to_string();
+}
+
+inline bool isHexDigit(const char d) {
+    return (d >= '0' && d <= '9') || (d >= 'a' && d <= 'f') || (d >= 'A' && d <= 'F');
+}
+
+std::vector<SWord> hexaToNumeric(const std::string &hexa) {
+    if (hexa.size() & 1) throw ArgError("Hexa string must be of even size");
+    std::vector<SWord> ret;
+    for (Size s = 0; s < hexa.size(); s+=2) {
+        const string byteStr = hexa.substr(s, 2);
+        if (byteStr == "??") { ret.push_back(-1); continue; }
+        ret.push_back(stoi(byteStr, nullptr, 16));
+    }
+    return ret;
 }

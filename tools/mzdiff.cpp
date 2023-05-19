@@ -14,9 +14,6 @@
 
 using namespace std;
 
-// TODO: 
-// - mode to figure out main() address automatically, call to main seems to be always at offset 0x8d into MSC start function code
-
 void usage() {
     output("usage: mzdiff [options] base.exe[:entrypoint] compare.exe[:entrypoint]\n"
            "Compares two DOS MZ executables instruction by instruction, accounting for differences in code layout\n"
@@ -29,7 +26,15 @@ void usage() {
            "--nocall       do not follow calls, useful for comparing single functions\n"
            "--sdiff count  skip differences, ignore up to 'count' consecutive mismatching instructions in the base executable\n"
            "--loose        non-strict matching, allows e.g for literal argument differences\n"
-           "--variant      treat instruction variants that do the same thing as matching",
+           "--variant      treat instruction variants that do the same thing as matching\n"
+           "The optional entrypoint spec tells the tool at which offset to start comparing, and can be different\n"
+           "for both executables if their layout does not match. It can be any of the following:\n"
+           "  ':0x123' for a hex offset\n"
+           "  ':0x123-0x567' for a hex range\n"
+           "  ':[ab12??ea]' for a hexa string to search for and use its offset. The string must consist of an even amount\n"
+           "   of hexa characters, and '\?\?' will match any byte value.\n"
+           "In case of a range being specified as the spec, the search will stop with a success on reaching the latter offset.\n"
+           "If the spec is not present, the tool will use the CS:IP address from the MZ header as the entrypoint.",
            LOG_OTHER, LOG_ERROR);
     exit(1);
 }
@@ -56,37 +61,62 @@ string mzInfo(const MzImage &mz) {
 
 Executable loadExe(const string &spec, const Word segment, AnalysisOptions &opt) {
     // TODO: support providing segment for entrypoint
-    static const regex EXESPEC_RE{"([-_./a-zA-Z0-9]*)(:([xa-fA-F0-9]+)(-([xa-fA-F0-9]+))?)?"};
-    smatch match;
-    if (!regex_match(spec, match, EXESPEC_RE)) {
-        fatal("Invalid exe spec string: "s + spec);
+    string path, entry;
+    // split spec string into the path and the entrypoint specification, if present
+    auto specPos = spec.find(":");
+    if (specPos == string::npos) {
+        path = spec;
+    } 
+    else {
+        path = spec.substr(0, specPos);
+        entry = spec.substr(specPos + 1);
     }
-    string path = match[1].str();
+
+    info("path = '" + path + "', entry = '" + entry + "'");
     const auto stat = checkFile(path);
     if (!stat.exists) fatal("File does not exist: "s + path);
     else if (stat.size <= MZ_HEADER_SIZE) fatal("File too small ("s + to_string(stat.size) + "B): " + path); 
-
     MzImage mz{path};
     mz.load(segment);
     debug(mzInfo(mz));
     Executable exe{mz};
 
-    // handle entrypoint override from command line
-    if (!match[3].str().empty()) {
-        Address epAddr{match[3].str(), false}; // do not normalize address
-        debug("Entrypoint override: "s + epAddr.toString());
-        exe.setEntrypoint(epAddr);
-    }
-    // handle stop address on command line
-    if (!match[5].str().empty() && !opt.stopAddr.isValid()) {
-        Address stopAddr{match[5].str(), false};
-        stopAddr.relocate(segment);
-        if (stopAddr <= exe.entrypoint()) 
-            fatal("Stop address " + stopAddr.toString() + " before executable entrypoint " + exe.entrypoint().toString());
-        debug("Stop address: "s + stopAddr.toString());
-        opt.stopAddr = stopAddr;
-    }
+    // use default entrypoint, done
+    if (entry.empty()) return exe;
 
+    static const regex 
+        OFFSET_RE{"([xa-fA-F0-9]+)(-([xa-fA-F0-9]+))?"},
+        HEXASTR_RE{"\\[([?a-fA-F0-9]+)\\]"};
+
+    smatch match;
+    // otherwise handle entrypoint override from command line
+    if (regex_match(entry, match, OFFSET_RE)) {
+        if (!match[1].str().empty()) {
+            Address epAddr{match[1].str(), false}; // do not normalize address
+            debug("Entrypoint override: "s + epAddr.toString());
+            exe.setEntrypoint(epAddr);
+        }
+        // handle stop address on command line
+        if (!match[3].str().empty() && !opt.stopAddr.isValid()) {
+            Address stopAddr{match[3].str(), false};
+            stopAddr.relocate(segment);
+            if (stopAddr <= exe.entrypoint()) 
+                fatal("Stop address " + stopAddr.toString() + " before executable entrypoint " + exe.entrypoint().toString());
+            debug("Stop address: "s + stopAddr.toString());
+            opt.stopAddr = stopAddr;
+        }
+    }
+    // use location of provided hexa string as entrypoint, if found in the executable
+    else if (regex_match(entry, match, HEXASTR_RE)) {
+        const string hexa = match[1].str();
+        debug("Entrypoint search at location of '" + hexa + "'");
+        auto pattern = hexaToNumeric(hexa);
+        Address ep = mz.find(pattern);
+        if (!ep.isValid()) fatal("Could not find pattern '" + hexa + "' in " + path);
+        debug("pattern found at " + ep.toString());
+        exe.setEntrypoint(ep);
+    }
+    else fatal("Invalid exe spec string: "s + entry);
     return exe;
 }
 
