@@ -202,6 +202,33 @@ struct AnalysisOptions {
     AnalysisOptions() : strict(true), ignoreDiff(false), noCall(false), variant(false), skipDiff(0) {}
 };
 
+// TODO: compare instructions, not string representations, allow wildcards in place of arguments, e.g. "mov ax, ?"
+class VariantMap {
+private: 
+    using Variant = std::vector<std::string>; // a variant is a bunch of strings representing one or more instructions in a sequence
+    using Bucket = std::vector<Variant>; // a bucket is a bunch of variants, i.e. instructions or instructions sequences that are equivalent to each other
+    std::vector<Bucket> buckets_;
+    Size maxDepth_; // maximum depth, i.e. length of instruction sequence found in any bucket (worst case scenario to compare)
+
+public:
+    // a helper type returned as a comparison result
+    struct MatchDepth {
+        int left, right; // amount of instructions matched on the left and right as variants
+        MatchDepth() : left(0), right(0) {}
+        MatchDepth(const int left, const int right) : left(left), right(right) {}
+        bool isMatch() const { return left != 0 && right != 0; }
+    };
+    VariantMap();
+    explicit VariantMap(const std::string &path);
+    Size maxDepth() const { return maxDepth_; }
+    MatchDepth checkMatch(const Variant &left, const Variant &right);
+    // for debugging
+    void dump() const;
+
+private:
+    int find(const Variant &search, int bucket) const;
+};
+
 class Executable {
     friend class SystemTest;
     const Memory code;

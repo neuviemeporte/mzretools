@@ -43,5 +43,6 @@ bool readBinaryFile(const std::string &path, Byte *buf, const Size size = 0);
 void writeBinaryFile(const std::string &path, const Byte *buf, const Size size);
 std::string binString(const Word &value);
 std::vector<SWord> hexaToNumeric(const std::string &hexa);
+std::vector<std::string> splitString(const std::string &str, char delim);
 
 #endif // UTIL_H

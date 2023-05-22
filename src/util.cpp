@@ -239,3 +239,14 @@ std::vector<SWord> hexaToNumeric(const std::string &hexa) {
     }
     return ret;
 }
+
+std::vector<string> splitString(const std::string &str, char delim) {
+    vector<string> ret;
+    size_t start = 0, end = 0;
+    while (start < str.size() && (end = str.find(delim, start)) != string::npos) {
+        ret.push_back(str.substr(start, end - start));
+        start = end + 1;
+    }
+    ret.push_back(str.substr(start, str.size() - start));
+    return ret;
+}

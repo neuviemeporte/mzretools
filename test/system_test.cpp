@@ -239,3 +239,32 @@ TEST_F(SystemTest, SignedHex) {
     SByte neg8val = -10;
     ASSERT_EQ(signedHexVal(neg8val), "-0x0a");
 }
+
+TEST_F(SystemTest, Variants) {
+    ASSERT_EQ(splitString("a;bc;def", ';'), vector<string>({"a", "bc", "def"}));
+    ASSERT_EQ(splitString("abcdef", ';'), vector<string>({"abcdef"}));
+    VariantMap vm{"variants.txt"};
+    ASSERT_EQ(vm.maxDepth(), 2);
+    vm.dump();
+    VariantMap::MatchDepth m;
+    m = vm.checkMatch({"sub ax, ax"}, {"xor ax, ax"});
+    ASSERT_TRUE(m.isMatch());
+    ASSERT_EQ(m.left, 1);
+    ASSERT_EQ(m.right, 1);
+    m = vm.checkMatch({"xor ax, ax"}, {"sub ax, ax"});
+    ASSERT_TRUE(m.isMatch());
+    ASSERT_EQ(m.left, 1);
+    ASSERT_EQ(m.right, 1);
+    m = vm.checkMatch({"add sp, 0x2"}, {"inc sp", "inc sp"});
+    ASSERT_TRUE(m.isMatch());
+    ASSERT_EQ(m.left, 1);
+    ASSERT_EQ(m.right, 2);
+    m = vm.checkMatch({"inc sp", "inc sp"}, {"add sp, 0x2"});
+    ASSERT_TRUE(m.isMatch());
+    ASSERT_EQ(m.left, 2);
+    ASSERT_EQ(m.right, 1);
+    m = vm.checkMatch({"foobar"}, {"inc sp", "inc sp"});
+    ASSERT_FALSE(m.isMatch());
+    m = vm.checkMatch({"inc sp", "inc sp"}, {"foobar"});
+    ASSERT_FALSE(m.isMatch());
+}
