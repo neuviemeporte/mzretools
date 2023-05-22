@@ -75,7 +75,11 @@ TEST_F(CpuTest, OrderHL) {
     ASSERT_EQ(getReg(REG_CH), 0x0b);
     ASSERT_EQ(getReg(REG_CL), 0x0c);
     ASSERT_EQ(getReg(REG_DH), 0xfe);
-    ASSERT_EQ(getReg(REG_DL), 0xfc);    
+    ASSERT_EQ(getReg(REG_DL), 0xfc);
+
+    const Word val = 0x1234;
+    ASSERT_EQ(lowByte(val), 0x34);
+    ASSERT_EQ(hiByte(val), 0x12);
 }
 
 TEST_F(CpuTest, Flags) {

@@ -14,6 +14,10 @@ using Size   = size_t;
 using Offset = size_t;
 using SOffset = ssize_t;
 
+// TODO: assumes LE
+inline Byte lowByte(const Word word) { return static_cast<Byte>(word & 0xff); }
+inline Byte hiByte(const Word word) { return static_cast<Byte>(word >> 8); }
+
 template<typename T> SByte BYTE_SIGNED(const T val) { return static_cast<SByte>(val); }
 template<typename T> SWord WORD_SIGNED(const T val) { return static_cast<SWord>(val); }
 

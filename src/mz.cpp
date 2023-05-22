@@ -25,11 +25,9 @@ static void debug(const string &msg) {
 }
 
 // parse and read exe header and relocation table
-MzImage::MzImage(const std::string &path) : path_(path), loadModuleData_(nullptr), loadSegment_(0) {
+MzImage::MzImage(const std::string &path) : path_(path), loadSegment_(0) {
     if (path_.empty()) 
         throw ArgError("Empty path for MzImage!");
-    const char* cpath = path.c_str();
-    assert(cpath != nullptr);
     const auto file = checkFile(path);
     if (!file.exists) {
         ostringstream msg("MzImage file ", std::ios_base::ate);
@@ -111,8 +109,8 @@ MzImage::MzImage(const std::string &path) : path_(path), loadModuleData_(nullptr
     debug("Loaded MZ exe header from "s + path_ + ", entrypoint @ " + entrypoint().toString() + ", stack @ " + stackPointer().toString());
 }
 
-MzImage::~MzImage() {
-    delete[] loadModuleData_;
+MzImage::MzImage(const std::vector<Byte> &code) : filesize_(0), loadModuleSize_(code.size()), loadModuleOffset_(0), entrypoint_(0, 0), loadSegment_(0) {
+    std::copy(code.begin(), code.end(), std::back_inserter(loadModuleData_));
 }
 
 std::string MzImage::dump() const {
@@ -181,7 +179,7 @@ Address MzImage::find(const std::vector<SWord> &pattern) const {
     Address found;
     vector<Byte> buffer(patSize);
     for (Offset dataIdx = 0; dataIdx + patSize < loadModuleSize_; ++dataIdx) {
-        std::copy(loadModuleData_ + dataIdx, loadModuleData_ + dataIdx + patSize, buffer.begin());
+        std::copy(loadModuleData_.begin() + dataIdx, loadModuleData_.begin() + dataIdx + patSize, buffer.begin());
         //debug("dataIdx = " + hexVal(dataIdx) + ", buffer: " + byteBufString(buffer));
         bool match = true;
         // ouch, O(n^2)
@@ -202,11 +200,9 @@ void MzImage::load(const Word loadSegment) {
     ifstream mzFile(path_, ios::binary);
     if (!mzFile.is_open()) throw IoError("Unable to open exe file: " + path_);
     mzFile.seekg(loadModuleOffset_);
-    assert(loadModuleData_ == nullptr);
-    // TODO: vector
-    loadModuleData_ = new Byte[loadModuleSize_];
+    loadModuleData_.reserve(loadModuleSize_);
     loadSegment_ = loadSegment;
-    mzFile.read(reinterpret_cast<char*>(loadModuleData_), loadModuleSize_);
+    mzFile.read(reinterpret_cast<char*>(loadModuleData_.data()), loadModuleSize_);
     const auto bytesRead = mzFile.gcount();
     if (!mzFile) throw IoError("Error while reading load module data from "s + path_);
     if (bytesRead != loadModuleSize_) throw IoError("Incorrect number of bytes read from "s  + path_ + ": " + to_string(bytesRead));
@@ -216,6 +212,7 @@ void MzImage::load(const Word loadSegment) {
         const Address addr(r.segment, r.offset);
         const Offset off = addr.toLinear();
         const Word patchedVal = r.value + loadSegment;
-        memcpy(&loadModuleData_[off], &patchedVal, sizeof(patchedVal));
+        loadModuleData_[off] = lowByte(patchedVal);
+        loadModuleData_[off + 1] = hiByte(patchedVal);
     }
 }

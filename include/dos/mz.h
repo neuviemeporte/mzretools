@@ -45,23 +45,23 @@ private:
 
     const std::string path_;
     Size filesize_, loadModuleSize_;
+    std::vector<Byte> loadModuleData_, ovlinfo_;
     std::vector<Relocation> relocs_;
-    std::vector<Byte> ovlinfo_;
     Offset loadModuleOffset_;
     Address entrypoint_;
-    Byte *loadModuleData_; // TODO: vector
     Word loadSegment_;
 
 public:
     MzImage(const std::string &path);
+    // useful for testing
+    MzImage(const std::vector<Byte> &code); 
     MzImage(const MzImage &other) = delete;
-    ~MzImage();
     const std::string& path() const { return path_; }
     std::string dump() const;
     Size headerLength() const { return header_.header_paragraphs * PARAGRAPH_SIZE; }
     Size loadModuleSize() const { return loadModuleSize_; }
     Offset loadModuleOffset() const { return loadModuleOffset_; }
-    const Byte* loadModuleData() const { return loadModuleData_; }
+    const Byte* loadModuleData() const { return loadModuleData_.data(); }
     Word loadSegment() const { return loadSegment_; }
     Size minAlloc() const { return header_.min_extra_paragraphs * PARAGRAPH_SIZE; }
     Size maxAlloc() const { return header_.max_extra_paragraphs * PARAGRAPH_SIZE; }
