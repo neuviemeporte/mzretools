@@ -12,6 +12,7 @@ using namespace std;
 // TODO: handle invalid opcodes gracefully, don't throw/assert
 
 #define DEBUG(msg) output(msg, LOG_CPU, LOG_DEBUG)
+#define ARRAY_SIZE(arr) (sizeof(arr) / sizeof(arr[0]))
 
 #define X(x) #x,
 static const char* INS_CLASS_ID[] = {
@@ -37,26 +38,25 @@ MODRM_OPERAND
 };
 #undef X
 
-
 // maps non-group opcodes to an instruction class
 static const InstructionClass OPCODE_CLASS[] = {
-//   0         1          2          3         4          5          6         7           8         9         A             B          C          D          E          F
-INS_ADD,    INS_ADD,   INS_ADD,   INS_ADD,  INS_ADD,   INS_ADD,   INS_PUSH,  INS_POP,   INS_OR,   INS_OR,   INS_OR,       INS_OR,    INS_OR,    INS_OR,    INS_PUSH,  INS_ERR,   // 0
-INS_ADC,    INS_ADC,   INS_ADC,   INS_ADC,  INS_ADC,   INS_ADC,   INS_PUSH,  INS_POP,   INS_SBB,  INS_SBB,  INS_SBB,      INS_SBB,   INS_SBB,   INS_SBB,   INS_PUSH,  INS_POP,   // 1
-INS_AND,    INS_AND,   INS_AND,   INS_AND,  INS_AND,   INS_AND,   INS_ERR,   INS_DAA,   INS_SUB,  INS_SUB,  INS_SUB,      INS_SUB,   INS_SUB,   INS_SUB,   INS_ERR,   INS_DAS,   // 2
-INS_XOR,    INS_XOR,   INS_XOR,   INS_XOR,  INS_XOR,   INS_XOR,   INS_ERR,   INS_AAA,   INS_CMP,  INS_CMP,  INS_CMP,      INS_CMP,   INS_CMP,   INS_CMP,   INS_ERR,   INS_AAS,   // 3
-INS_INC,    INS_INC,   INS_INC,   INS_INC,  INS_INC,   INS_INC,   INS_INC,   INS_INC,   INS_DEC,  INS_DEC,  INS_DEC,      INS_DEC,   INS_DEC,   INS_DEC,   INS_DEC,   INS_DEC,   // 4
-INS_PUSH,   INS_PUSH,  INS_PUSH,  INS_PUSH, INS_PUSH,  INS_PUSH,  INS_PUSH,  INS_PUSH,  INS_POP,  INS_POP,  INS_POP,      INS_POP,   INS_POP,   INS_POP,   INS_POP,   INS_POP,   // 5
-INS_ERR,    INS_ERR,   INS_ERR,   INS_ERR,  INS_ERR,   INS_ERR,   INS_ERR,   INS_ERR,   INS_ERR,  INS_ERR,  INS_ERR,      INS_ERR,   INS_ERR,   INS_ERR,   INS_ERR,   INS_ERR,   // 6
-INS_JMP,    INS_JMP,   INS_JMP,   INS_JMP,  INS_JMP,   INS_JMP,   INS_JMP,   INS_JMP,   INS_JMP,  INS_JMP,  INS_JMP,      INS_JMP,   INS_JMP,   INS_JMP,   INS_JMP,   INS_JMP,   // 7
-INS_ERR,    INS_ERR,   INS_ERR,   INS_ERR,  INS_TEST,  INS_TEST,  INS_XCHG,  INS_XCHG,  INS_MOV,  INS_MOV,  INS_MOV,      INS_MOV,   INS_MOV,   INS_LEA,   INS_MOV,   INS_POP,   // 8
-INS_NOP,    INS_XCHG,  INS_XCHG,  INS_XCHG, INS_XCHG,  INS_XCHG,  INS_XCHG,  INS_XCHG,  INS_CBW,  INS_CWD,  INS_CALL_FAR, INS_WAIT,  INS_PUSHF, INS_POPF,  INS_SAHF,  INS_LAHF,  // 9
-INS_MOV,    INS_MOV,   INS_MOV,   INS_MOV,  INS_MOVSB, INS_MOVSW, INS_CMPSB, INS_CMPSW, INS_TEST, INS_TEST, INS_STOSB,    INS_STOSW, INS_LODSB, INS_LODSW, INS_SCASB, INS_SCASW, // A
-INS_MOV,    INS_MOV,   INS_MOV,   INS_MOV,  INS_MOV,   INS_MOV,   INS_MOV,   INS_MOV,   INS_MOV,  INS_MOV,  INS_MOV,      INS_MOV,   INS_MOV,   INS_MOV,   INS_MOV,   INS_MOV,   // B
-INS_ERR,    INS_ERR,   INS_RET,   INS_RET,  INS_LES,   INS_LDS,   INS_MOV,   INS_MOV,   INS_ERR,  INS_ERR,  INS_RETF,     INS_RETF,  INS_INT3,   INS_INT,   INS_INTO,  INS_IRET,  // C
-INS_ERR,    INS_ERR,   INS_ERR,   INS_ERR,  INS_AAM,   INS_AAD,   INS_ERR,   INS_XLAT,  INS_ERR,  INS_ERR,  INS_ERR,      INS_ERR,   INS_ERR,   INS_ERR,   INS_ERR,   INS_ERR,   // D
-INS_LOOPNZ, INS_LOOPZ, INS_LOOP,  INS_JMP,  INS_IN,    INS_IN,    INS_OUT,   INS_OUT,   INS_CALL, INS_JMP,  INS_JMP_FAR,  INS_JMP,   INS_IN,    INS_IN,    INS_OUT,   INS_OUT,   // E
-INS_LOCK,   INS_ERR,   INS_REPNZ, INS_REPZ, INS_HLT,   INS_CMC,   INS_ERR,   INS_ERR,   INS_CLC,  INS_STC,  INS_CLI,      INS_STI,   INS_CLD,   INS_STD,   INS_ERR,   INS_ERR,   // F
+// 0           1           2           3           4           5           6           7           8           9           A             B           C           D           E           F
+INS_ADD,    INS_ADD,    INS_ADD,    INS_ADD,    INS_ADD,    INS_ADD,    INS_PUSH,   INS_POP,    INS_OR,     INS_OR,     INS_OR,       INS_OR,     INS_OR,     INS_OR,     INS_PUSH,   INS_ERR,    // 0
+INS_ADC,    INS_ADC,    INS_ADC,    INS_ADC,    INS_ADC,    INS_ADC,    INS_PUSH,   INS_POP,    INS_SBB,    INS_SBB,    INS_SBB,      INS_SBB,    INS_SBB,    INS_SBB,    INS_PUSH,   INS_POP,    // 1
+INS_AND,    INS_AND,    INS_AND,    INS_AND,    INS_AND,    INS_AND,    INS_ERR,    INS_DAA,    INS_SUB,    INS_SUB,    INS_SUB,      INS_SUB,    INS_SUB,    INS_SUB,    INS_ERR,    INS_DAS,    // 2
+INS_XOR,    INS_XOR,    INS_XOR,    INS_XOR,    INS_XOR,    INS_XOR,    INS_ERR,    INS_AAA,    INS_CMP,    INS_CMP,    INS_CMP,      INS_CMP,    INS_CMP,    INS_CMP,    INS_ERR,    INS_AAS,    // 3
+INS_INC,    INS_INC,    INS_INC,    INS_INC,    INS_INC,    INS_INC,    INS_INC,    INS_INC,    INS_DEC,    INS_DEC,    INS_DEC,      INS_DEC,    INS_DEC,    INS_DEC,    INS_DEC,    INS_DEC,    // 4
+INS_PUSH,   INS_PUSH,   INS_PUSH,   INS_PUSH,   INS_PUSH,   INS_PUSH,   INS_PUSH,   INS_PUSH,   INS_POP,    INS_POP,    INS_POP,      INS_POP,    INS_POP,    INS_POP,    INS_POP,    INS_POP,    // 5
+INS_ERR,    INS_ERR,    INS_ERR,    INS_ERR,    INS_ERR,    INS_ERR,    INS_ERR,    INS_ERR,    INS_ERR,    INS_ERR,    INS_ERR,      INS_ERR,    INS_ERR,    INS_ERR,    INS_ERR,    INS_ERR,    // 6
+INS_JMP_IF, INS_JMP_IF, INS_JMP_IF, INS_JMP_IF, INS_JMP_IF, INS_JMP_IF, INS_JMP_IF, INS_JMP_IF, INS_JMP_IF, INS_JMP_IF, INS_JMP_IF,   INS_JMP_IF, INS_JMP_IF, INS_JMP_IF, INS_JMP_IF, INS_JMP_IF, // 7
+INS_ERR,    INS_ERR,    INS_ERR,    INS_ERR,    INS_TEST,   INS_TEST,   INS_XCHG,   INS_XCHG,   INS_MOV,    INS_MOV,    INS_MOV,      INS_MOV,    INS_MOV,    INS_LEA,    INS_MOV,    INS_POP,    // 8
+INS_NOP,    INS_XCHG,   INS_XCHG,   INS_XCHG,   INS_XCHG,   INS_XCHG,   INS_XCHG,   INS_XCHG,   INS_CBW,    INS_CWD,    INS_CALL_FAR, INS_WAIT,   INS_PUSHF,  INS_POPF,   INS_SAHF,   INS_LAHF,   // 9
+INS_MOV,    INS_MOV,    INS_MOV,    INS_MOV,    INS_MOVSB,  INS_MOVSW,  INS_CMPSB,  INS_CMPSW,  INS_TEST,   INS_TEST,   INS_STOSB,    INS_STOSW,  INS_LODSB,  INS_LODSW,  INS_SCASB,  INS_SCASW,  // A
+INS_MOV,    INS_MOV,    INS_MOV,    INS_MOV,    INS_MOV,    INS_MOV,    INS_MOV,    INS_MOV,    INS_MOV,    INS_MOV,    INS_MOV,      INS_MOV,    INS_MOV,    INS_MOV,    INS_MOV,    INS_MOV,    // B
+INS_ERR,    INS_ERR,    INS_RET,    INS_RET,    INS_LES,    INS_LDS,    INS_MOV,    INS_MOV,    INS_ERR,    INS_ERR,    INS_RETF,     INS_RETF,   INS_INT3,   INS_INT,    INS_INTO,   INS_IRET,   // C
+INS_ERR,    INS_ERR,    INS_ERR,    INS_ERR,    INS_AAM,    INS_AAD,    INS_ERR,    INS_XLAT,   INS_ERR,    INS_ERR,    INS_ERR,      INS_ERR,    INS_ERR,    INS_ERR,    INS_ERR,    INS_ERR,    // D
+INS_LOOPNZ, INS_LOOPZ,  INS_LOOP,   INS_JMP_IF, INS_IN,     INS_IN,     INS_OUT,    INS_OUT,    INS_CALL,   INS_JMP,    INS_JMP_FAR,  INS_JMP,    INS_IN,     INS_IN,     INS_OUT,    INS_OUT,    // E
+INS_LOCK,   INS_ERR,    INS_REPNZ,  INS_REPZ,   INS_HLT,    INS_CMC,    INS_ERR,    INS_ERR,    INS_CLC,    INS_STC,    INS_CLI,      INS_STI,    INS_CLD,    INS_STD,    INS_ERR,    INS_ERR,    // F
 };
 
 // maps group opcodes to group indexes in the next table
@@ -360,15 +360,16 @@ Address Instruction::relativeAddress() const {
 static const int OPERAND_MODIFIED[] = {
     //INS_ERR   INS_ADD      INS_PUSH    INS_POP    INS_OR     INS_ADC    INS_SBB     INS_AND    INS_DAA    INS_SUB   INS_DAS       INS_XOR   INS_AAA    INS_CMP   INS_AAS    INS_INC   INS_DEC
     0,          1,           3,          3,         1,         1,         1,          1,         3,         1,        3,            1,        3,         0,        3,         1,        1,
-    //INS_JMP   INS_JMP_FAR  INS_TEST    INS_XCHG   INS_MOV    INS_LEA    INS_NOP     INS_CBW    INS_CWD    INS_CALL  INS_CALL_FAR  INS_WAIT  INS_PUSHF  INS_POPF  INS_SAHF   INS_LAHF  INS_MOVSB
-    0,          0,           3,          2,         1,         1,         0,          3,         3,         0,        0,            0,        3,         3,        3,         3,        2, 
-    //INS_MOVSW INS_CMPSB    INS_CMPSW   INS_STOSB  INS_STOSW  INS_LODSB  INS_LODSW   INS_SCASB  INS_SCASW  INS_RET   INS_LES       INS_LDS   INS_RETF   INS_INT   INS_INTO   INS_IRET  INS_AAM
-    3,          3,           3,          3,         3,         3,         0,          3,         3,         0,        3,            3,        0,         3,        3,         0,        3, 
+    //INS_JMP   INS_JMP_IF  INS_JMP_FAR  INS_TEST    INS_XCHG   INS_MOV    INS_LEA    INS_NOP     INS_CBW    INS_CWD    INS_CALL  INS_CALL_FAR  INS_WAIT  INS_PUSHF  INS_POPF  INS_SAHF   INS_LAHF  INS_MOVSB
+    0,          0,           0,           3,          2,         1,         1,         0,          3,         3,         0,        0,            0,        3,         3,        3,         3,        2, 
+    //INS_MOVSW INS_CMPSB    INS_CMPSW   INS_STOSB  INS_STOSW  INS_LODSB  INS_LODSW   INS_SCASB  INS_SCASW  INS_RET   INS_LES       INS_LDS   INS_RETF   INS_INT   INS_INT3   INS_INTO   INS_IRET  INS_AAM
+    3,          3,           3,          3,         3,         3,         0,          3,         3,         0,        3,            3,        0,         3,        3,          3,         0,        3, 
     //INS_AAD   INS_XLAT     INS_LOOPNZ  INS_LOOPZ  INS_LOOP   INS_IN     INS_OUT     INS_LOCK   INS_REPNZ  INS_REPZ  INS_HLT       INS_CMC   INS_CLC    INS_STC   INS_CLI    INS_STI   INS_CLD
     3,          3,           3,          3,         3,         1,         0,          0,         0,         0,        0,            3,        3,         3,        3,         3,        3, 
     //INS_STD   INS_ROL      INS_ROR     INS_RCL    INS_RCR    INS_SHL    INS_SHR     INS_SAR    INS_NOT    INS_NEG   INS_MUL       INS_IMUL  INS_DIV    INS_IDIV
     3,          1,           1,          3,         3,         1,         1,          0,         1,         1,        0,            3,        3,         3,
 };
+static_assert(ARRAY_SIZE(OPERAND_MODIFIED) == ARRAY_SIZE(INS_CLASS_ID));
 
 // TODO: basically all special cases, refactor this
 vector<Register> Instruction::touchedRegs() const {
@@ -472,11 +473,12 @@ Register Instruction::memSegmentId() const {
 }
 
 static const char* INS_NAME[] = {
-    "???", "add", "push", "pop", "or", "adc", "sbb", "and", "daa", "sub", "das", "xor", "aaa", "cmp", "aas", "inc", "dec", "jmp", "jmp far", "test", "xchg", "mov", "lea", "nop", "cbw", "cwd",
+    "???", "add", "push", "pop", "or", "adc", "sbb", "and", "daa", "sub", "das", "xor", "aaa", "cmp", "aas", "inc", "dec", "jmp", "???", "jmp far", "test", "xchg", "mov", "lea", "nop", "cbw", "cwd",
     "call", "call far", "wait", "pushf", "popf", "sahf", "lahf", "movsb", "movsw", "cmpsb", "cmpsw", "stosb", "stosw", "lodsb", "lodsw", "scasb", "scasw", "ret", "les", "lds", "retf", "int",
     "int3", "into", "iret", "aam", "aad", "xlat", "loopnz", "loopz", "loop", "in", "out", "lock", "repnz", "repz", "hlt", "cmc", "clc", "stc", "cli", "sti", "cld", "std",
     "rol", "ror", "rcl", "rcr", "shl", "shr", "sar", "not", "neg", "mul", "imul", "div", "idiv"
 };
+static_assert(ARRAY_SIZE(INS_NAME) == ARRAY_SIZE(INS_CLASS_ID));
 
 static const char* JMP_NAME[] = {
     "jo", "jno", "jb", "jnb", "jz", "jnz", "jbe", "ja", "js", "jns", "jpe", "jpo", "jl", "jge", "jle", "jg", "jcxz"
@@ -556,7 +558,7 @@ std::string Instruction::toString(const bool extended) const {
     
     // output instruction name
     // conditional jumps, lookup specific jump name
-    if (iclass == INS_JMP && opcodeIsConditionalJump(opcode)) { 
+    if (iclass == INS_JMP_IF) { 
         Byte idx = opcode - OP_JO_Jb;
         // jcxz special case
         if (idx >= JMP_NAME_COUNT) idx = JMP_NAME_COUNT - 1;
@@ -613,7 +615,10 @@ std::string Instruction::toString(const bool extended) const {
 }
 
 InstructionMatch Instruction::match(const Instruction &other) const {
-    if (prefix != other.prefix || iclass != other.iclass || (opcodeIsConditionalJump(opcode) && opcode != other.opcode)) 
+    // normally we check whether instructions match in their "class", e.g. MOV, not whether they
+    // have the same opcode. An exception are conditional jumps, which all belong to class JMP_IF,
+    // so the opcode needs to be checked as well, but these do not have alternate encodings beyond these opcodes.
+    if (prefix != other.prefix || iclass != other.iclass || (iclass == INS_JMP_IF && opcode != other.opcode))
         return INS_MATCH_MISMATCH;
 
     const InstructionMatch 
@@ -782,4 +787,8 @@ Register prefixRegId(const InstructionPrefix p) {
 
 InstructionClass instr_class(const Byte opcode) {
     return OPCODE_CLASS[opcode];
+}
+
+const char* instr_class_name(const InstructionClass iclass) {
+    return INS_CLASS_ID[iclass];
 }

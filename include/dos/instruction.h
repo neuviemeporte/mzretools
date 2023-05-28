@@ -30,6 +30,7 @@
     X(INS_INC) \
     X(INS_DEC) \
     X(INS_JMP) \
+    X(INS_JMP_IF) \
     X(INS_JMP_FAR) \
     X(INS_TEST) \
     X(INS_XCHG) \
@@ -288,12 +289,12 @@ public:
     Register memSegmentId() const;
 
     bool isValid() const { return iclass != INS_ERR; }
-    bool isJump() const { return iclass == INS_JMP || iclass == INS_JMP_FAR; }
-    bool isUnconditionalJump() const { return isJump() && !opcodeIsConditionalJump(opcode); }
+    bool isJump() const { return iclass == INS_JMP || iclass == INS_JMP_IF || iclass == INS_JMP_FAR; }
+    bool isUnconditionalJump() const { return iclass == INS_JMP || iclass == INS_JMP_FAR; }
     bool isCall() const { return iclass == INS_CALL || iclass == INS_CALL_FAR; }
     bool isLoop() const { return iclass == INS_LOOP || iclass == INS_LOOPZ || iclass == INS_LOOPNZ; }
     bool isBranch() const { return isJump() || isCall() || isLoop(); }
-    bool isNearBranch() const { return iclass == INS_JMP || iclass == INS_CALL || isLoop(); }
+    bool isNearBranch() const { return iclass == INS_JMP || iclass == INS_JMP_IF || iclass == INS_CALL || isLoop(); }
     bool isReturn() const { return iclass == INS_RET || iclass == INS_RETF || iclass == INS_IRET; }
 
 private:
@@ -302,8 +303,7 @@ private:
     const Operand* memOperand() const;
 };
 
-// TODO: this is useless, remove
 InstructionClass instr_class(const Byte opcode);
-// TODO: make into members
+const char* instr_class_name(const InstructionClass iclass);
 
 #endif // INSTRUCTION_H

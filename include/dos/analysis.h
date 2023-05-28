@@ -195,11 +195,12 @@ struct Branch {
     bool isCall, isUnconditional;
 };
 
+// TODO: introduce true strict (now it's "not loose"), compare by opcode
 struct AnalysisOptions {
     bool strict, ignoreDiff, noCall, variant;
-    Size skipDiff;
+    Size refSkip, objSkip;
     Address stopAddr;
-    AnalysisOptions() : strict(true), ignoreDiff(false), noCall(false), variant(false), skipDiff(0) {}
+    AnalysisOptions() : strict(true), ignoreDiff(false), noCall(false), variant(false), refSkip(0), objSkip(0) {}
 };
 
 // TODO: compare instructions, not string representations, allow wildcards in place of arguments, e.g. "mov ax, ?"
@@ -229,6 +230,7 @@ private:
     int find(const Variant &search, int bucket) const;
 };
 
+// TODO: make testable, constructor from instruction data
 class Executable {
     friend class SystemTest;
     const Memory code;
@@ -238,7 +240,12 @@ class Executable {
     Block codeExtents;
     std::vector<Segment> segments;
 
-    enum ComparisonResult { CMP_MATCH, CMP_MISMATCH, CMP_DIFFVAL, CMP_VARIANT };
+    enum ComparisonResult { 
+        CMP_MISMATCH,
+        CMP_MATCH,    // full literal or logical match
+        CMP_DIFFVAL,  // match with different literal value, might be allowed depending on options
+        CMP_VARIANT   // match with a variant of an instruction or a sequence of instructions
+    };
 
 public:
     explicit Executable(const MzImage &mz);

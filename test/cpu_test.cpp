@@ -443,3 +443,13 @@ TEST_F(CpuTest, Instruction) {
     }
 }
 
+TEST_F(CpuTest, InstructionMatch) {
+    const Address a{0x1000, 0x0};
+    const Byte code[] = {
+        0xEB, 0x0B, // jmp short 0xb
+        0x75, 0x0B, // jnz 0x387
+    };
+    Instruction i1{a, code}, i2{a, code+i1.length};
+    ASSERT_EQ(i1.match(i2), INS_MATCH_MISMATCH);
+    ASSERT_EQ(i2.match(i1), INS_MATCH_MISMATCH);
+}

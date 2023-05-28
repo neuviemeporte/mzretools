@@ -871,14 +871,14 @@ Branch Executable::getBranch(const Instruction &i, const RegisterState &regs) co
     branch.isUnconditional = false;
     const Address &addr = i.addr;
     switch (i.iclass) {
-    case INS_JMP:
+    case INS_JMP_IF:
         // conditional jump, put destination into search queue to check out later
-        if (opcodeIsConditionalJump(i.opcode)) {
-            branch.destination = i.relativeAddress();
-            searchMessage(addr, "encountered conditional near jump to "s + branch.destination.toString());
-        }
-        else switch (i.opcode) {
+        branch.destination = i.relativeAddress();
+        searchMessage(addr, "encountered conditional near jump to "s + branch.destination.toString());
+        break;
+    case INS_JMP:
         // unconditional jumps, cannot continue at current location, need to jump now
+        switch (i.opcode) {
         case OP_JMP_Jb: 
         case OP_JMP_Jv: 
             branch.destination = i.relativeAddress();
@@ -951,7 +951,7 @@ Branch Executable::getBranch(const Instruction &i, const RegisterState &regs) co
         }
         break;
     default:
-        throw AnalysisError("Instruction is not a branch: "s + i.toString());
+        throw AnalysisError("Instruction is not a branch: "s + i.toString() + ", class = " + instr_class_name(i.iclass));
     }
     return branch;
 }
@@ -1035,6 +1035,10 @@ static string compareStatus(const Instruction &i1, const Instruction &i2, const 
 }
 
 // dictionary of equivalent instruction sequences for variant-enabled comparison
+// TODO: support user-supplied equivalence dictionary 
+// TODO: do not hardcode, place in text file
+// TODO: automatic reverse match generation
+// TODO: replace strings with Instruction-s, support more flexible matching?
 static const map<string, vector<vector<string>>> INSTR_VARIANT = {
     { "add sp, 0x2", { 
             { "pop cx" }, 
@@ -1070,7 +1074,7 @@ Executable::ComparisonResult Executable::instructionsMatch(Context &ctx, const I
                 match = ctx.offMap.codeMatch(refBranch.destination, objObranch.destination);
             }
             // special case of jmp vs jmp short - allow only if variants enabled
-            if (match && ref.isUnconditionalJump() && ref.opcode != obj.opcode) {
+            if (match && ref.opcode != obj.opcode && (ref.isUnconditionalJump() || obj.isUnconditionalJump())) {
                 if (ctx.options.variant) {
                     verbose(output_color(OUT_YELLOW) + compareStatus(ref, obj, true, INS_MATCH_DIFF) + output_color(OUT_DEFAULT));
                     ctx.otherCsip += obj.length;
@@ -1319,8 +1323,8 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
         else { // comparing without a map
             verbose("--- Now @"s + ctx.csip.toString() + ", compared @" + ctx.otherCsip.toString());
         }
+        Size refSkipCount = 0, objSkipCount = 0;
         // keep comparing subsequent instructions at current location between the reference and other binary
-        Size skipCount = 0;
         while (true) {
             if (!contains(ctx.csip))
                 throw AnalysisError("Advanced past reference code extents: "s + ctx.csip.toString());
@@ -1336,14 +1340,13 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
             const auto matchType = instructionsMatch(ctx, iRef, iObj);
             switch (matchType) {
             case CMP_MATCH:
-                // an instruction match resets the allowed skip counter
                 verbose(compareStatus(iRef, iObj, true));
-                skipCount = 0;
+                // an instruction match resets the allowed skip counters
+                refSkipCount = objSkipCount = 0;
                 break;
             case CMP_MISMATCH:
                 // attempt to skip the difference, if permitted by the options
-                skipCount++;
-                if (skipCount > options.skipDiff) {
+                if (++refSkipCount > options.refSkip || ++objSkipCount > options.objSkip) {
                     verbose(output_color(OUT_RED) + compareStatus(iRef, iObj, true) + output_color(OUT_DEFAULT));
                     error("Instruction mismatch in routine " + routine.name + " at " + compareStatus(iRef, iObj, false));
                     diffContext(ctx.csip, other.code, ctx.otherCsip);
@@ -1389,7 +1392,7 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
                 // if the instructions did not match and we still got here, that means we are in difference skipping mode, 
                 // so don't advance to the next instruction in the compared (other) binary, maybe the next one from the reference will match
                 // TODO: support skipping of object as well?
-                debug("Skipping over instruction mismatch, allowed " + to_string(skipCount) + " out of " + to_string(options.skipDiff));
+                debug("Skipping over instruction mismatch, allowed " + to_string(refSkipCount) + " out of " + to_string(options.refSkip));
                 break;
             case CMP_VARIANT:
                 // in case of a variant match, the instruction pointer in the compared binary will have already been advanced by instructionsMatch()
