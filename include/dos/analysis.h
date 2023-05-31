@@ -202,12 +202,17 @@ struct AnalysisOptions {
     AnalysisOptions() : strict(true), ignoreDiff(false), noCall(false), variant(false), skipDiff(0) {}
 };
 
+using InstructionSequence = std::vector<Instruction>;
+
+// Performs comparison of instruction sequences, testing them for a match against a dictionary of equivalencies.
+// TODO: consider whether bidirectional equivalence is really desired, maybe "xor ax, ax" is equivalent to "sub ax, ax", but not the other way around?
 // TODO: compare instructions, not string representations, allow wildcards in place of arguments, e.g. "mov ax, ?"
 class VariantMap {
+public:
+    using Variant = std::vector<std::string>; // a variant is a collection of strings representing one or more instructions in a sequence
+    using Bucket = std::vector<Variant>; // a bucket is a collection of variants, i.e. instructions or instructions sequences that are equivalent to each other
 private: 
-    using Variant = std::vector<std::string>; // a variant is a bunch of strings representing one or more instructions in a sequence
-    using Bucket = std::vector<Variant>; // a bucket is a bunch of variants, i.e. instructions or instructions sequences that are equivalent to each other
-    std::vector<Bucket> buckets_;
+    std::vector<Bucket> buckets_; 
     Size maxDepth_; // maximum depth, i.e. length of instruction sequence found in any bucket (worst case scenario to compare)
 
 public:
@@ -222,6 +227,7 @@ public:
     explicit VariantMap(const std::string &path);
     Size maxDepth() const { return maxDepth_; }
     MatchDepth checkMatch(const Variant &left, const Variant &right);
+    MatchDepth checkMatch(const InstructionSequence &left, const InstructionSequence &right);
     // for debugging
     void dump() const;
 
@@ -237,6 +243,7 @@ class Executable {
     Address ep, stack;
     Block codeExtents;
     std::vector<Segment> segments;
+    VariantMap variants;
 
     enum ComparisonResult { CMP_MATCH, CMP_MISMATCH, CMP_DIFFVAL, CMP_VARIANT };
 

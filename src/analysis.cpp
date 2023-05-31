@@ -788,6 +788,21 @@ VariantMap::MatchDepth VariantMap::checkMatch(const VariantMap::Variant &left, c
     return {leftFound, rightFound}; // return positive match with corresponding instruction sequence lengths
 }
 
+static vector<string> stringify(const InstructionSequence &iseq, const int count = -1) {
+    vector<string> ret;
+    int idx = 0;
+    for (const auto &i : iseq) { 
+        if (count > 0 && (idx++ > count)) break;
+        ret.push_back(i.toString()); 
+    }
+    return ret;
+}
+
+MatchDepth VariantMap::checkMatch(const InstructionSequence &left, const InstructionSequence &right) {
+    Variant leftVariant = stringify(left), rightVariant = stringify(right);
+    return checkMatch(leftVariant, rightVariant);
+}
+
 void VariantMap::dump() const {
     debug("variant map, max depth = " + to_string(maxDepth()));
     int bucketno = 0;
@@ -1019,7 +1034,7 @@ static string compareStatus(const Instruction &i1, const Instruction &i2, const 
         status = i1.addr.toString() + ": " + i1.toString(align);
     }
     if (align && status.length() < ALIGN) status.append(ALIGN - status.length(), ' ');
-    if (i1.isValid()) {
+    if (i1.isValid() && i2.isValid()) {
         if (match == INS_MATCH_ERROR) match = i1.match(i2);
         switch (match) {
         case INS_MATCH_FULL:     status += " == "; break;
@@ -1030,7 +1045,9 @@ static string compareStatus(const Instruction &i1, const Instruction &i2, const 
         }
     }
     else status.append(4, ' ');
-    status += i2.addr.toString() + ": " + i2.toString(align);
+    if (i2.isValid()) {
+        status += i2.addr.toString() + ": " + i2.toString(align);
+    }
     return status;
 }
 
@@ -1051,7 +1068,7 @@ static const map<string, vector<vector<string>>> INSTR_VARIANT = {
     },    
 };
 
-Executable::ComparisonResult Executable::instructionsMatch(Context &ctx, const Instruction &ref, Instruction obj) {
+Executable::ComparisonResult Executable::instructionsMatch(Context &ctx, Instruction ref, Instruction obj) {
     if (ctx.options.ignoreDiff) return CMP_MATCH;
 
     auto insResult = ref.match(obj);
@@ -1070,6 +1087,7 @@ Executable::ComparisonResult Executable::instructionsMatch(Context &ctx, const I
                 match = ctx.offMap.codeMatch(refBranch.destination, objObranch.destination);
             }
             // special case of jmp vs jmp short - allow only if variants enabled
+            // TODO: this will also mismatch on jump GRP encoding
             if (match && ref.isUnconditionalJump() && ref.opcode != obj.opcode) {
                 if (ctx.options.variant) {
                     verbose(output_color(OUT_YELLOW) + compareStatus(ref, obj, true, INS_MATCH_DIFF) + output_color(OUT_DEFAULT));
@@ -1100,43 +1118,43 @@ Executable::ComparisonResult Executable::instructionsMatch(Context &ctx, const I
     }
     
     if (match) return CMP_MATCH;
-    // check for a variant match if allowed by options
-    else if (ctx.options.variant && INSTR_VARIANT.count(ref.toString())) {
-        // get vector of allowed variants (themselves vectors of strings)
-        const auto &variants = INSTR_VARIANT.at(ref.toString());
-        debug("Found "s + to_string(variants.size()) + " variants for instruction '" + ref.toString() + "'");
-        // compose string for showing the variant comparison instructions
-        string statusStr = compareStatus(ref, obj, true, INS_MATCH_DIFF);
-        string variantStr;
-        // iterate over the possible variants of this reference instruction
-        for (auto &v : variants) {
-            variantStr.clear();
-            match = true;
-            // temporary code pointer for the compared binary while we scan its instructions ahead
-            Address tmpCsip = ctx.otherCsip;
-            int idx = 0;
-            // iterate over instructions inside this variant
-            for (auto &istr: v) {
-                debug(tmpCsip.toString() + ": " + obj.toString() + " == " + istr + " ? (" + to_string(idx+1) + "/" + to_string(v.size()) + ")");
-                // stringwise compare the next instruction in the variant to the current instruction
-                if (obj.toString() != istr) { match = false; break; }
-                // if this is not the last instruction in the variant, read the next instruction from the compared binary
-                tmpCsip += obj.length;
-                if (++idx < v.size()) {
-                    obj = Instruction{tmpCsip, ctx.other.code.pointer(tmpCsip)};
-                    variantStr += "\n" + compareStatus(Instruction(), obj, true);
-                }
-            }
-            if (match) {
-                debug("Got variant match, advancing compared binary to " + tmpCsip.toString());
-                verbose(output_color(OUT_YELLOW) + statusStr + variantStr + output_color(OUT_DEFAULT));
-                // in the case of a match, need to update the actual instruction pointer in the compared binary to account for the instructions we skipped
-                ctx.otherCsip = tmpCsip;
-                return CMP_VARIANT;
-            }
+
+    // advance an instruction and push the result into a vector if still within code extents
+    auto pushNext = [](Instruction &i, const Block &extents, const Memory &code, InstructionSequence &dest){
+        if (!i.isValid()) return;
+        i.addr += i.length;
+        if (extents.contains(i.addr)) {
+            i = Instruction(i.addr, code.pointer(i.addr));
+            dest.push_back(i);
         }
+        else i = Instruction();
+    };
+
+    // check for a variant match if allowed by options
+    if (ctx.options.variant) {
+        const Size mapDepth = variants.maxDepth();
+        InstructionSequence refSeq{ref}, objSeq{obj};
+        // gather as many instructions from both executables as it takes to compare to a longest instruction sequence in the variant map
+        for (Size i = 0; i < mapDepth; ++i) {
+            pushNext(ref, codeExtents, code, refSeq);
+            pushNext(obj, ctx.other.codeExtents, ctx.other.code, objSeq);
+        }
+        // check if the sequences match by the variant lookup map
+        const VariantMap::MatchDepth md = variants.checkMatch(refSeq, objSeq);
+        if (!md.isMatch()) return CMP_MISMATCH;
+        // compose status string for verbose mode
+        debug("Found variant match for " + joinString(stringify(refSeq, md.left), ';') + " with " + joinString(stringify(objSeq, md.right), ';');
+        ostringstream statusStr;
+        for (int i = 0; i < std::max(md.left, md.right); ++i) {
+            if (i) statusStr << endl;
+            Instruction r = i < refSeq.size() ? refSeq[i] : {};
+            Instruction o = i < objSeq.size() ? objSeq[i] : {};
+            statusStr << compareStatus(r, o, true)
+        }
+        verbose(output_color(OUT_YELLOW) + statusStr.str() + output_color(OUT_DEFAULT));
+        return CMP_VARIANT;
     }
-    
+    // all matching possibilites exhausted    
     return CMP_MISMATCH;
 }
 

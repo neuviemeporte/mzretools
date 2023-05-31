@@ -250,3 +250,14 @@ std::vector<string> splitString(const std::string &str, char delim) {
     ret.push_back(str.substr(start, str.size() - start));
     return ret;
 }
+
+std::string joinString(const std::vector<std::string> &join, char sep, size_t count) {
+    ostringstream str;
+    size_t i = 0;
+    for (const auto &s : join) {
+        if (count && ++i > count) break;
+        if (sep && !str.str().empty) str << sep;
+        str << s;
+    }
+    return str.str();
+}
