@@ -1356,37 +1356,58 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
             verbose("--- Now @"s + ctx.csip.toString() + ", compared @" + ctx.otherCsip.toString());
         }
         Size refSkipCount = 0, objSkipCount = 0;
+        Address refSkipOrigin;
 
         // keep comparing subsequent instructions at current location between the reference and other binary
         while (true) {
-            if (!contains(ctx.csip))
-                throw AnalysisError("Advanced past reference code extents: "s + ctx.csip.toString());
-            if (!other.contains(ctx.otherCsip))
-                throw AnalysisError("Advanced past other code extents: "s + ctx.otherCsip.toString());
+            // if we ran outside of the code extents, consider the comparison successful
+            if (!contains(ctx.csip) || !other.contains(ctx.otherCsip)) {
+                debug("Advanced past code extents: csip = "s + ctx.csip.toString() + " / " + ctx.otherCsip.toString() + " vs extents " + codeExtents.toString() 
+                    + " / " + other.codeExtents.toString());
+                break;
+            }
+
             // decode instructions
             Instruction 
                 iRef{ctx.csip, code.pointer(ctx.csip)}, 
                 iObj{ctx.otherCsip, other.code.pointer(ctx.otherCsip)};
+            
             // mark this instruction as visited, unlike the routine finding algorithm, we do not differentiate between routine IDs
             compareQ.setRoutineId(ctx.csip.toLinear(), iRef.length, VISITED_ID);
+
             // compare instructions
+            SkipType skipType = SKIP_NONE;
             const auto matchType = instructionsMatch(ctx, iRef, iObj);
             switch (matchType) {
             case CMP_MATCH:
+                // XXX show skips before match
                 verbose(compareStatus(iRef, iObj, true));
                 // an instruction match resets the allowed skip counters
                 refSkipCount = objSkipCount = 0;
                 break;
             case CMP_MISMATCH:
-                // attempt to skip the difference, if permitted by the options
-                if (++refSkipCount > options.refSkip || ++objSkipCount > options.objSkip) {
+                // attempt to skip a mismatch, if permitted by the options
+                // first try skipping in the reference executable
+                if (refSkipCount + 1 <= options.refSkip) {
+                    // save original reference position for rewind
+                    if (refSkipCount == 0) refSkipOrigin = ctx.csip;
+                    skipType = SKIP_REF;
+                    refSkipCount++;
+                }
+                // no more skips allowed in reference, try skipping object executable
+                else if (objSkipCount + 1 <= options.objSkip) {
+                    // performing a skip in the object executable resets the allowed reference skip count
+                    skipType = SKIP_OBJ;
+                    refSkipCount = 0;
+                    objSkipCount++;
+                }
+                // ran out of allowed skips in both executables
+                else {
+                    // XXX show skips before mismatch
                     verbose(output_color(OUT_RED) + compareStatus(iRef, iObj, true) + output_color(OUT_DEFAULT));
                     error("Instruction mismatch in routine " + routine.name + " at " + compareStatus(iRef, iObj, false));
                     diffContext(ctx);
                     return false;
-                }
-                else {
-                    verbose(output_color(OUT_YELLOW) + compareStatus(iRef, iObj, true) + output_color(OUT_DEFAULT));
                 }
                 break;
             case CMP_DIFFVAL:
@@ -1405,7 +1426,8 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
                     ctx.offMap.codeMatch(refBranch.destination, objBranch.destination);
                 }
             }
-            else if (iRef.isReturn()) {
+            // instruction is a return, interrupt comparison
+            else if (iRef.isReturn() || iObj.isReturn()) {
                 searchMessage(ctx.csip, "linear compare scan interrupted by return");
                 break;
             }
@@ -1413,29 +1435,42 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
                 debug("Reached end of comparison block @ "s + ctx.csip.toString());
                 break;
             }
-            // advance to next instruction in the reference executable
-            ctx.csip += iRef.length;
-            if (options.stopAddr.isValid() && ctx.csip >= options.stopAddr) {
-                verbose("Reached stop address: " + ctx.csip.toString());
-                goto success;
-            }
-            // advance to next instruction in the compared executable
+
+            // adjust position in compared executables for next iteration
             switch (matchType) {
             case CMP_MISMATCH:
                 // if the instructions did not match and we still got here, that means we are in difference skipping mode, 
-                // so don't advance to the next instruction in the compared (other) binary, maybe the next one from the reference will match
-                // TODO: support skipping of object as well?
-                debug("Skipping over instruction mismatch, allowed " + to_string(refSkipCount) + " out of " + to_string(options.refSkip));
+                debug("Skipping over instruction mismatch, allowed " + to_string(refSkipCount) + "/" + to_string(objSkipCount)  + " out of " + to_string(options.refSkip) + "/" + to_string(options.objSkip));
+                switch (skipType) {
+                case SKIP_REF: 
+                    ctx.csip += iRef.length;
+                    break;
+                case SKIP_OBJ:
+                    // rewind reference position
+                    ctx.csip = refSkipOrigin;
+                    ctx.otherCsip += iObj.length;
+                    break;
+                default:
+                    error("Unexpected: no skip despite mismatch");
+                    return false;
+                }
                 break;
             case CMP_VARIANT:
                 // in case of a variant match, the instruction pointer in the compared binary will have already been advanced by instructionsMatch()
                 debug("Variant match detected, comparison will continue at " + ctx.otherCsip.toString());
                 break;
             default:
+                // normal case, advance both reference and object positions
+                ctx.csip += iRef.length;
+                if (options.stopAddr.isValid() && ctx.csip >= options.stopAddr) {
+                    verbose("Reached stop address: " + ctx.csip.toString());
+                    goto success;
+                }
                 ctx.otherCsip += iObj.length;
                 break;
             }
-        } // iterate over instructions at comparison location
+
+        } // iterate over instructions at current comparison location
     } // iterate over comparison location queue
 
 success:
