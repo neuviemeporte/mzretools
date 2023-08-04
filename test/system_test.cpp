@@ -242,11 +242,37 @@ TEST_F(SystemTest, CodeCompareSkip) {
         0x9c, // pushf
         0x41, // inc cx
     };
+
     Executable e1{0, refCode}, e2{0, objCode};
     AnalysisOptions opt;
+    
+    // test failure case
+    opt.refSkip = 2;
+    opt.objSkip = 2;
+    ASSERT_FALSE(e1.compareCode(RoutineMap{}, e2, opt));
+
+    // test success case
     opt.refSkip = 3;
     opt.objSkip = 2;
     ASSERT_TRUE(e1.compareCode(RoutineMap{}, e2, opt));
+    
+    const vector<Byte> ref2Code = {
+        0x41, // inc cx
+    };    
+    const vector<Byte> obj2Code = {
+        0x41, // inc cx
+    };
+    Executable e3{0, ref2Code}, e4{0, obj2Code};
+
+    // test only ref skip
+    opt.refSkip = 3;
+    opt.objSkip = 0;
+    ASSERT_TRUE(e1.compareCode(RoutineMap{}, e4, opt));
+
+    // test only obj skip
+    opt.refSkip = 0;
+    opt.objSkip = 2;
+    ASSERT_TRUE(e3.compareCode(RoutineMap{}, e2, opt));
 }
 
 TEST_F(SystemTest, SignedHex) {

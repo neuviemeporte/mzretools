@@ -282,6 +282,7 @@ private:
     ComparisonResult instructionsMatch(Context &ctx, const Instruction &ref, Instruction obj);
     void storeSegment(const Segment &seg);
     void diffContext(const Context &ctx) const;
+    void skipContext(const Context &ctx, Address refAddr, Address objAddr, Size refSkipped, Size objSkipped) const;
 };
 
 #endif // ANALYSIS_H

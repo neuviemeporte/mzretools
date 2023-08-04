@@ -1044,6 +1044,8 @@ static string compareStatus(const Instruction &i1, const Instruction &i2, const 
     if (i1.isValid()) {
         status = i1.addr.toString() + ": " + i1.toString(align);
     }
+    if (!i2.isValid()) return status;
+
     if (align && status.length() < ALIGN) status.append(ALIGN - status.length(), ' ');
     if (i1.isValid()) {
         if (match == INS_MATCH_ERROR) match = i1.match(i2);
@@ -1211,6 +1213,25 @@ void Executable::diffContext(const Context &ctx) const {
     }
 }
 
+// display skipped instructions after a definite match or mismatch found, impossible to display as instructions are scanned because we don't know
+// how many will be skipped in advance
+void Executable::skipContext(const Context &ctx, Address refAddr, Address objAddr, Size refSkipped, Size objSkipped) const {
+    while (refSkipped > 0 || objSkipped > 0) {
+        Instruction iRef, iObj;
+        if (refSkipped > 0) {
+            iRef = {refAddr, code.pointer(refAddr)};
+            refSkipped--;
+            refAddr += iRef.length;
+        }
+        if (objSkipped > 0) {
+            iObj = {objAddr, ctx.other.code.pointer(objAddr)};
+            objSkipped--;
+            objAddr += iObj.length;
+        }
+        verbose(output_color(OUT_YELLOW) + compareStatus(iRef, iObj, true, INS_MATCH_DIFF) + " [skip]" + output_color(OUT_DEFAULT));
+    }
+}
+
 // TODO: this should be a member of SearchQueue
 bool Executable::saveBranch(const Branch &branch, const RegisterState &regs, const Block &codeExtents, ScanQueue &sq) const {
     if (!branch.destination.isValid())
@@ -1356,15 +1377,18 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
             verbose("--- Now @"s + ctx.csip.toString() + ", compared @" + ctx.otherCsip.toString());
         }
         Size refSkipCount = 0, objSkipCount = 0;
-        Address refSkipOrigin;
+        Address refSkipOrigin, objSkipOrigin;
 
-        // keep comparing subsequent instructions at current location between the reference and other binary
+        // keep comparing subsequent instructions at current location between the reference and object binary
         while (true) {
             // if we ran outside of the code extents, consider the comparison successful
             if (!contains(ctx.csip) || !other.contains(ctx.otherCsip)) {
                 debug("Advanced past code extents: csip = "s + ctx.csip.toString() + " / " + ctx.otherCsip.toString() + " vs extents " + codeExtents.toString() 
                     + " / " + other.codeExtents.toString());
-                break;
+                // make sure we are not skipping instructions
+                // TODO: make this non-fatal, just make the skip fail
+                if (refSkipCount || objSkipCount) return false;
+                else break;
             }
 
             // decode instructions
@@ -1380,10 +1404,14 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
             const auto matchType = instructionsMatch(ctx, iRef, iObj);
             switch (matchType) {
             case CMP_MATCH:
-                // XXX show skips before match
+                // display skipped instructions if there were any before this match
+                if (refSkipCount || objSkipCount) {
+                    skipContext(ctx, refSkipOrigin, objSkipOrigin, refSkipCount, objSkipCount);
+                    refSkipCount = objSkipCount = 0;
+                    refSkipOrigin = objSkipOrigin = Address();
+                }
                 verbose(compareStatus(iRef, iObj, true));
                 // an instruction match resets the allowed skip counters
-                refSkipCount = objSkipCount = 0;
                 break;
             case CMP_MISMATCH:
                 // attempt to skip a mismatch, if permitted by the options
@@ -1396,14 +1424,19 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
                 }
                 // no more skips allowed in reference, try skipping object executable
                 else if (objSkipCount + 1 <= options.objSkip) {
-                    // performing a skip in the object executable resets the allowed reference skip count
+                    // save original object position for skip context display
+                    if (objSkipCount == 0) objSkipOrigin = ctx.otherCsip;
                     skipType = SKIP_OBJ;
+                    // performing a skip in the object executable resets the allowed reference skip count
                     refSkipCount = 0;
                     objSkipCount++;
                 }
                 // ran out of allowed skips in both executables
                 else {
-                    // XXX show skips before mismatch
+                    // display skipped instructions if there were any before this mismatch
+                    if (refSkipCount || objSkipCount) {
+                        skipContext(ctx, refSkipOrigin, objSkipOrigin, refSkipCount, objSkipCount);
+                    }
                     verbose(output_color(OUT_RED) + compareStatus(iRef, iObj, true) + output_color(OUT_DEFAULT));
                     error("Instruction mismatch in routine " + routine.name + " at " + compareStatus(iRef, iObj, false));
                     diffContext(ctx);
@@ -1440,15 +1473,17 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
             switch (matchType) {
             case CMP_MISMATCH:
                 // if the instructions did not match and we still got here, that means we are in difference skipping mode, 
-                debug("Skipping over instruction mismatch, allowed " + to_string(refSkipCount) + "/" + to_string(objSkipCount)  + " out of " + to_string(options.refSkip) + "/" + to_string(options.objSkip));
+                debug(compareStatus(iRef, iObj, false, INS_MATCH_MISMATCH));
                 switch (skipType) {
                 case SKIP_REF: 
                     ctx.csip += iRef.length;
+                    debug("Skipping over reference instruction mismatch, allowed " + to_string(refSkipCount) + " out of " + to_string(options.refSkip) + ", destination " + ctx.csip.toString());
                     break;
                 case SKIP_OBJ:
-                    // rewind reference position
-                    ctx.csip = refSkipOrigin;
+                    // rewind reference position if it was skipped before
+                    if (refSkipOrigin.isValid()) ctx.csip = refSkipOrigin;
                     ctx.otherCsip += iObj.length;
+                    debug("Skipping over object instruction mismatch, allowed " + to_string(objSkipCount)  + " out of " + to_string(options.objSkip) + ", destination " + ctx.otherCsip.toString());
                     break;
                 default:
                     error("Unexpected: no skip despite mismatch");
