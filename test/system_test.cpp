@@ -229,6 +229,26 @@ TEST_F(SystemTest, CodeCompare) {
     ASSERT_FALSE(e1.compareCode(map, e2, {}));
 }
 
+TEST_F(SystemTest, CodeCompareSkip) {
+    // compare with skip
+    const vector<Byte> refCode = {
+        0x90, // nop
+        0x07, // pop es
+        0x0e, // push cs
+        0x41, // inc cx
+    };
+    const vector<Byte> objCode = {
+        0x58, // pop ax
+        0x9c, // pushf
+        0x41, // inc cx
+    };
+    Executable e1{0, refCode}, e2{0, objCode};
+    AnalysisOptions opt;
+    opt.refSkip = 3;
+    opt.objSkip = 2;
+    ASSERT_TRUE(e1.compareCode(RoutineMap{}, e2, opt));
+}
+
 TEST_F(SystemTest, SignedHex) {
     SWord pos16val = 0x1234;
     ASSERT_EQ(signedHexVal(pos16val), "+0x1234");    
@@ -243,7 +263,11 @@ TEST_F(SystemTest, SignedHex) {
 TEST_F(SystemTest, Variants) {
     ASSERT_EQ(splitString("a;bc;def", ';'), vector<string>({"a", "bc", "def"}));
     ASSERT_EQ(splitString("abcdef", ';'), vector<string>({"abcdef"}));
-    VariantMap vm{"variants.txt"};
+    stringstream str;
+    str << "add sp, 0x2/pop cx/inc sp;inc sp" << endl 
+        << "add sp, 0x4/pop cx;pop cx" << endl
+        << "sub ax, ax/xor ax, ax";
+    VariantMap vm{str};
     ASSERT_EQ(vm.maxDepth(), 2);
     vm.dump();
     VariantMap::MatchDepth m;

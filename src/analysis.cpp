@@ -5,6 +5,7 @@
 #include "dos/error.h"
 
 #include <iostream>
+#include <istream>
 #include <sstream>
 #include <stack>
 #include <algorithm>
@@ -752,26 +753,15 @@ void ScanQueue::dumpVisited(const string &path, const Offset start, Size size) c
 VariantMap::VariantMap() {
 }
 
+VariantMap::VariantMap(std::istream &str) {
+    loadFromStream(str);
+}
+
 VariantMap::VariantMap(const std::string &path) {
     auto stat = checkFile(path);
     if (!stat.exists) throw ArgError("Variant map file does not exist: " + path);
     ifstream file{path};
-    string bucketLine;
-    Size maxDepth = 0;
-    // iterate over lines, each is a bucket of equivalent instruction variants
-    while (safeGetline(file, bucketLine)) {
-        Bucket bucket;
-        // iterate over slash-separated strings on a line, each is a variant
-        for (const auto &variantString : splitString(bucketLine, '/')) {
-            // a variant starts and ends with a quote
-            Variant variant = splitString(variantString, ';');
-            if (variant.empty()) throw ParseError("Empty variant string: " + variantString);
-            if (variant.size() > maxDepth) maxDepth = variant.size();
-            bucket.push_back(variant);
-        }
-        if (!bucket.empty()) buckets_.push_back(bucket);
-    }
-    maxDepth_ = maxDepth;
+    loadFromStream(file);
 }
 
 VariantMap::MatchDepth VariantMap::checkMatch(const VariantMap::Variant &left, const VariantMap::Variant &right) {
@@ -837,17 +827,53 @@ int VariantMap::find(const Variant &search, int bucketno) const {
     return 0;
 }
 
+void VariantMap::loadFromStream(std::istream &str) {
+    string bucketLine;
+    Size maxDepth = 0;
+    // iterate over lines, each is a bucket of equivalent instruction variants
+    while (safeGetline(str, bucketLine)) {
+        // skip over empty and comment lines
+        if (bucketLine.empty() || bucketLine[0] == '#') continue;
+        Bucket bucket;
+        // iterate over slash-separated strings on a line, each is a variant
+        for (const auto &variantString : splitString(bucketLine, '/')) {
+            // a variant starts and ends with a quote
+            Variant variant = splitString(variantString, ';');
+            if (variant.empty()) throw ParseError("Empty variant string: " + variantString);
+            if (variant.size() > maxDepth) maxDepth = variant.size();
+            bucket.push_back(variant);
+        }
+        if (!bucket.empty()) buckets_.push_back(bucket);
+    }
+    maxDepth_ = maxDepth;
+}
+
 Executable::Executable(const MzImage &mz) : 
     code(mz.loadSegment(), mz.loadModuleData(), mz.loadModuleSize()),
     loadSegment(mz.loadSegment()),
     codeSize(mz.loadModuleSize()),
-    stack(mz.stackPointer()), 
-    codeExtents({loadSegment, Word(0)}, Address(SEG_TO_OFFSET(loadSegment) + codeSize))
+    stack(mz.stackPointer())
 {
-    // relocate entrypoint and stack
+    // relocate entrypoint
     setEntrypoint(mz.entrypoint());
+    init();
+}
+
+Executable::Executable(const Word loadSegment, const std::vector<Byte> &data) :
+    code(loadSegment, data.data(), data.size()),
+    loadSegment(loadSegment),
+    codeSize(data.size()),
+    stack{}
+{
+    setEntrypoint({0, 0});
+    init();
+}
+
+// common initialization after construction
+void Executable::init() {
+    codeExtents = Block{{loadSegment, Word(0)}, Address(SEG_TO_OFFSET(loadSegment) + codeSize - 1)};
     stack.relocate(loadSegment);
-    debug("Loaded executable data into memory, code at "s + codeExtents.toString() + ", relocated entrypoint " + entrypoint().toString() + ", stack " + stack.toString());
+    debug("Loaded executable data into memory, code at "s + codeExtents.toString() + ", relocated entrypoint " + entrypoint().toString() + ", stack " + stack.toString());    
 }
 
 void Executable::setEntrypoint(const Address &addr) {
@@ -1166,11 +1192,17 @@ void Executable::storeSegment(const Segment &seg) {
     segments.push_back(seg);
 }
 
-void Executable::diffContext(Address a1, const Memory &code2, Address a2) const {
+void Executable::diffContext(const Context &ctx) const {
     static const int CONTEXT_COUNT = 10; // show 10 subsequent instructions after a mismatch
-    verbose("--- Context information for " + to_string(CONTEXT_COUNT) + " additional instructions after mismatch location:");
+    Address a1 = ctx.csip; 
+    Address a2 = ctx.otherCsip;
+    const Memory &code2 = ctx.other.code;
+    const Block &ext2 = ctx.other.codeExtents;
+    verbose("--- Context information for up to " + to_string(CONTEXT_COUNT) + " additional instructions after mismatch location:");
     Instruction i1, i2;
     for (int i = 0; i <= CONTEXT_COUNT; ++i) {
+        // make sure we are within code extents in both executables
+        if (!codeExtents.contains(a1) || !ext2.contains(a2)) break;
         i1 = Instruction{a1, code.pointer(a1)},
         i2 = Instruction{a2, code2.pointer(a2)};
         if (i != 0) verbose(compareStatus(i1, i2, true));
@@ -1324,6 +1356,7 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
             verbose("--- Now @"s + ctx.csip.toString() + ", compared @" + ctx.otherCsip.toString());
         }
         Size refSkipCount = 0, objSkipCount = 0;
+
         // keep comparing subsequent instructions at current location between the reference and other binary
         while (true) {
             if (!contains(ctx.csip))
@@ -1349,7 +1382,7 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
                 if (++refSkipCount > options.refSkip || ++objSkipCount > options.objSkip) {
                     verbose(output_color(OUT_RED) + compareStatus(iRef, iObj, true) + output_color(OUT_DEFAULT));
                     error("Instruction mismatch in routine " + routine.name + " at " + compareStatus(iRef, iObj, false));
-                    diffContext(ctx.csip, other.code, ctx.otherCsip);
+                    diffContext(ctx);
                     return false;
                 }
                 else {

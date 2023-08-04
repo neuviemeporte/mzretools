@@ -70,7 +70,7 @@ struct Address {
 std::ostream& operator<<(std::ostream &os, const Address &arg);
 inline std::string operator+(const std::string &str, const Address &arg) { return str + arg.toString(); }
 
-// An address range
+// An address range, both ends inclusive
 struct Block {
     Address begin, end;
     Block(const Address &begin, const Address &end) : begin(begin), end(end) {}

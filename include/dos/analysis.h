@@ -203,7 +203,7 @@ struct AnalysisOptions {
     AnalysisOptions() : strict(true), ignoreDiff(false), noCall(false), variant(false), refSkip(0), objSkip(0) {}
 };
 
-// TODO: compare instructions, not string representations, allow wildcards in place of arguments, e.g. "mov ax, ?"
+// TODO: compare instructions, not string representations, allow wildcards in place of arguments, e.g. "mov ax, *"
 class VariantMap {
 private: 
     using Variant = std::vector<std::string>; // a variant is a bunch of strings representing one or more instructions in a sequence
@@ -220,6 +220,7 @@ public:
         bool isMatch() const { return left != 0 && right != 0; }
     };
     VariantMap();
+    explicit VariantMap(std::istream &str);
     explicit VariantMap(const std::string &path);
     Size maxDepth() const { return maxDepth_; }
     MatchDepth checkMatch(const Variant &left, const Variant &right);
@@ -228,6 +229,7 @@ public:
 
 private:
     int find(const Variant &search, int bucket) const;
+    void loadFromStream(std::istream &str);
 };
 
 // TODO: make testable, constructor from instruction data
@@ -249,6 +251,7 @@ class Executable {
 
 public:
     explicit Executable(const MzImage &mz);
+    Executable(const Word loadSegment, const std::vector<Byte> &data);
     const Address& entrypoint() const { return ep; }
     void setEntrypoint(const Address &addr);
 
@@ -264,6 +267,7 @@ private:
         OffsetMap offMap;
         Context(const Executable &other, const AnalysisOptions &opt, const Size maxData);
     };
+    void init();
     void searchMessage(const Address &addr, const std::string &msg) const;
     Branch getBranch(const Instruction &i, const RegisterState &regs = {}) const;
     bool saveBranch(const Branch &branch, const RegisterState &regs, const Block &codeExtents, ScanQueue &sq) const;
@@ -271,7 +275,7 @@ private:
 
     ComparisonResult instructionsMatch(Context &ctx, const Instruction &ref, Instruction obj);
     void storeSegment(const Segment &seg);
-    void diffContext(const Address a1, const Memory &code2, const Address a2) const;
+    void diffContext(const Context &ctx) const;
 };
 
 #endif // ANALYSIS_H
