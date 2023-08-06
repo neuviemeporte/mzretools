@@ -1498,20 +1498,22 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
                 }
                 break;
             case CMP_VARIANT:
+                ctx.csip += iRef.length;
                 // in case of a variant match, the instruction pointer in the compared binary will have already been advanced by instructionsMatch()
                 debug("Variant match detected, comparison will continue at " + ctx.otherCsip.toString());
                 break;
             default:
                 // normal case, advance both reference and object positions
                 ctx.csip += iRef.length;
-                if (options.stopAddr.isValid() && ctx.csip >= options.stopAddr) {
-                    verbose("Reached stop address: " + ctx.csip.toString());
-                    goto success;
-                }
                 ctx.otherCsip += iObj.length;
                 break;
             }
-
+            
+            // handle case of reaching the predefined stop address
+            if (options.stopAddr.isValid() && ctx.csip >= options.stopAddr) {
+                verbose("Reached stop address: " + ctx.csip.toString());
+                goto success;
+            }
         } // iterate over instructions at current comparison location
     } // iterate over comparison location queue
 
