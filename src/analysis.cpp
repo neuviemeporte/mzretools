@@ -460,10 +460,12 @@ bool OffsetMap::codeMatch(const Address from, const Address to) {
 
     // mapping already exists
     if (codeMap.count(from) > 0) {
-        if (codeMap[from] == to) {
+        auto &found = codeMap[from];
+        if (found == to) {
             debug("Existing code address mapping " + from.toString() + " -> " + to.toString() + " matches");
             return true;
         }
+        debug("Existing code address mapping " + from.toString() + " -> " + found.toString() + " conflicts with " + to.toString());
         return false;
     }
     // otherwise save new mapping
@@ -472,7 +474,7 @@ bool OffsetMap::codeMatch(const Address from, const Address to) {
     return true;    
 }
 
-bool OffsetMap::dataMatch(const SOffset from, const SOffset to) {
+bool OffsetMap:: dataMatch(const SOffset from, const SOffset to) {
     auto &mappings = dataMap[from];
     // matching mapping already exists in map
     if (std::find(begin(mappings), end(mappings), to) != mappings.end()) {
@@ -1100,6 +1102,7 @@ Executable::ComparisonResult Executable::instructionsMatch(Context &ctx, const I
                 objObranch = getBranch(obj);
             if (refBranch.destination.isValid() && objObranch.destination.isValid()) {
                 match = ctx.offMap.codeMatch(refBranch.destination, objObranch.destination);
+                if (!match) debug("Instruction mismatch on branch destination");
             }
             // special case of jmp vs jmp short - allow only if variants enabled
             if (match && ref.opcode != obj.opcode && (ref.isUnconditionalJump() || obj.isUnconditionalJump())) {
@@ -1116,10 +1119,14 @@ Executable::ComparisonResult Executable::instructionsMatch(Context &ctx, const I
             switch (ref.memSegmentId()) {
             case REG_DS:
                 match = ctx.offMap.dataMatch(refOfs, objOfs);
+                if (!match) debug("Instruction mismatch on data offset");
                 break;
             case REG_SS:
                 // in strict mode, the stack is expected to have exactly matching layout, with no translation
-                if (!ctx.options.strict) match = ctx.offMap.stackMatch(refOfs, objOfs);
+                if (!ctx.options.strict) {
+                    match = ctx.offMap.stackMatch(refOfs, objOfs);
+                    if (!match) debug("Instruction mismatch on stack offset");
+                }
                 break;
             }
         }
