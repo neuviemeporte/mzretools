@@ -1422,15 +1422,15 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
                 break;
             case CMP_MISMATCH:
                 // attempt to skip a mismatch, if permitted by the options
-                // first try skipping in the reference executable
-                if (refSkipCount + 1 <= options.refSkip) {
+                // first try skipping in the reference executable, skipping returns is not allowed
+                if (refSkipCount + 1 <= options.refSkip && !iRef.isReturn()) {
                     // save original reference position for rewind
                     if (refSkipCount == 0) refSkipOrigin = ctx.csip;
                     skipType = SKIP_REF;
                     refSkipCount++;
                 }
                 // no more skips allowed in reference, try skipping object executable
-                else if (objSkipCount + 1 <= options.objSkip) {
+                else if (objSkipCount + 1 <= options.objSkip && !iObj.isReturn()) {
                     // save original object position for skip context display
                     if (objSkipCount == 0) objSkipOrigin = ctx.otherCsip;
                     skipType = SKIP_OBJ;
@@ -1466,12 +1466,15 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
                     ctx.offMap.codeMatch(refBranch.destination, objBranch.destination);
                 }
             }
-            // instruction is a return, interrupt comparison
-            else if (iRef.isReturn() || iObj.isReturn()) {
+            // instruction is a return, interrupt comparison unless we are skipping a difference 
+            // (in which case we still don't advance the position past the return, but the other executable can skip up to the allowed count)
+            else if ((iRef.isReturn() || iObj.isReturn()) && skipType == SKIP_NONE) {
                 searchMessage(ctx.csip, "linear compare scan interrupted by return");
                 break;
             }
-            if (compareBlock.isValid() && ctx.csip > compareBlock.end) {
+
+            // likewise an end of a routine block is a hard stop unless skipping
+            if (compareBlock.isValid() && ctx.csip > compareBlock.end && skipType == SKIP_NONE) {
                 debug("Reached end of comparison block @ "s + ctx.csip.toString());
                 break;
             }
