@@ -174,10 +174,10 @@ class OffsetMap {
     std::map<SOffset, SOffset> stackMap;
 
 public:
+    OffsetMap() : maxData(0) {}
     // the argument is the maximum number of data segments, we allow as many alternate offset mappings 
     // for a particular offset as there are data segments in the executable. If there is no data segment,
     // then probably this is tiny model (DS=CS) and there is still at least one data segment.
-    OffsetMap() : maxData(0) {}
     explicit OffsetMap(const Size maxData) : maxData(maxData > 0 ? maxData : 1) {}
     Address getCode(const Address &from) { return codeMap[from]; }
     void setCode(const Address &from, const Address &to) { codeMap[from] = to; }

@@ -1,3 +1,5 @@
+- fix problem with unreachable block in a routine interrupting comparison with a success prematurely, add locations of other reachable blocks to the comparison queue too somehow
+
 - scripted input mode
 - tests for SUB, check behaviour of signed operands in dosbox
 

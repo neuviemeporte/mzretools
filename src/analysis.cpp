@@ -899,13 +899,13 @@ Branch Executable::getBranch(const Instruction &i, const RegisterState &regs) co
     branch.isUnconditional = false;
     const Address &addr = i.addr;
     switch (i.iclass) {
+    // conditional jump
     case INS_JMP_IF:
-        // conditional jump, put destination into search queue to check out later
         branch.destination = i.relativeAddress();
         searchMessage(addr, "encountered conditional near jump to "s + branch.destination.toString());
         break;
+    // unconditional jumps
     case INS_JMP:
-        // unconditional jumps, cannot continue at current location, need to jump now
         switch (i.opcode) {
         case OP_JMP_Jb: 
         case OP_JMP_Jv: 
@@ -1365,6 +1365,7 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
         // get corresponding address in other binary
         ctx.otherCsip = ctx.offMap.getCode(ctx.csip);
         if (!ctx.otherCsip.isValid()) {
+            // TODO: should this be fatal?
             debug("Could not find equivalent address for "s + ctx.csip.toString() + " in address map, skipping location");
             continue;
         }
@@ -1380,6 +1381,7 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
             compareBlock = routine.blockContaining(compare.address);
             verbose("--- Now @"s + ctx.csip.toString() + ", routine " + routine.toString(false) + ", block " + compareBlock.toString(true) +  ", compared @" + ctx.otherCsip.toString());
         }
+        // TODO: consider dropping this "feature"
         else { // comparing without a map
             verbose("--- Now @"s + ctx.csip.toString() + ", compared @" + ctx.otherCsip.toString());
         }
@@ -1454,8 +1456,9 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
                 verbose(output_color(OUT_YELLOW) + compareStatus(iRef, iObj, true) + output_color(OUT_DEFAULT));
                 break;
             }
-
             // comparison result okay (instructions match or skip permitted), interpret the instructions
+
+            // instruction is a call, save destination to the comparison queue 
             if (!options.noCall && iRef.isCall() && iObj.isCall()) {
                 const Branch 
                     refBranch = getBranch(iRef, {}),
@@ -1470,12 +1473,6 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
             // (in which case we still don't advance the position past the return, but the other executable can skip up to the allowed count)
             else if ((iRef.isReturn() || iObj.isReturn()) && skipType == SKIP_NONE) {
                 searchMessage(ctx.csip, "linear compare scan interrupted by return");
-                break;
-            }
-
-            // likewise an end of a routine block is a hard stop unless skipping
-            if (compareBlock.isValid() && ctx.csip > compareBlock.end && skipType == SKIP_NONE) {
-                debug("Reached end of comparison block @ "s + ctx.csip.toString());
                 break;
             }
 
@@ -1512,6 +1509,12 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
                 break;
             }
             
+            // an end of a routine block is a hard stop unless skipping, we do not want to go into unreachable areas which may contain invalid opcodes
+            if (compareBlock.isValid() && ctx.csip > compareBlock.end) {
+                debug("Reached end of comparison block @ "s + ctx.csip.toString());
+                break;
+            }
+
             // handle case of reaching the predefined stop address
             if (options.stopAddr.isValid() && ctx.csip >= options.stopAddr) {
                 verbose("Reached stop address: " + ctx.csip.toString());
