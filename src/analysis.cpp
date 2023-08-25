@@ -62,6 +62,14 @@ Block Routine::blockContaining(const Address &a) const {
     return {};
 }
 
+Block Routine::nextReachable(const Address &from) const {
+    const auto &found = std::find_if(reachable.begin(), reachable.end(), [&from](const Block &b){
+        return b.begin >= from;
+    });
+    if (found != reachable.end()) return *found;
+    return {};
+}
+
 bool Routine::colides(const Block &block, const bool checkExtents) const {
     if (checkExtents && extents.intersects(block)) {
         debug("Block "s + block.toString() + " colides with extents of routine " + toString(false));
@@ -110,8 +118,6 @@ std::vector<Block> Routine::sortedBlocks() const {
 }
 
 RoutineMap::RoutineMap(const ScanQueue &sq, const Word loadSegment, const Size codeSize) : reloc(loadSegment), codeSize(codeSize) {
-    // XXX: debugging purpose only, remove later
-    sq.dumpVisited("search_queue.dump", SEG_TO_OFFSET(loadSegment), codeSize);
     const Size routineCount = sq.routineCount();
     if (routineCount == 0)
         throw AnalysisError("Attempted to create routine map from search queue with no routines");
@@ -1334,8 +1340,9 @@ RoutineMap Executable::findRoutines() {
     return ret;
 }
 
+// TODO: move this out of Executable, will help with unifying how both executables are referenced inside
 bool Executable::compareCode(const RoutineMap &routineMap, const Executable &other, const AnalysisOptions &options) {
-    verbose("Comparing code between reference (entrypoint "s + entrypoint().toString() + ") and other (entrypoint " + other.entrypoint().toString() + ") executables");
+    verbose("Comparing code between reference (entrypoint "s + entrypoint().toString() + ") and target (entrypoint " + other.entrypoint().toString() + ") executables");
     debug("Routine map of reference binary has " + to_string(routineMap.size()) + " entries");
     Context ctx{other, options, routineMap.segmentCount(Segment::SEG_DATA)};
     // map of equivalent addresses in the compared binaries, seed with the two entrypoints
@@ -1365,9 +1372,8 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
         // get corresponding address in other binary
         ctx.otherCsip = ctx.offMap.getCode(ctx.csip);
         if (!ctx.otherCsip.isValid()) {
-            // TODO: should this be fatal?
-            debug("Could not find equivalent address for "s + ctx.csip.toString() + " in address map, skipping location");
-            continue;
+            error("Could not find equivalent address for "s + ctx.csip.toString() + " in address map for compared executable");
+            return false;
         }
         Routine routine{"unknown", {}};
         Block compareBlock;
@@ -1375,15 +1381,15 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
             routine = routineMap.getRoutine(ctx.csip);
             // make sure we are inside a reachable block of a know routine from reference binary
             if (!routine.isValid()) {
-                debug("Could not find address "s + ctx.csip.toString() + " in routine map, skipping location");
-                continue;
+                error("Could not find address "s + ctx.csip.toString() + " in routine map");
+                return false;
             }
             compareBlock = routine.blockContaining(compare.address);
-            verbose("--- Now @"s + ctx.csip.toString() + ", routine " + routine.toString(false) + ", block " + compareBlock.toString(true) +  ", compared @" + ctx.otherCsip.toString());
+            verbose("--- Now @"s + ctx.csip.toString() + ", routine " + routine.toString(false) + ", block " + compareBlock.toString(true) +  ", target @" + ctx.otherCsip.toString());
         }
         // TODO: consider dropping this "feature"
         else { // comparing without a map
-            verbose("--- Now @"s + ctx.csip.toString() + ", compared @" + ctx.otherCsip.toString());
+            verbose("--- Comparing reference @ "s + ctx.csip.toString() + " to target @" + ctx.otherCsip.toString());
         }
         Size refSkipCount = 0, objSkipCount = 0;
         Address refSkipOrigin, objSkipOrigin;
@@ -1469,8 +1475,18 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
                     ctx.offMap.codeMatch(refBranch.destination, objBranch.destination);
                 }
             }
+            // instruction is a jump, save the relationship between the reference and the target addresses into the offset map
+            else if (iRef.isJump() && iObj.isJump() && skipType == SKIP_NONE) {
+                const Branch 
+                    refBranch = getBranch(iRef, {}),
+                    objBranch = getBranch(iObj, {});
+                if (refBranch.destination.isValid() && objBranch.destination.isValid()) {
+                    ctx.offMap.codeMatch(refBranch.destination, objBranch.destination);
+                }
+            }
             // instruction is a return, interrupt comparison unless we are skipping a difference 
             // (in which case we still don't advance the position past the return, but the other executable can skip up to the allowed count)
+            // TODO: consider if this is needed, comparison should terminate on a routine block boundary instead, what about routines with multiple returns?
             else if ((iRef.isReturn() || iObj.isReturn()) && skipType == SKIP_NONE) {
                 searchMessage(ctx.csip, "linear compare scan interrupted by return");
                 break;
@@ -1509,13 +1525,29 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
                 break;
             }
             
-            // an end of a routine block is a hard stop unless skipping, we do not want to go into unreachable areas which may contain invalid opcodes
+            // an end of a routine block is a hard stop, we do not want to go into unreachable areas which may contain invalid opcodes (e.g. data mixed with code)
+            // TODO: need to handle case where we are skipping right now
             if (compareBlock.isValid() && ctx.csip > compareBlock.end) {
-                debug("Reached end of comparison block @ "s + ctx.csip.toString());
+                verbose("Reached end of routine block @ "s + compareBlock.end.toString());
+                // if the current routine still contains reachable blocks after the current location, add the start of the next one to the queue
+                const Block rb = routine.nextReachable(ctx.csip);
+                if (rb.isValid()) {
+                    debug("Routine " + routine.name + " still contains reachable blocks, next @ " + rb.toString());
+                    compareQ.saveJump(rb.begin, {});
+                    if (!ctx.offMap.getCode(rb.begin).isValid()) {
+                        // the offset map between the reference and the target does not have a matching entry for the next reachable block's destination,
+                        // so the comparison would fail - last ditch attempt is to try and record a "guess" offset mapping before jumping there,
+                        // based on the hope that the size of the unreachable block matches in the target
+                        // TODO: make sure an instruction matches at the destination before actually recording the mapping
+                        const Address guess = ctx.otherCsip + (rb.begin - ctx.csip);
+                        debug("Recording guess offset mapping based on unreachable block size: " + rb.begin.toString() + " -> " + guess.toString());
+                        ctx.offMap.setCode(rb.begin, guess);
+                    }
+                }
                 break;
             }
 
-            // handle case of reaching the predefined stop address
+            // reached predefined stop address
             if (options.stopAddr.isValid() && ctx.csip >= options.stopAddr) {
                 verbose("Reached stop address: " + ctx.csip.toString());
                 goto success;

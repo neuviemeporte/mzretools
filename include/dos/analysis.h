@@ -78,6 +78,7 @@ struct Routine {
     bool isUnreachable(const Block &b) const;
     Block mainBlock() const;
     Block blockContaining(const Address &a) const;
+    Block nextReachable(const Address &from) const;
     bool colides(const Block &block, const bool checkExtents = true) const;
     std::string toString(const bool showChunks = true) const;
     std::vector<Block> sortedBlocks() const;
@@ -174,12 +175,12 @@ class OffsetMap {
     std::map<SOffset, SOffset> stackMap;
 
 public:
-    OffsetMap() : maxData(0) {}
     // the argument is the maximum number of data segments, we allow as many alternate offset mappings 
     // for a particular offset as there are data segments in the executable. If there is no data segment,
     // then probably this is tiny model (DS=CS) and there is still at least one data segment.
     explicit OffsetMap(const Size maxData) : maxData(maxData > 0 ? maxData : 1) {}
-    Address getCode(const Address &from) { return codeMap[from]; }
+    OffsetMap() : maxData(0) {}
+    Address getCode(const Address &from) { return codeMap.count(from) ? codeMap[from] : Address{}; }
     void setCode(const Address &from, const Address &to) { codeMap[from] = to; }
     bool codeMatch(const Address from, const Address to);
     bool dataMatch(const SOffset from, const SOffset to);
