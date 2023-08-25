@@ -238,41 +238,41 @@ TEST_F(SystemTest, CodeCompareSkip) {
         0x0e, // push cs
         0x41, // inc cx
     };
-    const vector<Byte> objCode = {
+    const vector<Byte> tgtCode = {
         0x58, // pop ax
         0x9c, // pushf
         0x41, // inc cx
     };
 
-    Executable e1{0, refCode}, e2{0, objCode};
+    Executable e1{0, refCode}, e2{0, tgtCode};
     AnalysisOptions opt;
     
     // test failure case
     opt.refSkip = 2;
-    opt.objSkip = 2;
+    opt.tgtSkip = 2;
     ASSERT_FALSE(e1.compareCode(RoutineMap{}, e2, opt));
 
     // test success case
     opt.refSkip = 3;
-    opt.objSkip = 2;
+    opt.tgtSkip = 2;
     ASSERT_TRUE(e1.compareCode(RoutineMap{}, e2, opt));
     
     const vector<Byte> ref2Code = {
         0x41, // inc cx
     };    
-    const vector<Byte> obj2Code = {
+    const vector<Byte> tgt2Code = {
         0x41, // inc cx
     };
-    Executable e3{0, ref2Code}, e4{0, obj2Code};
+    Executable e3{0, ref2Code}, e4{0, tgt2Code};
 
     // test only ref skip
     opt.refSkip = 3;
-    opt.objSkip = 0;
+    opt.tgtSkip = 0;
     ASSERT_TRUE(e1.compareCode(RoutineMap{}, e4, opt));
 
-    // test only obj skip
+    // test only tgt skip
     opt.refSkip = 0;
-    opt.objSkip = 2;
+    opt.tgtSkip = 2;
     ASSERT_TRUE(e3.compareCode(RoutineMap{}, e2, opt));
 }
 
@@ -281,8 +281,8 @@ TEST_F(SystemTest, CodeCompareUnreachable) {
     TRACELN("=== case 1");
     vector<Byte> 
         refCode = { OP_POP_ES, OP_PUSH_CS, OP_INC_CX, 0x60, OP_INC_AX, OP_PUSH_ES },
-        objCode = refCode;
-    Executable e1{0, refCode}, e2{0, objCode};
+        tgtCode = refCode;
+    Executable e1{0, refCode}, e2{0, tgtCode};
     AnalysisOptions opt;
     Routine r1{"test1", {0, refCode.size()}};
     // two reachable blocks separated by an unreachable one
@@ -298,8 +298,8 @@ TEST_F(SystemTest, CodeCompareUnreachable) {
     // different size of unreachable region, but make it possible to derive the offset mapping from a jump destination
     TRACELN("=== case 2");
     refCode = { OP_POP_ES, OP_PUSH_CS, OP_JMP_Jb, 0x1, 0x60, OP_INC_AX, OP_PUSH_ES };
-    objCode = { OP_POP_ES, OP_PUSH_CS, OP_JMP_Jb, 0x3, 0x60, 0x61, 0x62, OP_INC_AX, OP_PUSH_ES };
-    Executable e3{0, refCode}, e4 = Executable{0, objCode};
+    tgtCode = { OP_POP_ES, OP_PUSH_CS, OP_JMP_Jb, 0x3, 0x60, 0x61, 0x62, OP_INC_AX, OP_PUSH_ES };
+    Executable e3{0, refCode}, e4 = Executable{0, tgtCode};
     Routine r2{"test2", {0, refCode.size()}};
     r2.reachable.push_back({0, 3});
     r2.unreachable.push_back({4, 4});
@@ -313,8 +313,8 @@ TEST_F(SystemTest, CodeCompareUnreachable) {
     // impossible to derive the offset mapping from a jump destination and instructions don't match
     TRACELN("=== case 3");
     refCode = { OP_POP_ES, OP_PUSH_CS, OP_NOP, 0x60, OP_INC_AX, OP_PUSH_ES };
-    objCode = { OP_POP_ES, OP_PUSH_CS, OP_NOP, 0x60, OP_INC_CX, OP_PUSH_DS };
-    Executable e5{0, refCode}, e6 = Executable{0, objCode};
+    tgtCode = { OP_POP_ES, OP_PUSH_CS, OP_NOP, 0x60, OP_INC_CX, OP_PUSH_DS };
+    Executable e5{0, refCode}, e6 = Executable{0, tgtCode};
     Routine r3{"test3", {0, refCode.size()}};
     r3.reachable.push_back({0, 2});
     r3.unreachable.push_back({3, 3});

@@ -199,9 +199,9 @@ struct Branch {
 // TODO: introduce true strict (now it's "not loose"), compare by opcode
 struct AnalysisOptions {
     bool strict, ignoreDiff, noCall, variant;
-    Size refSkip, objSkip;
+    Size refSkip, tgtSkip;
     Address stopAddr;
-    AnalysisOptions() : strict(true), ignoreDiff(false), noCall(false), variant(false), refSkip(0), objSkip(0) {}
+    AnalysisOptions() : strict(true), ignoreDiff(false), noCall(false), variant(false), refSkip(0), tgtSkip(0) {}
 };
 
 // TODO: compare instructions, not string representations, allow wildcards in place of arguments, e.g. "mov ax, *"
@@ -253,7 +253,7 @@ class Executable {
     enum SkipType {
         SKIP_NONE,
         SKIP_REF,
-        SKIP_OBJ,
+        SKIP_TGT,
     };
 
 public:
@@ -268,11 +268,11 @@ public:
 
 private:
     struct Context {
-        const Executable &other;
+        const Executable &target;
         const AnalysisOptions &options;
-        Address csip, otherCsip;
+        Address refCsip, tgtCsip;
         OffsetMap offMap;
-        Context(const Executable &other, const AnalysisOptions &opt, const Size maxData);
+        Context(const Executable &target, const AnalysisOptions &opt, const Size maxData);
     };
     void init();
     void searchMessage(const Address &addr, const std::string &msg) const;
@@ -280,10 +280,10 @@ private:
     bool saveBranch(const Branch &branch, const RegisterState &regs, const Block &codeExtents, ScanQueue &sq) const;
     void applyMov(const Instruction &i, RegisterState &regs);
 
-    ComparisonResult instructionsMatch(Context &ctx, const Instruction &ref, Instruction obj);
+    ComparisonResult instructionsMatch(Context &ctx, const Instruction &ref, Instruction tgt);
     void storeSegment(const Segment &seg);
     void diffContext(const Context &ctx) const;
-    void skipContext(const Context &ctx, Address refAddr, Address objAddr, Size refSkipped, Size objSkipped) const;
+    void skipContext(const Context &ctx, Address refAddr, Address tgtAddr, Size refSkipped, Size tgtSkipped) const;
 };
 
 #endif // ANALYSIS_H

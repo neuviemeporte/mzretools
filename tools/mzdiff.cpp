@@ -25,7 +25,7 @@ void usage() {
            "--idiff        ignore differences completely\n"
            "--nocall       do not follow calls, useful for comparing single functions\n"
            "--rskip count  skip differences, ignore up to 'count' consecutive mismatching instructions in the reference executable\n"
-           "--cskip count  skip differences, ignore up to 'count' consecutive mismatching instructions in the compared executable\n"
+           "--tskip count  skip differences, ignore up to 'count' consecutive mismatching instructions in the target executable\n"
            "--loose        non-strict matching, allows e.g for literal argument differences\n"
            "--variant      treat instruction variants that do the same thing as matching\n"
            "The optional entrypoint spec tells the tool at which offset to start comparing, and can be different\n"
@@ -142,9 +142,9 @@ int main(int argc, char *argv[]) {
             if (aidx + 1 >= argc) fatal("Option requires an argument: --rskip");
             opt.refSkip = stoi(argv[++aidx], nullptr, 10);
         }
-        else if (arg == "--cskip") {
-            if (aidx + 1 >= argc) fatal("Option requires an argument: --cskip");
-            opt.objSkip = stoi(argv[++aidx], nullptr, 10);
+        else if (arg == "--tskip") {
+            if (aidx + 1 >= argc) fatal("Option requires an argument: --tskip");
+            opt.tgtSkip = stoi(argv[++aidx], nullptr, 10);
         }        
         else if (arg == "--map") {
             if (aidx + 1 >= argc) fatal("Option requires an argument: --map");
