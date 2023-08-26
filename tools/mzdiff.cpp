@@ -46,7 +46,7 @@ void fatal(const string &msg) {
 }
 
 void info(const string &msg) {
-    output(msg, LOG_OTHER, LOG_ERROR);
+    output(msg, LOG_OTHER, LOG_INFO);
 }
 
 void debug(const string &msg) {
@@ -73,7 +73,6 @@ Executable loadExe(const string &spec, const Word segment, AnalysisOptions &opt)
         entry = spec.substr(specPos + 1);
     }
 
-    info("path = '" + path + "', entry = '" + entry + "'");
     const auto stat = checkFile(path);
     if (!stat.exists) fatal("File does not exist: "s + path);
     else if (stat.size <= MZ_HEADER_SIZE) fatal("File too small ("s + to_string(stat.size) + "B): " + path); 

@@ -659,16 +659,10 @@ void ScanQueue::setRoutineId(Offset off, const Size length, RoutineId id) {
     fill(visited.begin() + off, visited.begin() + off + length, id);
 }
 
-Destination ScanQueue::nextPoint(const bool front) {
+Destination ScanQueue::nextPoint() {
     if (!empty()) {
-        if (front) {
-            curSearch = queue.front();
-            queue.pop_front();
-        }
-        else {
-            curSearch = queue.back();
-            queue.pop_back();            
-        }
+        curSearch = queue.front();
+        queue.pop_front();
     }
     return curSearch;
 }
@@ -715,7 +709,7 @@ bool ScanQueue::saveCall(const Address &dest, const RegisterState &regs) {
             debug("call destination not belonging to any routine, claiming as entrypoint for new routine " + to_string(newRoutineId));
         else 
             debug("call destination belonging to routine " + to_string(destId) + ", reclaiming as entrypoint for new routine " + to_string(newRoutineId));
-        queue.emplace_front(Destination(dest, newRoutineId, true, regs));
+        queue.emplace_back(Destination(dest, newRoutineId, true, regs));
         entrypoints.emplace_back(RoutineEntrypoint(dest, newRoutineId));
         return true;
     }
@@ -730,8 +724,8 @@ bool ScanQueue::saveJump(const Address &dest, const RegisterState &regs) {
     else if (hasPoint(dest, false))
         debug("Queue already contains jump to address "s + dest.toString());
     else { // not claimed by any routine and not yet in queue
-        queue.emplace_front(Destination(dest, curSearch.routineId, false, regs));
         debug("Jump destination not yet visited, scheduled visit from routine " + to_string(curSearch.routineId) + ", queue size = " + to_string(size()));
+        queue.emplace_front(Destination(dest, curSearch.routineId, false, regs));
         return true;
     }
     return false;
@@ -1353,8 +1347,9 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
     // TODO: implement register value tracing
     ScanQueue compareQ(Destination(entrypoint(), VISITED_ID, true, {}));
     while (!compareQ.empty()) {
-        // get next location for linear scan and comparison of instructions
-        const Destination compare = compareQ.nextPoint(false);
+        // get next location for linear scan and comparison of instructions from the front of the queue,
+        // to visit functions in the same order in which they were first encountered
+        const Destination compare = compareQ.nextPoint();
         debug("Now at reference location "s + compare.address.toString() + ", queue size = " + to_string(compareQ.size()));
         // when entering a routine, forget all the current stack offset mappings
         if (compare.isCall) {
@@ -1484,13 +1479,6 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
                     ctx.offMap.codeMatch(refBranch.destination, objBranch.destination);
                 }
             }
-            // instruction is a return, interrupt comparison unless we are skipping a difference 
-            // (in which case we still don't advance the position past the return, but the other executable can skip up to the allowed count)
-            // TODO: consider if this is needed, comparison should terminate on a routine block boundary instead, what about routines with multiple returns?
-            else if ((iRef.isReturn() || iObj.isReturn()) && skipType == SKIP_NONE) {
-                searchMessage(ctx.csip, "linear compare scan interrupted by return");
-                break;
-            }
 
             // adjust position in compared executables for next iteration
             switch (matchType) {
@@ -1529,10 +1517,11 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
             // TODO: need to handle case where we are skipping right now
             if (compareBlock.isValid() && ctx.csip > compareBlock.end) {
                 verbose("Reached end of routine block @ "s + compareBlock.end.toString());
-                // if the current routine still contains reachable blocks after the current location, add the start of the next one to the queue
+                // if the current routine still contains reachable blocks after the current location, add the start of the next one to the back of the queue,
+                // so it gets picked up immediately on the next iteration of the outer loop
                 const Block rb = routine.nextReachable(ctx.csip);
                 if (rb.isValid()) {
-                    debug("Routine " + routine.name + " still contains reachable blocks, next @ " + rb.toString());
+                    verbose("Routine still contains reachable blocks, next @ " + rb.toString());
                     compareQ.saveJump(rb.begin, {});
                     if (!ctx.offMap.getCode(rb.begin).isValid()) {
                         // the offset map between the reference and the target does not have a matching entry for the next reachable block's destination,
@@ -1543,6 +1532,9 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
                         debug("Recording guess offset mapping based on unreachable block size: " + rb.begin.toString() + " -> " + guess.toString());
                         ctx.offMap.setCode(rb.begin, guess);
                     }
+                }
+                else {
+                    verbose("Completed comparison of routine, no more reachable blocks");
                 }
                 break;
             }

@@ -100,7 +100,7 @@ public:
     Size size() const { return queue.size(); }
     bool empty() const { return queue.empty(); }
     Address startAddress() const { return start; }
-    Destination nextPoint(const bool front = true);
+    Destination nextPoint();
     bool hasPoint(const Address &dest, const bool call) const;
     bool saveCall(const Address &dest, const RegisterState &regs);
     bool saveJump(const Address &dest, const RegisterState &regs);
