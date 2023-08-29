@@ -1116,17 +1116,26 @@ Executable::ComparisonResult Executable::instructionsMatch(Context &ctx, const I
         }
         else if (operandIsMemWithOffset(refop.type)) {
             SOffset refOfs = ref.memOffset(), objOfs = obj.memOffset();
-            switch (ref.memSegmentId()) {
+            Register segReg = ref.memSegmentId();
+            switch (segReg) {
+            case REG_CS:
+                match = ctx.offMap.codeMatch(refOfs, objOfs);
+                if (!match) verbose("Instruction mismatch due to code segment offset mapping conflict");
+                break;
+            case REG_ES: /* TODO: come up with something better */
             case REG_DS:
                 match = ctx.offMap.dataMatch(refOfs, objOfs);
-                if (!match) debug("Instruction mismatch on data offset");
+                if (!match) verbose("Instruction mismatch due to data segment offset mapping conflict");
                 break;
             case REG_SS:
                 // in strict mode, the stack is expected to have exactly matching layout, with no translation
                 if (!ctx.options.strict) {
                     match = ctx.offMap.stackMatch(refOfs, objOfs);
-                    if (!match) debug("Instruction mismatch on stack offset");
+                    if (!match) verbose("Instruction mismatch due to stack segment offset mapping conflict");
                 }
+                break;
+            default:
+                throw AnalysisError("Unsupported segment register in instruction comparison: " + regName(segReg));
                 break;
             }
         }
