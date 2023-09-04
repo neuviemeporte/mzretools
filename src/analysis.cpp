@@ -1354,7 +1354,8 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
     // queue of locations (in reference binary) for comparison, likewise seeded with the entrypoint
     // TODO: use routine map to fill compareQ in advance
     // TODO: implement register value tracing
-    ScanQueue compareQ(Destination(entrypoint(), VISITED_ID, true, {}));
+    ScanQueue compareQ{Destination(entrypoint(), VISITED_ID, true, {})};
+    std::regex excludeRe{options.exclude};
     while (!compareQ.empty()) {
         // get next location for linear scan and comparison of instructions from the front of the queue,
         // to visit functions in the same order in which they were first encountered
@@ -1389,6 +1390,10 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
                 return false;
             }
             compareBlock = routine.blockContaining(compare.address);
+            if (!options.exclude.empty() && std::regex_match(routine.name, excludeRe)) {
+                verbose("--- Skipping excluded routine " + routine.toString(false) + " @"s + ctx.csip.toString() + ", block " + compareBlock.toString(true) +  ", target @" + ctx.otherCsip.toString());
+                continue;
+            }
             verbose("--- Now @"s + ctx.csip.toString() + ", routine " + routine.toString(false) + ", block " + compareBlock.toString(true) +  ", target @" + ctx.otherCsip.toString());
         }
         // TODO: consider dropping this "feature"

@@ -19,6 +19,7 @@ void usage() {
            "Compares two DOS MZ executables instruction by instruction, accounting for differences in code layout\n"
            "Options:\n"
            "--map basemap  map file of base executable to use, if present\n"
+           "--exclude pat  regex pattern of function names to exclude in comparison\n"
            "--verbose      show more detailed information, including compared instructions\n"
            "--debug        show additional debug information\n"
            "--dbgcpu       include CPU-related debug information like instruction decoding\n"
@@ -148,6 +149,10 @@ int main(int argc, char *argv[]) {
         else if (arg == "--map") {
             if (aidx + 1 >= argc) fatal("Option requires an argument: --map");
             pathMap = argv[++aidx];
+        }
+        else if (arg == "--exclude") {
+            if (aidx + 1 >= argc) fatal("Option requires an argument: --exclude");
+            opt.exclude = argv[++aidx];
         }        
         else if (arg == "--loose") opt.strict = false;
         else if (arg == "--variant") opt.variant = true;
