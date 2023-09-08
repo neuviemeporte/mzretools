@@ -7,14 +7,16 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ggdb -O0 -Wfatal-errors")
 
 set(LIBDOS_SRC 
-    src/system.cpp
     src/registers.cpp
     src/cpu.cpp
     src/interrupt.cpp
     src/address.cpp
     src/memory.cpp
+    src/segment.cpp
     src/psp.cpp
     src/analysis.cpp
+    src/executable.cpp
+    src/routine.cpp
     src/dos.cpp
     src/mz.cpp
     src/util.cpp
@@ -24,7 +26,6 @@ set(LIBDOS_SRC
     src/modrm.cpp)
 
 set(LIBDOS_HDR 
-    include/dos/system.h
     include/dos/types.h
     include/dos/error.h
     include/dos/output.h
@@ -32,7 +33,10 @@ set(LIBDOS_HDR
     include/dos/opcodes.h
     include/dos/registers.h
     include/dos/modrm.h
+    include/dos/segment.h
     include/dos/analysis.h
+    include/dos/executable.h
+    include/dos/routine.h
     include/dos/cpu.h
     include/dos/interrupt.h
     include/dos/address.h
@@ -45,11 +49,6 @@ set(LIBDOS_HDR
 # the DOS emulation library
 add_library(libdos STATIC ${LIBDOS_SRC} ${LIBDOS_HDR})
 target_include_directories(libdos PUBLIC include)
-
-# the main application executable
-add_executable(dostrace src/main.cpp)
-target_include_directories(dostrace PUBLIC include)
-target_link_libraries(dostrace PUBLIC libdos)
 
 # Include Google testing framework
 # Prevent overriding the parent project's compiler/linker settings on Windows

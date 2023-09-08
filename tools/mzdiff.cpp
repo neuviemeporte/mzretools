@@ -2,8 +2,7 @@
 #include "dos/mz.h"
 #include "dos/error.h"
 #include "dos/output.h"
-#include "dos/instruction.h"
-#include "dos/analysis.h"
+#include "dos/executable.h"
 
 #include <iostream>
 #include <string>
@@ -19,6 +18,7 @@ void usage() {
            "Compares two DOS MZ executables instruction by instruction, accounting for differences in code layout\n"
            "Options:\n"
            "--map basemap  map file of base executable to use, if present\n"
+           "--exclude pat  regex pattern of function names to exclude in comparison\n"
            "--verbose      show more detailed information, including compared instructions\n"
            "--debug        show additional debug information\n"
            "--dbgcpu       include CPU-related debug information like instruction decoding\n"
@@ -46,7 +46,7 @@ void fatal(const string &msg) {
 }
 
 void info(const string &msg) {
-    output(msg, LOG_OTHER, LOG_ERROR);
+    output(msg, LOG_OTHER, LOG_INFO);
 }
 
 void debug(const string &msg) {
@@ -73,7 +73,6 @@ Executable loadExe(const string &spec, const Word segment, AnalysisOptions &opt)
         entry = spec.substr(specPos + 1);
     }
 
-    info("path = '" + path + "', entry = '" + entry + "'");
     const auto stat = checkFile(path);
     if (!stat.exists) fatal("File does not exist: "s + path);
     else if (stat.size <= MZ_HEADER_SIZE) fatal("File too small ("s + to_string(stat.size) + "B): " + path); 
@@ -149,6 +148,10 @@ int main(int argc, char *argv[]) {
         else if (arg == "--map") {
             if (aidx + 1 >= argc) fatal("Option requires an argument: --map");
             pathMap = argv[++aidx];
+        }
+        else if (arg == "--exclude") {
+            if (aidx + 1 >= argc) fatal("Option requires an argument: --exclude");
+            opt.exclude = argv[++aidx];
         }        
         else if (arg == "--loose") opt.strict = false;
         else if (arg == "--variant") opt.variant = true;

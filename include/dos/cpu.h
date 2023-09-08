@@ -6,7 +6,6 @@
 #include "dos/types.h"
 #include "dos/registers.h"
 #include "dos/memory.h"
-#include "dos/analysis.h"
 #include "dos/instruction.h"
 
 class Cpu {
