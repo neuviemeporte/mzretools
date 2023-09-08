@@ -11,8 +11,7 @@
 
 using namespace std;
 
-// TODO: remove/rename this test, turn into library module test
-class SystemTest : public ::testing::Test {
+class AnalysisTest : public ::testing::Test {
 protected:
 
     // access to private fields
@@ -24,7 +23,7 @@ protected:
 };
 
 // TODO: divest tests of analysis.cpp as distinct test suite
-TEST_F(SystemTest, RegisterState) {
+TEST_F(AnalysisTest, RegisterState) {
     RegisterState rs;
 
     TRACELN("Setting AX to 0x1234");
@@ -87,7 +86,7 @@ TEST_F(SystemTest, RegisterState) {
     TRACELN(rs.toString());    
 }
 
-TEST_F(SystemTest, RoutineMap) {
+TEST_F(AnalysisTest, RoutineMap) {
     // test loading of routine map from ida file
     const RoutineMap idaMap{"../bin/hello.lst"};
     idaMap.dump();
@@ -100,7 +99,7 @@ TEST_F(SystemTest, RoutineMap) {
 
 }
 
-TEST_F(SystemTest, RoutineMapFromQueue) {
+TEST_F(AnalysisTest, RoutineMapFromQueue) {
     // test routine map generation from contents of a search queue
     ScanQueue sq = emptyScanQueue();
     vector<int> &visited = sqVisited(sq);
@@ -139,7 +138,7 @@ TEST_F(SystemTest, RoutineMapFromQueue) {
     ASSERT_EQ(r3.unreachable.at(0), Block(0x13, 0x13));    
 }
 
-TEST_F(SystemTest, FindRoutines) {
+TEST_F(AnalysisTest, FindRoutines) {
     const Word loadSegment = 0x1234;
     // discover routines inside an executable
     MzImage mz{"bin/hello.exe"};
@@ -172,7 +171,7 @@ TEST_F(SystemTest, FindRoutines) {
     ASSERT_EQ(matchCount, discoveredMap.size());
 }
 
-TEST_F(SystemTest, RoutineMapCollision) {
+TEST_F(AnalysisTest, RoutineMapCollision) {
     const string path = "bad.map";
     RoutineMap rm = emptyRoutineMap();
     Block b1{100, 200}, b2{150, 250}, b3{300, 400};
@@ -200,7 +199,7 @@ TEST_F(SystemTest, RoutineMapCollision) {
     ASSERT_EQ(rm.size(), 2);
 }
 
-TEST_F(SystemTest, CodeCompare) {
+TEST_F(AnalysisTest, CodeCompare) {
     MzImage mz{"bin/hello.exe"};
     mz.load(0);
     Executable e1{mz}, e2{mz};
@@ -215,7 +214,7 @@ TEST_F(SystemTest, CodeCompare) {
     ASSERT_FALSE(e1.compareCode(map, e2, {}));
 }
 
-TEST_F(SystemTest, CodeCompareSkip) {
+TEST_F(AnalysisTest, CodeCompareSkip) {
     // compare with skip
     const vector<Byte> refCode = {
         0x90, // nop
@@ -261,7 +260,7 @@ TEST_F(SystemTest, CodeCompareSkip) {
     ASSERT_TRUE(e3.compareCode(RoutineMap{}, e2, opt));
 }
 
-TEST_F(SystemTest, CodeCompareUnreachable) {
+TEST_F(AnalysisTest, CodeCompareUnreachable) {
     // two blocks of identical code with an undefined opcode in the middle
     TRACELN("=== case 1");
     vector<Byte> 
@@ -313,7 +312,7 @@ TEST_F(SystemTest, CodeCompareUnreachable) {
     // TODO: implement test for different sized region and no jump after lookahead impemented, currently throws 
 }
 
-TEST_F(SystemTest, SignedHex) {
+TEST_F(AnalysisTest, SignedHex) {
     SWord pos16val = 0x1234;
     ASSERT_EQ(signedHexVal(pos16val), "+0x1234");    
     SWord neg16val = -31989;
@@ -324,7 +323,7 @@ TEST_F(SystemTest, SignedHex) {
     ASSERT_EQ(signedHexVal(neg8val), "-0x0a");
 }
 
-TEST_F(SystemTest, Variants) {
+TEST_F(AnalysisTest, Variants) {
     ASSERT_EQ(splitString("a;bc;def", ';'), vector<string>({"a", "bc", "def"}));
     ASSERT_EQ(splitString("abcdef", ';'), vector<string>({"abcdef"}));
     stringstream str;

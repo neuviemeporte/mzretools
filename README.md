@@ -1,6 +1,6 @@
-# dostrace
+# mzretools
 
-dostrace is a collection of utilities to help with reverse engineering MS-DOS games. 
+This is a collection of utilities to help with reverse engineering MS-DOS games. 
 
 It can analyze MZ executables containing 8086 opcodes and provide information that is useful in reverse engineering. For now, .com files and newer Intel CPUs are not supported.
 
@@ -122,7 +122,5 @@ The output shows `==` for an exact match, `~=` and `=~` for a "soft" difference 
 There are a bunch of other simple tools inside that aren't worth mentioning.
 
 The project contains a unit test suite written with GTest that runs by default on every build. The build system is CMake.
-
-I originally intended dostrace to be a limited emulator, which would be able to run and trace the original and reconstructed game executables and compare the traces, but after understanding that the game is [not guaranteed to be deteministic](https://gafferongames.com/post/fix_your_timestep/), I abandoned the idea. The `dostrace` executable is a remnant of those efforts, but it currently serves no useful purpose.
 
 Patches and improvement suggestions are welcome. I hope this can be of use to somebody.

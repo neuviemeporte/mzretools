@@ -62,7 +62,7 @@ set(TEST_SRC
     test/cpu_test.cpp
     test/dos_test.cpp
     test/memory_test.cpp
-    test/system_test.cpp)
+    test/analysis_test.cpp)
 
 # the test application executable
 add_executable(runtest ${TEST_SRC})

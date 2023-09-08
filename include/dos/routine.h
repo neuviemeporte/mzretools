@@ -44,7 +44,7 @@ struct Routine {
 
 // A map of an executable, records which areas have been claimed by routines, and which have not, serializable to a file
 class RoutineMap {
-    friend class SystemTest;
+    friend class AnalysisTest;
     Word reloc;
     Size codeSize;
     std::vector<Routine> routines;

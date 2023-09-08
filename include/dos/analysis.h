@@ -33,7 +33,7 @@ struct Destination {
 
 // utility class for keeping track of the queue of potentially interesting Destinations, and which bytes in the executable have been visited already
 class ScanQueue {
-    friend class SystemTest;
+    friend class AnalysisTest;
     // memory map for marking which locations belong to which routines, value of 0 is undiscovered
     std::vector<RoutineId> visited; // TODO: store addresses from loaded exe in map, otherwise they don't match after analysis done if exe loaded at segment other than 0 
     Address start;
