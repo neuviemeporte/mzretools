@@ -2,26 +2,18 @@
 #include <algorithm>
 #include "debug.h"
 #include "gtest/gtest.h"
-#include "dos/system.h"
 #include "dos/util.h"
 #include "dos/error.h"
 #include "dos/mz.h"
 #include "dos/analysis.h"
 #include "dos/opcodes.h"
+#include "dos/executable.h"
 
 using namespace std;
 
 // TODO: remove/rename this test, turn into library module test
 class SystemTest : public ::testing::Test {
 protected:
-    System sys;
-
-protected:
-    void TearDown() override {
-        // if (HasFailure()) {
-        //     TRACELN(sys.cpuInfo());
-        // }
-    }
 
     // access to private fields
     auto& getRoutines(RoutineMap &rm) { return rm.routines; }
@@ -30,13 +22,6 @@ protected:
     auto& sqVisited(ScanQueue &sq) { return sq.visited; }
     auto& sqEntrypoints(ScanQueue &sq) { return sq.entrypoints; }
 };
-
-TEST_F(SystemTest, DISABLED_HelloWorld) {
-    ASSERT_EQ(sys.command("load bin/hello.exe"), CMD_OK);
-    EXPECT_THROW(sys.command("run"), CpuError);
-    // TODO: reenable when complete instruction set implemented
-    //ASSERT_EQ(sys.command("run"), CMD_OK);
-}
 
 // TODO: divest tests of analysis.cpp as distinct test suite
 TEST_F(SystemTest, RegisterState) {

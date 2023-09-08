@@ -1,5 +1,7 @@
 #include <algorithm>
 #include <sstream>
+#include <string>
+
 #include "dos/registers.h"
 #include "dos/util.h"
 #include "dos/error.h"
@@ -118,4 +120,81 @@ string Registers::dump() const {
         << "CS = " << hexVal(reg(REG_CS)) << ", DS = " << hexVal(reg(REG_DS)) << ", "
         << "SS = " << hexVal(reg(REG_SS)) << ", ES = " << hexVal(reg(REG_ES));
     return str.str();    
+}
+
+RegisterState::RegisterState() {
+    for (int i = REG_AL; i <= REG_FLAGS; ++i) {
+        Register r = (Register)i;
+        regs_.set(r, 0);
+        known_.set(r, 0);
+    }
+}
+
+RegisterState::RegisterState(const Address &code, const Address &stack) : RegisterState() {
+    setValue(REG_CS, code.segment);
+    setValue(REG_IP, code.offset);
+    setValue(REG_SS, stack.segment);
+    setValue(REG_SP, stack.offset);
+}
+
+bool RegisterState::isKnown(const Register r) const {
+    if (regIsWord(r)) return known_.get(r) == WORD_KNOWN;
+    else return known_.get(r) == BYTE_KNOWN;
+}
+
+Word RegisterState::getValue(const Register r) const {
+    if (isKnown(r)) return regs_.get(r);
+    else return 0;
+}
+
+void RegisterState::setValue(const Register r, const Word value) {
+    setState(r, value, true);
+}
+
+void RegisterState::setUnknown(const Register r) {
+    setState(r, 0, false);
+}
+
+string RegisterState::stateString(const Register r) const {
+    if (regIsWord(r))
+        return (isKnown(r) ? hexVal(regs_.get(r), false, true) : "????");
+    else
+        return (isKnown(r) ? hexVal(static_cast<Byte>(regs_.get(r)), false, true) : "??");
+}
+
+string RegisterState::regString(const Register r) const {
+    string ret = regName(r) + " = ";
+    if (regIsGeneral(r)) {
+        if (isKnown(r)) ret += hexVal(regs_.get(r), false, true);
+        else {
+            ret += stateString(regHigh(r));
+            ret += stateString(regLow(r));
+        }
+    }
+    else ret += stateString(r);
+    return ret;
+}
+
+string RegisterState::toString() const {
+    ostringstream str;
+    str << std::hex 
+        << regString(REG_AX) << ", " << regString(REG_BX) << ", "
+        << regString(REG_CX) << ", " << regString(REG_DX) << endl
+        << regString(REG_SI) << ", " << regString(REG_DI) << ", "
+        << regString(REG_BP) << ", " << regString(REG_SP) << endl
+        << regString(REG_CS) << ", " << regString(REG_DS) << ", "
+        << regString(REG_SS) << ", " << regString(REG_ES) << endl
+        << regString(REG_IP) << ", " << regString(REG_FLAGS);
+    return str.str();
+}  
+
+void RegisterState::setState(const Register r, const Word value, const bool known) {
+    if (regIsWord(r)) {
+        regs_.set(r, value);
+        known_.set(r, known ? WORD_KNOWN : 0);
+    }
+    else {
+        regs_.set(r, value);
+        known_.set(r, known ? BYTE_KNOWN : 0);
+    }
 }

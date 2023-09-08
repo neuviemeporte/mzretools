@@ -2,8 +2,7 @@
 #include "dos/mz.h"
 #include "dos/error.h"
 #include "dos/output.h"
-#include "dos/instruction.h"
-#include "dos/analysis.h"
+#include "dos/executable.h"
 
 #include <iostream>
 #include <string>
