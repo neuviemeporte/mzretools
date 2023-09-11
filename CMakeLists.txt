@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.5)
 
-project(dostrace LANGUAGES CXX)
+project(mzretools LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -12,7 +12,6 @@ set(LIBDOS_SRC
     src/interrupt.cpp
     src/address.cpp
     src/memory.cpp
-    src/segment.cpp
     src/psp.cpp
     src/analysis.cpp
     src/executable.cpp
@@ -33,7 +32,6 @@ set(LIBDOS_HDR
     include/dos/opcodes.h
     include/dos/registers.h
     include/dos/modrm.h
-    include/dos/segment.h
     include/dos/analysis.h
     include/dos/executable.h
     include/dos/routine.h

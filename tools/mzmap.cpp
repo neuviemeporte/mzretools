@@ -102,7 +102,7 @@ int main(int argc, char *argv[]) {
             return 1;
         }
         verbose(map.dump(), true);
-        map.save(pathMap);
+        map.save(pathMap, loadSegment);
     }
     catch (Error &e) {
         fatal(e.why());

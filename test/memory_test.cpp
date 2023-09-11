@@ -45,6 +45,13 @@ TEST_F(MemoryTest, Segmentation) {
     ASSERT_EQ(a.toLinear(), 0x8124);
 }
 
+TEST_F(MemoryTest, Rebase) {
+    Address src(0x1234, 0xa);
+    src.rebase(0x1000);
+    ASSERT_EQ(src.segment, 0);
+    ASSERT_EQ(src.offset, 0x234a);
+}
+
 TEST_F(MemoryTest, Move) {
     Address src(0x1234, 0xa);
     TRACELN("source: " + src.toString());

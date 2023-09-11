@@ -244,8 +244,8 @@ void Executable::applyMov(const Instruction &i, RegisterState &regs) {
     }
     if (set) {
         searchMessage(i.addr, "executed move to register: "s + i.toString());
-        if (i.op1.type == OPR_REG_DS) storeSegment({Segment::SEG_DATA, regs.getValue(REG_DS)});
-        else if (i.op1.type == OPR_REG_SS) storeSegment({Segment::SEG_STACK, regs.getValue(REG_SS)});
+        if (i.op1.type == OPR_REG_DS) storeSegment(Segment::SEG_DATA, regs.getValue(REG_DS));
+        else if (i.op1.type == OPR_REG_SS) storeSegment(Segment::SEG_STACK, regs.getValue(REG_SS));
     }
 }
 
@@ -352,24 +352,40 @@ Executable::ComparisonResult Executable::instructionsMatch(Context &ctx, const I
     return CMP_MISMATCH;
 }
 
-void Executable::storeSegment(const Segment &seg) {
+void Executable::storeSegment(const Segment::Type type, const Word addr) {
     // ignore segments which are already known
-    auto found = std::find(segments.begin(), segments.end(), seg);
+    auto found = std::find_if(segments.begin(), segments.end(), [=](const Segment &s){
+        return s.type == type && s.address == addr;
+    });
     if (found != segments.end()) return;
     // check if an existing segment of a different type has the same address
     found = std::find_if(segments.begin(), segments.end(), [&](const Segment &s){ 
-        return s.value == seg.value; 
+        return s.address == addr;
     });
     if (found != segments.end()) {
         const Segment &existing = *found;
         // existing code segments cannot share an address with another segment
         if (existing.type == Segment::SEG_CODE) return;
         // a new data segment trumps an existing stack segment
-        else if (existing.type == Segment::SEG_STACK && seg.type == Segment::SEG_DATA) {
+        else if (existing.type == Segment::SEG_STACK && type == Segment::SEG_DATA) {
             segments.erase(found);
         }
         else return;
     }
+    // compose name for new segment
+    int idx=1;
+    for (const auto &s : segments) {
+        if (s.type == type) idx++;
+    }
+    string segName;
+    switch (type) {
+    case Segment::SEG_CODE: segName = "Code"; break;
+    case Segment::SEG_DATA: segName = "Data"; break;
+    case Segment::SEG_STACK: segName = "Stack"; break;
+    default: throw AnalysisError("Unsupported segment type");
+    }
+    segName += to_string(idx);
+    Segment seg{segName, type, addr};
     debug("Found new segment: " + seg.toString());
     segments.push_back(seg);
 }
@@ -432,7 +448,7 @@ bool Executable::saveBranch(const Branch &branch, const RegisterState &regs, con
 // TODO: store references to potential jump tables (e.g. jmp cs:[bx+0xc08]), if unclaimed after initial search, try treating entries as pointers and run second search before coalescing blocks?
 RoutineMap Executable::findRoutines() {
     RegisterState initRegs{entrypoint(), stack};
-    storeSegment({Segment::SEG_STACK, stack.segment});
+    storeSegment(Segment::SEG_STACK, stack.segment);
     debug("initial register values:\n"s + initRegs.toString());
     // queue for BFS search
     ScanQueue searchQ{Destination(entrypoint(), 1, true, initRegs)};
@@ -446,7 +462,7 @@ RoutineMap Executable::findRoutines() {
         searchMessage(csip, "--- starting search at new location for routine " + to_string(search.routineId) + ", call: "s + to_string(search.isCall) + ", queue = " + to_string(searchQ.size()));
         RegisterState regs = search.regs;
         regs.setValue(REG_CS, csip.segment);
-        storeSegment({Segment::SEG_CODE, csip.segment});
+        storeSegment(Segment::SEG_CODE, csip.segment);
         // iterate over instructions at current search location in a linear fashion, until an unconditional jump or return is encountered
         while (true) {
             if (!codeExtents.contains(csip))

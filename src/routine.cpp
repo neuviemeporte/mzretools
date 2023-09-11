@@ -70,6 +70,8 @@ bool Routine::colides(const Block &block, const bool checkExtents) const {
 string Routine::toString(const bool showChunks) const {
     ostringstream str;
     str << extents.toString(false, true) << ": " << name;
+    if (near) str << " [near]";
+    else str << " [far]";
     if (!showChunks || isUnchunked()) return str.str();
 
     auto blocks = sortedBlocks();
@@ -94,7 +96,7 @@ std::vector<Block> Routine::sortedBlocks() const {
     return blocks;
 }
 
-RoutineMap::RoutineMap(const ScanQueue &sq, const Word loadSegment, const Size codeSize) : reloc(loadSegment), codeSize(codeSize) {
+RoutineMap::RoutineMap(const ScanQueue &sq, const Word loadSegment, const Size codeSize) : codeSize(codeSize) {
     const Size routineCount = sq.routineCount();
     if (routineCount == 0)
         throw AnalysisError("Attempted to create routine map from search queue with no routines");
@@ -111,7 +113,7 @@ RoutineMap::RoutineMap(const ScanQueue &sq, const Word loadSegment, const Size c
         // do nothing as long as the value doesn't change, unless we encounter the routine entrypoint in the middle of a block, in which case we force a block close
         if (curId == prevId && !sq.isEntrypoint(Address{mapOffset})) continue;
         // value in map changed (or forced block close because of encounterted entrypoint), new block begins
-        closeBlock(b, mapOffset, sq); // close old block and attribute to a routine if possible
+        closeBlock(b, mapOffset, sq, loadSegment); // close old block and attribute to a routine if possible
         // start new block
         debug(hexVal(mapOffset) + ": starting block for routine_" + to_string(curId));
         b = Block(mapOffset);
@@ -120,7 +122,9 @@ RoutineMap::RoutineMap(const ScanQueue &sq, const Word loadSegment, const Size c
         prevId = curId;
     }
     // close last block finishing on the last byte of the memory map
-    closeBlock(b, endOffset, sq);
+    closeBlock(b, endOffset, sq, loadSegment);
+
+    // TODO: coalesce adjacent blocks, see routine_35 of hello.exe: 1415-14f7 R1412-1414 R1415-14f7
 
     // calculate routine extents
     for (auto &r : routines) {
@@ -144,14 +148,13 @@ RoutineMap::RoutineMap(const ScanQueue &sq, const Word loadSegment, const Size c
     sort();
 }
 
-// TODO: instead of requiring the relocation factor as an argment, perhaps save it to the mapfile?
-RoutineMap::RoutineMap(const std::string &path, const Word reloc) : reloc(reloc) {
+RoutineMap::RoutineMap(const std::string &path, const Word reloc) {
     static const regex LSTFILE_RE{".*\\.(lst|LST)"};
     const auto fstat = checkFile(path);
     if (!fstat.exists) throw ArgError("File does not exist: "s + path);
     smatch match;
-    if (regex_match(path, match, LSTFILE_RE)) loadFromIdaFile(path);
-    else loadFromMapFile(path);
+    if (regex_match(path, match, LSTFILE_RE)) loadFromIdaFile(path, reloc);
+    else loadFromMapFile(path, reloc);
     debug("Done, found "s + to_string(routines.size()) + " routines");
     sort();
 }
@@ -194,7 +197,7 @@ Routine RoutineMap::colidesBlock(const Block &b) const {
 }
 
 // utility function used when constructing from  an instance of SearchQueue
-void RoutineMap::closeBlock(Block &b, const Offset off, const ScanQueue &sq) {
+void RoutineMap::closeBlock(Block &b, const Offset off, const ScanQueue &sq, const Word reloc) {
     if (!b.isValid() || off == 0) 
         return;
 
@@ -261,29 +264,39 @@ void RoutineMap::sort() {
         std::sort(r.reachable.begin(), r.reachable.end());
         std::sort(r.unreachable.begin(), r.unreachable.end());
     }
+    // sort segments
+    std::sort(segments.begin(), segments.end());
 }
 
-void RoutineMap::save(const std::string &path, const bool overwrite) const {
+void RoutineMap::save(const std::string &path, const Word reloc, const bool overwrite) const {
     if (empty()) return;
     if (checkFile(path).exists && !overwrite) throw AnalysisError("Map file already exists: " + path);
-    info("Saving routine map (size = " + to_string(size()) + ") to "s + path);
+    info("Saving routine map (size = " + to_string(size()) + ") to "s + path + ", reversing relocation by " + hexVal(reloc));
     ofstream file{path};
     for (auto s: segments) {
-        s.value -= reloc;
+        s.address -= reloc;
         file << s.toString() << endl;
     }
     for (const auto &r : routines) {
         Block rextent{r.extents};
         rextent.rebase(reloc);
-        file << r.name << ": e" << rextent.toString(true, false);
+        if (rextent.begin.segment != rextent.end.segment) 
+            throw AnalysisError("Beginning and end of extents of routine " + r.name + " lie in different segments: " + rextent.toString());
+        Segment rseg = findSegment(r.extents.begin.segment);
+        if (rseg.type == Segment::SEG_NONE) 
+            throw AnalysisError("Unable to find segment for routine " + r.name + ", start addr " + r.extents.begin.toString() + ", relocated " + rextent.begin.toString());
+        file << r.name << ": " << rseg.name << " " << (r.near ? "NEAR " : "FAR ") << hexVal(rextent.begin.offset, false) << "-" << hexVal(rextent.end.offset, false);
         const auto blocks = r.sortedBlocks();
         for (const auto &b : blocks) {
             Block rblock{b};
             rblock.rebase(reloc);
-            if (r.isReachable(b))
-                file << " r" << rblock.toString(true, false);
-            else
-                file << " u" << rblock.toString(true, false);
+            if (rblock.begin.segment != rextent.begin.segment)
+                throw AnalysisError("Block of routine " + r.name + " lies in different segment than routine extents: " + rblock.toString() + " vs " + rextent.toString());
+            if (rblock.begin.segment != rblock.end.segment)
+                throw AnalysisError("Beginning and end of block of routine " + r.name + " lie in different segments: " + rblock.toString());
+            if (r.isReachable(b)) file << " R";
+            else file << " U";
+            file <<  hexVal(rblock.begin.offset, false) << "-" << hexVal(rblock.end.offset, false);
         }
         file << endl;
     }
@@ -320,6 +333,7 @@ string RoutineMap::dump() const {
 
 void RoutineMap::setSegments(const std::vector<Segment> &seg) {
     segments = seg;
+    std::sort(segments.begin(), segments.end());
 }
 
 Size RoutineMap::segmentCount(const Segment::Type type) const {
@@ -330,66 +344,111 @@ Size RoutineMap::segmentCount(const Segment::Type type) const {
     return ret;
 }
 
-void RoutineMap::loadFromMapFile(const std::string &path) {
-    debug("Loading routine map from "s + path);
+Segment RoutineMap::findSegment(const Word addr) const {
+    for (const auto &s : segments) {
+        if (s.address == addr) return s;
+    }
+    return {};
+}
+
+Segment RoutineMap::findSegment(const std::string &name) const {
+    for (const auto &s : segments) {
+        if (s.name == name) return s;
+    }
+    return {};
+}
+
+enum BlockType { BLOCK_NONE, BLOCK_EXTENTS, BLOCK_REACHABLE, BLOCK_UNREACHABLE };
+
+void RoutineMap::loadFromMapFile(const std::string &path, const Word reloc) {
+    static const regex RANGE_RE{"([0-9a-fA-F]{1,4})-([0-9a-fA-F]{1,4})"};
+    debug("Loading routine map from "s + path + ", relocating to " + hexVal(reloc));
     ifstream mapFile{path};
     string line, token;
     Size lineno = 0;
-    bool colideOk = true;
-    while (safeGetline(mapFile, line) && colideOk) {
+    smatch match;
+    while (safeGetline(mapFile, line)) {
         lineno++;
-        try {
-            Segment s(line);
-            s.value += reloc;
+        // ignore comments
+        if (line[0] == '#') continue;
+        // try to interpret as a segment
+        else if (!(match = Segment::stringMatch(line)).empty()) {
+            Segment s(match);
+            s.address += reloc;
+            debug("Loaded segment: " + s.toString());
             segments.push_back(s);
             continue;
         }
-        catch (ArgError &e) {}
+        // otherwise try interpreting as a routine description
         istringstream sstr{line};
         Routine r;
+        Segment rseg;
+        smatch match;
+        int tokenno = 0;
+        BlockType bt = BLOCK_NONE;
         while (sstr >> token) {
+            tokenno++;
             if (token.empty()) continue;
-            if (r.name.empty() && token.back() == ':') { // routine name
+            switch (tokenno) {
+            case 1: // routine name
+                if (token.back() != ':') throw ParseError("Line " + to_string(lineno) + ": invalid routine name token syntax '" + token + "'");
                 r.name = token.substr(0, token.size() - 1);
+                break;
+            case 2: // segment name
+                if ((rseg = findSegment(token)).type == Segment::SEG_NONE) throw ParseError("Line " + to_string(lineno) + ": unknown segment '" + token + "'");
+                break;
+            case 3: // near or far
+                if (token == "NEAR") r.near = true;
+                else if (token == "FAR") r.near = false;
+                else throw ParseError("Line " + to_string(lineno) + ": invalid routine type '" + token + "'");
+                break;
+            case 4: // extents
+                bt = BLOCK_EXTENTS;
+                break;
+            default: // reachable and unreachable blocks follow
+                if (token.front() == 'R') bt = BLOCK_REACHABLE;
+                else if (token.front() == 'U') bt = BLOCK_UNREACHABLE;
+                else throw ParseError("Line " + to_string(lineno) + ": invalid block definition '" + token + "'");
+                token = token.substr(1, token.size() - 1);
+                break;
             }
-            else { // an extents, reachable
-                // first character is block type
-                char blockType = token.front(); 
-                Block block{token.substr(1, token.size() - 1)};
-                block.relocate(reloc);
-                block.move(reloc);
-                // check block for collisions agains rest of routines already in the map as well as the currently built routine
-                Routine colideRoutine = colidesBlock(block);
-                if (!colideRoutine.isValid() && r.colides(block, false)) 
-                    colideRoutine = r;
-                if (colideRoutine.isValid())
-                    throw AnalysisError("line "s + to_string(lineno) + ": block " + block.toString() + " colides with routine " + colideRoutine.toString(false));
-                // add block to routine
-                switch(blockType) {
-                case 'e': 
-                    r.extents = block; 
-                    break;
-                case 'r': 
-                    r.reachable.push_back(block); 
-                    break;
-                case 'u': 
-                    r.unreachable.push_back(block);
-                    break;
-                default:
-                    throw AnalysisError("line "s + to_string(lineno) + ": unrecognized token: '"s + token + "'");
-                }
-            }  
-        }
+            // nothing else to do
+            if (bt == BLOCK_NONE) continue; 
+            // otherwise process a block
+            if (!regex_match(token, match, RANGE_RE)) throw ParseError("Line " + to_string(lineno) + ": invalid routine block '" + token + "'");
+            Block block{Address{rseg.address, static_cast<Word>(stoi(match.str(1), nullptr, 16))}, 
+                        Address{rseg.address, static_cast<Word>(stoi(match.str(2), nullptr, 16))}};
+            // check block for collisions agains rest of routines already in the map as well as the currently built routine
+            Routine colideRoutine = colidesBlock(block);
+            if (!colideRoutine.isValid() && r.colides(block, false)) 
+                colideRoutine = r;
+            if (colideRoutine.isValid())
+                throw ParseError("Line "s + to_string(lineno) + ": block " + block.toString() + " colides with routine " + colideRoutine.toString(false));
+            // add block to routine
+            switch(bt) {
+            case BLOCK_EXTENTS: 
+                r.extents = block; 
+                break;
+            case BLOCK_REACHABLE: 
+                r.reachable.push_back(block); 
+                break;
+            case BLOCK_UNREACHABLE: 
+                r.unreachable.push_back(block);
+                break;
+            default:
+                throw ParseError("Line " + to_string(lineno) + ": unexpected routine block type with '" + token + "'");
+            }
+        } // iterate over tokens in a routine definition
         if (r.extents.isValid()) {
             debug("routine: "s + r.toString());
             routines.push_back(r);
         }
-    }
+    } // iterate over mapfile lines
 }
 
 // create routine map from IDA .lst file
 // TODO: add collision checks
-void RoutineMap::loadFromIdaFile(const std::string &path) {
+void RoutineMap::loadFromIdaFile(const std::string &path, const Word reloc) {
     debug("Loading IDA routine map from "s + path + ", relocation factor " + hexVal(reloc));
     ifstream fstr{path};
     string line, lastAddr;

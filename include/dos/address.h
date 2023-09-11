@@ -3,6 +3,8 @@
 
 #include <string>
 #include <cassert>
+#include <regex>
+
 #include "dos/types.h"
 
 static constexpr Size MEM_TOTAL = 1_MB;
@@ -63,8 +65,11 @@ struct Address {
     bool isValid() const { return segment != ADDR_INVALID || offset != ADDR_INVALID; }
     bool inSegment(const Word arg) const { return toLinear() >= SEG_TO_OFFSET(arg) && toLinear() - SEG_TO_OFFSET(arg) <= OFFSET_MAX; }
     void normalize();
+    // advance segment by an amount
     void relocate(const Word reloc) { segment += reloc; }
+    // rough inverse of relocate, e.g. rebase(1234:a, 0x1000) -> 0:234a
     void rebase(const Word base);
+    // move(1234:a, 1000) -> 1000:234a, effective address remains the same
     void move(const Word segment);
 };
 std::ostream& operator<<(std::ostream &os, const Address &arg);
@@ -100,5 +105,27 @@ struct Block {
 };
 std::ostream& operator<<(std::ostream &os, const Block &arg);
 inline std::string operator+(const std::string &str, const Block &arg) { return str + arg.toString(); }
+
+struct Segment {
+    std::string name;
+    enum Type {
+        SEG_NONE,
+        SEG_CODE,
+        SEG_DATA,
+        SEG_STACK
+    } type;
+    Word address;
+
+    static std::smatch stringMatch(const std::string &str);
+
+    Segment(const std::string &name, Type type, Word address) : name(name), type(type), address(address) {}
+    Segment(const std::smatch &match);
+    Segment(const std::string &str) : Segment(stringMatch(str)) {}
+    Segment() : Segment("", SEG_NONE, 0) {}
+
+    bool operator==(const Segment &other) const { return type == other.type && address == other.address; }
+    bool operator<(const Segment &other) const { return address < other.address; }
+    std::string toString() const;
+};
 
 #endif // ADDRESS_H

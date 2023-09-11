@@ -157,7 +157,7 @@ TEST_F(AnalysisTest, FindRoutines) {
     ASSERT_GE(matchCount, idaMatchCount);
     
     // save to file and reload
-    discoveredMap.save("hello.map", true);
+    discoveredMap.save("hello.map", loadSegment, true);
     RoutineMap reloadMap("hello.map", loadSegment);
     ASSERT_EQ(reloadMap.size(), discoveredMap.size());
 
@@ -174,27 +174,30 @@ TEST_F(AnalysisTest, FindRoutines) {
 TEST_F(AnalysisTest, RoutineMapCollision) {
     const string path = "bad.map";
     RoutineMap rm = emptyRoutineMap();
+    rm.setSegments({
+        {"Code1", Segment::SEG_CODE, 0},
+    });
     Block b1{100, 200}, b2{150, 250}, b3{300, 400};
     Routine r1{"r1", b1},  r2{"r2", b2}, r3{"r3", b3};
     auto &rv = getRoutines(rm);
 
     TRACELN("--- testing coliding routine extents");
     rv = { r1, r2 };
-    rm.dump();
-    rm.save(path, true);
-    ASSERT_THROW(rm = RoutineMap{path}, AnalysisError);
+    TRACE(rm.dump());
+    rm.save(path, 0, true);
+    ASSERT_THROW(rm = RoutineMap{path}, ParseError);
 
     TRACELN("--- testing coliding routine extent with chunk");
     rv = { r1, r3 };
     rv.back().reachable.push_back(b2);
-    rm.dump();
-    rm.save(path, true);
-    ASSERT_THROW(rm = RoutineMap{path}, AnalysisError);
+    TRACE(rm.dump());
+    rm.save(path, 0, true);
+    ASSERT_THROW(rm = RoutineMap{path}, ParseError);
 
     TRACELN("--- testing no colision");
     rv = { r1, r3 };
-    rm.dump();
-    rm.save(path, true);
+    TRACE(rm.dump());
+    rm.save(path, 0, true);
     rm = RoutineMap{path};
     ASSERT_EQ(rm.size(), 2);
 }

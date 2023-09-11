@@ -5,7 +5,6 @@
 
 #include "dos/types.h"
 #include "dos/address.h"
-#include "dos/segment.h"
 #include "dos/memory.h"
 #include "dos/routine.h"
 #include "dos/mz.h"
@@ -60,7 +59,7 @@ private:
     void applyMov(const Instruction &i, RegisterState &regs);
 
     ComparisonResult instructionsMatch(Context &ctx, const Instruction &ref, Instruction tgt);
-    void storeSegment(const Segment &seg);
+    void storeSegment(const Segment::Type type, const Word addr);
     void diffContext(const Context &ctx) const;
     void skipContext(const Context &ctx, Address refAddr, Address tgtAddr, Size refSkipped, Size tgtSkipped) const;
 };

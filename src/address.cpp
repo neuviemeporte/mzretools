@@ -73,7 +73,7 @@ void Address::rebase(const Word base) {
     set(linear);
 }
 
-// move address to another segment, if possible
+// move address to another segment, if possible - effective address remains the same
 void Address::move(const Word arg) {
     if (!inSegment(arg)) throw MemoryError("Unable to move address "s + toString() + " to segment " + hexVal(arg));
     offset = toLinear() - SEG_TO_OFFSET(arg);
@@ -155,4 +155,35 @@ Block Block::coalesce(const Block &other) const {
 
 std::ostream& operator<<(std::ostream &os, const Block &arg) {
     return os << arg.toString();
+}
+
+Segment::Segment(const std::smatch &match) {
+    if (match.empty()) throw ArgError("Segment string mismatch");
+    name = match.str(1);
+    address = stoi(match.str(3), nullptr, 16);
+    const string segtype = match.str(2);
+    if (segtype == "CODE") type = SEG_CODE;
+    else if (segtype == "DATA") type = SEG_DATA;
+    else if (segtype == "STACK") type = SEG_STACK;
+    else throw ArgError("Invalid segment type string: " + segtype);
+}
+
+std::smatch Segment::stringMatch(const std::string &str) {
+    static const regex SEG_RE{"^([_a-zA-Z0-9]+) (CODE|DATA|STACK) ([0-9a-fA-F]{1,4})"};
+    smatch match;
+    regex_match(str, match, SEG_RE);
+    return match;
+}
+
+std::string Segment::toString() const {
+    ostringstream str;
+    str << name << " ";
+    switch (type) {
+    case SEG_CODE:  str << "CODE "; break;
+    case SEG_DATA:  str << "DATA "; break;
+    case SEG_STACK: str << "STACK "; break;
+    default:        str << "??? "; break; 
+    }
+    str << hexVal(address, false);
+    return str.str();
 }

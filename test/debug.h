@@ -3,6 +3,7 @@
 
 #include <iostream>
 
+// TODO: either get rid of this or the other output mechanism in output.h
 class DebugStream {
 private:
     class NullStream : public std::ostream {
