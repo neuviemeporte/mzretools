@@ -171,6 +171,17 @@ TEST_F(AnalysisTest, FindRoutines) {
     ASSERT_EQ(matchCount, discoveredMap.size());
 }
 
+TEST_F(AnalysisTest, FindFarRoutines) {
+    const Word loadSegment = 0x1000;
+    // discover routines inside an executable
+    MzImage mz{"bin/hellofar.exe"};
+    mz.load(loadSegment);
+    Executable exe{mz};
+    const RoutineMap &discoveredMap = exe.findRoutines();
+    TRACE(discoveredMap.dump());
+    ASSERT_FALSE(discoveredMap.empty());
+}
+
 TEST_F(AnalysisTest, RoutineMapCollision) {
     const string path = "bad.map";
     RoutineMap rm = emptyRoutineMap();

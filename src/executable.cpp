@@ -108,6 +108,7 @@ Branch Executable::getBranch(const Instruction &i, const RegisterState &regs) co
     Branch branch;
     branch.isCall = false;
     branch.isUnconditional = false;
+    branch.isNear = true;
     const Address &addr = i.addr;
     switch (i.iclass) {
     // conditional jump
@@ -137,6 +138,7 @@ Branch Executable::getBranch(const Instruction &i, const RegisterState &regs) co
         if (i.op1.type == OPR_IMM32) {
             branch.destination = Address{i.op1.immval.u32}; 
             branch.isUnconditional = true;
+            branch.isNear = false;
             searchMessage(addr, "encountered unconditional far jump to "s + branch.destination.toString());
         }
         else {
@@ -182,6 +184,7 @@ Branch Executable::getBranch(const Instruction &i, const RegisterState &regs) co
         if (i.op1.type == OPR_IMM32) {
             branch.destination = Address(DWORD_SEGMENT(i.op1.immval.u32), DWORD_OFFSET(i.op1.immval.u32));
             branch.isCall = true;
+            branch.isNear = false;
             searchMessage(addr, "encountered far call to "s + branch.destination.toString());
         }
         else {
@@ -434,7 +437,12 @@ bool Executable::saveBranch(const Branch &branch, const RegisterState &regs, con
         return false;
 
     if (codeExtents.contains(branch.destination)) {
-        return branch.isCall ? sq.saveCall(branch.destination, regs) : sq.saveJump(branch.destination, regs);
+        bool ret;
+        if (branch.isCall) 
+            ret = sq.saveCall(branch.destination, regs, branch.isNear); 
+        else 
+            ret = sq.saveJump(branch.destination, regs);
+        return ret;
     }
     else {
         searchMessage(branch.source, "branch destination outside code boundaries: "s + branch.destination.toString());
@@ -480,7 +488,7 @@ RoutineMap Executable::findRoutines() {
             // similarly, protect yet univisited locations which are however recognized as routine entrypoints, unless visiting from a matching routine id
             if (isEntry != NULL_ROUTINE && isEntry != search.routineId) {
                 searchMessage(csip, "location marked as entrypoint for routine "s + to_string(isEntry) + " while scanning from " + to_string(search.routineId) + ", halting scan");
-                break;                
+                break;
             }
             Instruction i(csip, code.pointer(csip));
             regs.setValue(REG_IP, csip.offset);
@@ -498,6 +506,7 @@ RoutineMap Executable::findRoutines() {
                 }
             }
             else if (i.isReturn()) {
+                // TODO: check if return matches entrypoint type (near/far), warn otherwise
                 searchMessage(csip, "routine scan interrupted by return");
                 break;
             }

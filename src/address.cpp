@@ -66,14 +66,19 @@ void Address::normalize() {
     offset &= OFFSET_NORMAL_MASK;
 }
 
-void Address::rebase(const Word base) {
-    auto linear = toLinear(), baseLinear = SEG_TO_OFFSET(base);
-    if (linear < baseLinear) throw MemoryError("Unable to rebase address " + toString() + " to " + hexVal(base));
-    linear -= baseLinear;
-    set(linear);
+// advance segment by specified amount, relocate(234:a, 0x1000) -> 1234:a
+void Address::relocate(const Word reloc) { 
+    if (segment > OFFSET_MAX - reloc) throw MemoryError("Unable to relocate address " + toString() + " by " + hexVal(reloc));
+    segment += reloc; 
 }
 
-// move address to another segment, if possible - effective address remains the same
+// inverse of relocate, e.g. rebase(1234:a, 0x1000) -> 234:a
+void Address::rebase(const Word base) {
+    if (base > segment) throw MemoryError("Unable to rebase address " + toString() + " to " + hexVal(base));
+    segment -= base;
+}
+
+// move(1234:a, 1000) -> 1000:234a, effective address remains the same
 void Address::move(const Word arg) {
     if (!inSegment(arg)) throw MemoryError("Unable to move address "s + toString() + " to segment " + hexVal(arg));
     offset = toLinear() - SEG_TO_OFFSET(arg);

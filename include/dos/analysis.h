@@ -49,7 +49,7 @@ public:
     Address startAddress() const { return start; }
     Destination nextPoint();
     bool hasPoint(const Address &dest, const bool call) const;
-    bool saveCall(const Address &dest, const RegisterState &regs);
+    bool saveCall(const Address &dest, const RegisterState &regs, const bool near);
     bool saveJump(const Address &dest, const RegisterState &regs);
     // discovered locations operations
     Size routineCount() const { return entrypoints.size(); }
@@ -90,7 +90,7 @@ private:
 
 struct Branch {
     Address source, destination;
-    bool isCall, isUnconditional;
+    bool isCall, isUnconditional, isNear;
 };
 
 // TODO: introduce true strict (now it's "not loose"), compare by opcode

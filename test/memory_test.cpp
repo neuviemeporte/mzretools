@@ -48,8 +48,8 @@ TEST_F(MemoryTest, Segmentation) {
 TEST_F(MemoryTest, Rebase) {
     Address src(0x1234, 0xa);
     src.rebase(0x1000);
-    ASSERT_EQ(src.segment, 0);
-    ASSERT_EQ(src.offset, 0x234a);
+    ASSERT_EQ(src.segment, 0x234);
+    ASSERT_EQ(src.offset, 0xa);
 }
 
 TEST_F(MemoryTest, Move) {

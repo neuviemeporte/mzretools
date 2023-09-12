@@ -30,7 +30,6 @@ inline Word DWORD_SEGMENT(const DWord val) { return val >> 16; }
 inline Word DWORD_OFFSET(const DWord val) { return val & 0xffff; }
 inline bool linearPastSegment(const Offset linear, const Word segment) { return linear >= SEG_TO_OFFSET(segment); }
 inline bool linearInSegment(const Offset linear, const Word segment) { return linearPastSegment(linear, segment) && linear - SEG_TO_OFFSET(segment) <= OFFSET_MAX; }
-//inline Word linear
 
 // A segmented address
 struct Address {
@@ -47,7 +46,6 @@ struct Address {
     bool operator>(const Address &arg) const { return toLinear() > arg.toLinear(); }
     bool operator<=(const Address &arg) const { return toLinear() <= arg.toLinear(); }
     bool operator>=(const Address &arg) const { return toLinear() >= arg.toLinear(); }
-    // TODO: handle overflow
     Address operator+(const SByte arg) const { return {segment, static_cast<Word>(offset + arg)}; }
     Address operator+(const SWord arg) const { return {segment, static_cast<Word>(offset + arg)}; }
     Address operator+(const DWord arg) const;
@@ -65,11 +63,8 @@ struct Address {
     bool isValid() const { return segment != ADDR_INVALID || offset != ADDR_INVALID; }
     bool inSegment(const Word arg) const { return toLinear() >= SEG_TO_OFFSET(arg) && toLinear() - SEG_TO_OFFSET(arg) <= OFFSET_MAX; }
     void normalize();
-    // advance segment by an amount
-    void relocate(const Word reloc) { segment += reloc; }
-    // rough inverse of relocate, e.g. rebase(1234:a, 0x1000) -> 0:234a
+    void relocate(const Word reloc);
     void rebase(const Word base);
-    // move(1234:a, 1000) -> 1000:234a, effective address remains the same
     void move(const Word segment);
 };
 std::ostream& operator<<(std::ostream &os, const Address &arg);

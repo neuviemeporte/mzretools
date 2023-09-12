@@ -14,7 +14,8 @@ class ScanQueue;
 struct RoutineEntrypoint {
     Address addr;
     RoutineId id;
-    RoutineEntrypoint(const Address &addr, const RoutineId id) : addr(addr), id(id) {}
+    bool near;
+    RoutineEntrypoint(const Address &addr, const RoutineId id, const bool near = true) : addr(addr), id(id), near(near) {}
     bool operator==(const Address &arg) const { return addr == arg; }
 };
 

@@ -30,7 +30,7 @@ ScanQueue::ScanQueue(const Destination &seed) :
     start(seed.address)
 {
     queue.push_front(seed);
-    entrypoints.emplace_back(RoutineEntrypoint(start, seed.routineId));
+    entrypoints.emplace_back(RoutineEntrypoint(start, seed.routineId, true));
 }
 
 string ScanQueue::statusString() const { 
@@ -77,6 +77,7 @@ vector<Routine> ScanQueue::getRoutines() const {
         auto &r = routines.at(ep.id - 1);
         // initialize routine extents with entrypoint address
         r.extents = Block(ep.addr);
+        r.near = ep.near;
         // assign automatic names to routines
         if (ep.addr == startAddress()) r.name = "start";
         else r.name = "routine_"s + to_string(ep.id);
@@ -86,7 +87,7 @@ vector<Routine> ScanQueue::getRoutines() const {
 
 // function call, create new routine at destination if either not visited, 
 // or visited but destination was not yet discovered as a routine entrypoint and this call now takes precedence and will replace it
-bool ScanQueue::saveCall(const Address &dest, const RegisterState &regs) {
+bool ScanQueue::saveCall(const Address &dest, const RegisterState &regs, const bool near) {
     const RoutineId destId = getRoutineId(dest.toLinear());
     if (isEntrypoint(dest)) 
         debug("Address "s + dest.toString() + " already registered as entrypoint for routine " + to_string(destId));
@@ -99,7 +100,7 @@ bool ScanQueue::saveCall(const Address &dest, const RegisterState &regs) {
         else 
             debug("call destination belonging to routine " + to_string(destId) + ", reclaiming as entrypoint for new routine " + to_string(newRoutineId));
         queue.emplace_back(Destination(dest, newRoutineId, true, regs));
-        entrypoints.emplace_back(RoutineEntrypoint(dest, newRoutineId));
+        entrypoints.emplace_back(RoutineEntrypoint(dest, newRoutineId, near));
         return true;
     }
     return false;

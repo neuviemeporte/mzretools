@@ -198,12 +198,13 @@ Routine RoutineMap::colidesBlock(const Block &b) const {
 
 // utility function used when constructing from  an instance of SearchQueue
 void RoutineMap::closeBlock(Block &b, const Offset off, const ScanQueue &sq, const Word reloc) {
-    if (!b.isValid() || off == 0) 
+    // prevent closing of a (yet non-existent) block at the first byte of the load module if a routine starts there (and hence the ID changes upstairs)
+    if (!b.isValid() || off - SEG_TO_OFFSET(reloc) == 0) 
         return;
 
     b.end = Address{off - 1};
     debug(hexVal(off) + ": closing block starting at " + b.begin.toString() + ", curId = " + to_string(curId) + ", prevId = " + to_string(prevId) 
-        + ", curBlockId = " + to_string(curBlockId) + ", prevBlockId = " + to_string(prevBlockId));
+        + ", curBlockId = " + to_string(curBlockId) + ", prevBlockId = " + to_string(prevBlockId) + " with end at " + b.end.toString());
     if (!b.isValid())
         throw AnalysisError("Attempted to close invalid block");
 
