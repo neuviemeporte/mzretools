@@ -96,33 +96,48 @@ std::vector<Block> Routine::sortedBlocks() const {
     return blocks;
 }
 
-RoutineMap::RoutineMap(const ScanQueue &sq, const Word loadSegment, const Size codeSize) : codeSize(codeSize) {
+RoutineMap::RoutineMap(const ScanQueue &sq, const std::vector<Segment> &segs, const Word loadSegment, const Size codeSize) : codeSize(codeSize) {
     const Size routineCount = sq.routineCount();
     if (routineCount == 0)
         throw AnalysisError("Attempted to create routine map from search queue with no routines");
-    info("Building routine map from search queue contents ("s + to_string(routineCount) + " routines)");
+    
+    setSegments(segs);
+    info("Building routine map from search queue contents: "s + to_string(routineCount) + " routines over " + to_string(segments.size()) + " segments");
     routines = sq.getRoutines();
 
     const Offset startOffset = SEG_TO_OFFSET(loadSegment);
     const Offset endOffset = startOffset + codeSize;
     Block b(startOffset);
     prevId = curBlockId = prevBlockId = NULL_ROUTINE;
+    Segment curSeg = findSegment(startOffset);
+    debug("=== Starting in segment " + curSeg.toString());
 
     for (Offset mapOffset = startOffset; mapOffset < endOffset; ++mapOffset) {
+        // find segment matching currently processed offset
+        // TODO: add size field to Segment, calculate segment bounds in routine find routine, verify going out of segment range? In that case also don't need to check every iteration
+        Segment offSeg = findSegment(mapOffset);
+        if (offSeg != curSeg) {
+            curSeg = offSeg;
+            debug("=== Segment change to " + curSeg.toString());
+        }
+        // convert map offset to segmented address
+        Address curAddr{mapOffset};
+        curAddr.move(curSeg.address);   
         curId = sq.getRoutineId(mapOffset);
-        // do nothing as long as the value doesn't change, unless we encounter the routine entrypoint in the middle of a block, in which case we force a block close
-        if (curId == prevId && !sq.isEntrypoint(Address{mapOffset})) continue;
-        // value in map changed (or forced block close because of encounterted entrypoint), new block begins
-        closeBlock(b, mapOffset, sq, loadSegment); // close old block and attribute to a routine if possible
+        // do nothing as long as the value doesn't change, unless we encounter a routine entrypoint in the middle of a block, in which case we force a block close
+        if (curId == prevId && !sq.isEntrypoint(curAddr)) continue;
+        // value in map changed (or forced block close because of encounterted entrypoint), new block begins, so close old block and attribute it to a routine if possible
+        // the condition prevents attempting to close a (yet non-existent) block at the first byte of the load module
+        if (mapOffset != startOffset) closeBlock(b, curAddr, sq); 
         // start new block
-        debug(hexVal(mapOffset) + ": starting block for routine_" + to_string(curId));
-        b = Block(mapOffset);
+        debug(curAddr.toString() + ": starting block for routine_" + to_string(curId));
+        b = Block(curAddr);
         curBlockId = curId;
         // last thing to do is memorize current id as previous for discovering when needing to close again
         prevId = curId;
     }
     // close last block finishing on the last byte of the memory map
-    closeBlock(b, endOffset, sq, loadSegment);
+    closeBlock(b, endOffset, sq);
 
     // TODO: coalesce adjacent blocks, see routine_35 of hello.exe: 1415-14f7 R1412-1414 R1415-14f7
 
@@ -167,6 +182,13 @@ Routine RoutineMap::getRoutine(const Address &addr) const {
     return {};
 }
 
+Routine RoutineMap::findByEntrypoint(const Address &ep) const {
+    for (const Routine &r : routines)
+        if (r.entrypoint() == ep) return r;
+    
+    return {};
+}
+
 // matches routines by extents only, limited use, mainly unit test for alignment with IDA
 Size RoutineMap::match(const RoutineMap &other) const {
     Size matchCount = 0;
@@ -197,46 +219,45 @@ Routine RoutineMap::colidesBlock(const Block &b) const {
 }
 
 // utility function used when constructing from  an instance of SearchQueue
-void RoutineMap::closeBlock(Block &b, const Offset off, const ScanQueue &sq, const Word reloc) {
-    // prevent closing of a (yet non-existent) block at the first byte of the load module if a routine starts there (and hence the ID changes upstairs)
-    if (!b.isValid() || off - SEG_TO_OFFSET(reloc) == 0) 
-        return;
+void RoutineMap::closeBlock(Block &b, const Address &next, const ScanQueue &sq) {
+    if (!b.isValid()) return;
 
-    b.end = Address{off - 1};
-    debug(hexVal(off) + ": closing block starting at " + b.begin.toString() + ", curId = " + to_string(curId) + ", prevId = " + to_string(prevId) 
-        + ", curBlockId = " + to_string(curBlockId) + ", prevBlockId = " + to_string(prevBlockId) + " with end at " + b.end.toString());
+    b.end = Address{next.toLinear() - 1};
+    b.end.move(b.begin.segment);
+    debug(next.toString() + ": closing block " + b.toString() + ", curId = " + to_string(curId) + ", prevId = " + to_string(prevId) 
+        + ", curBlockId = " + to_string(curBlockId) + ", prevBlockId = " + to_string(prevBlockId));
+
     if (!b.isValid())
         throw AnalysisError("Attempted to close invalid block");
 
     // block contains reachable code
     if (curBlockId != NULL_ROUTINE) { 
+        debug("    block is reachable");
         // get handle to matching routine
         assert(curBlockId - 1 < routines.size());
         Routine &r = routines.at(curBlockId - 1);
-        const Word epSeg = r.entrypoint().segment;
-        if (sq.isEntrypoint(b.begin)) { // this is the entrypoint block of the routine
-            debug("block starts at routine entrypoint");
-        }
-        // add reachable block
-        // addresses created from map offsets lose the original segment information, 
-        // so move the block into the segment of the routine's entrypoint, if possible
         assert(r.entrypoint().isValid());
-        r.reachable.push_back(moveBlock(b, r.entrypoint().segment));
+        b.move(r.entrypoint().segment);
+        if (sq.isEntrypoint(b.begin)) { // this is the entrypoint block of the routine
+            debug("    block starts at routine entrypoint");
+        }
+        r.reachable.push_back(b);
     }
     // block contains unreachable code or data, attribute to a routine if surrounded by that routine's blocks on both sides
     else if (prevBlockId != NULL_ROUTINE && curId == prevBlockId) { 
+        debug("    block is unreachable");
         // get handle to matching routine
         assert(prevBlockId - 1 < routines.size());
         Routine &r = routines.at(prevBlockId - 1);
         assert(r.entrypoint().isValid());
-        r.unreachable.push_back(moveBlock(b, r.entrypoint().segment));
+        b.move(r.entrypoint().segment);
+        r.unreachable.push_back(b);
     }
     // block is unreachable and unclaimed by any routine
     else {
+        debug("    block is unclaimed");
         assert(curBlockId == NULL_ROUTINE);
-        debug("closed unclaimed block " + b.toString());
-        // try to move the unclaimed block into the executable's original load segment
-        unclaimed.push_back(moveBlock(b, reloc));
+        unclaimed.push_back(b);
     }
 
     // remember the id of the block we just closed
@@ -357,6 +378,16 @@ Segment RoutineMap::findSegment(const std::string &name) const {
         if (s.name == name) return s;
     }
     return {};
+}
+
+Segment RoutineMap::findSegment(const Offset off) const {
+    Segment ret;
+    // assume sorted segments, find last segment which contains the argument offset
+    for (const auto &s : segments) {
+        const Offset segOff = SEG_TO_OFFSET(s.address);
+        if (segOff <= off && off - segOff <= OFFSET_MAX) ret = s;
+    }
+    return ret;
 }
 
 enum BlockType { BLOCK_NONE, BLOCK_EXTENTS, BLOCK_REACHABLE, BLOCK_UNREACHABLE };

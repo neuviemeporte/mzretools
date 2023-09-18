@@ -527,8 +527,7 @@ RoutineMap Executable::findRoutines() {
     searchQ.dumpVisited("routines.visited", SEG_TO_OFFSET(loadSegment), codeSize);
 
     // iterate over discovered memory map and create routine map
-    auto ret = RoutineMap{searchQ, loadSegment, codeSize};
-    ret.setSegments(segments);
+    auto ret = RoutineMap{searchQ, segments, loadSegment, codeSize};
     return ret;
 }
 

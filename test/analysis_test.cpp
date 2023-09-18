@@ -20,6 +20,8 @@ protected:
     auto emptyScanQueue() { return ScanQueue(); }
     auto& sqVisited(ScanQueue &sq) { return sq.visited; }
     auto& sqEntrypoints(ScanQueue &sq) { return sq.entrypoints; }
+    void mapSetSegments(RoutineMap &rm, const vector<Segment> &segments) { rm.setSegments(segments); }
+    vector<Block>& mapUnclaimed(RoutineMap &rm) { return rm.unclaimed; }
 };
 
 // TODO: divest tests of analysis.cpp as distinct test suite
@@ -104,10 +106,22 @@ TEST_F(AnalysisTest, RoutineMapFromQueue) {
     ScanQueue sq = emptyScanQueue();
     vector<int> &visited = sqVisited(sq);
     vector<RoutineEntrypoint> &entrypoints = sqEntrypoints(sq);
-    //          0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f  10 11 12 13 14 15 16 17
-    visited = { 0, 0, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 2, 2, 0, 0, 1, 1, 3, 0, 3, 3, 3, 0 };
+    const Word loadSegment = 0;
+    vector<Segment> segments = {
+        {"TestSeg1", Segment::SEG_CODE, loadSegment},
+        {"TestSeg2", Segment::SEG_CODE, 0x1},
+        {"TestSeg3", Segment::SEG_CODE, 0x2},
+        {"TestSeg4", Segment::SEG_CODE, 0x3},
+    };
+    visited = { 
+    //  0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f
+        0, 0, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 2, 2, 0, 0, // 0
+        1, 1, 3, 0, 3, 3, 3, 0, 0, 0, 0, 0, 0, 2, 2, 2, // 1
+        3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 2
+        0, 0                                            // 3
+    };
     entrypoints = { {0x8, 1}, {0xc, 2}, {0x12, 3} };
-    RoutineMap queueMap{sq, 0, visited.size()};
+    RoutineMap queueMap{sq, segments, loadSegment, visited.size()};
     queueMap.dump();
     ASSERT_EQ(queueMap.size(), 3);
 
@@ -124,18 +138,29 @@ TEST_F(AnalysisTest, RoutineMapFromQueue) {
     Routine r2 = queueMap.getRoutine(1);
     ASSERT_FALSE(r2.name.empty());
     ASSERT_EQ(r2.extents, Block(0xc, 0xd));
-    ASSERT_EQ(r2.reachable.size(), 1);
+    ASSERT_EQ(r2.reachable.size(), 2);
     ASSERT_EQ(r2.reachable.at(0), Block(0xc, 0xd));
+    ASSERT_EQ(r2.reachable.at(1), Block(0x1d, 0x1f));    
     ASSERT_EQ(r2.unreachable.size(), 0);
 
     Routine r3 = queueMap.getRoutine(2);
     ASSERT_FALSE(r3.name.empty());
     ASSERT_EQ(r3.extents, Block(0x12, 0x16));
-    ASSERT_EQ(r3.reachable.size(), 2);
+    ASSERT_EQ(r3.reachable.size(), 3);
     ASSERT_EQ(r3.reachable.at(0), Block(0x12, 0x12));
     ASSERT_EQ(r3.reachable.at(1), Block(0x14, 0x16));
+    ASSERT_EQ(r3.reachable.at(2), Block(0x20, 0x22));
     ASSERT_EQ(r3.unreachable.size(), 1);
-    ASSERT_EQ(r3.unreachable.at(0), Block(0x13, 0x13));    
+    ASSERT_EQ(r3.unreachable.at(0), Block(0x13, 0x13));
+
+    const auto &unclaimed = mapUnclaimed(queueMap);
+    ASSERT_EQ(unclaimed.size(), 4);
+    ASSERT_EQ(unclaimed.at(0), Block(0x0, 0x1));
+    ASSERT_EQ(unclaimed.at(1), Block(0xe, 0xf));
+    ASSERT_EQ(unclaimed.at(2), Block(0x17, 0x1c));
+    ASSERT_EQ(unclaimed.at(3), Block(0x23, 0x31));
+
+    TRACELN(queueMap.dump());
 }
 
 TEST_F(AnalysisTest, FindRoutines) {
@@ -180,12 +205,22 @@ TEST_F(AnalysisTest, FindFarRoutines) {
     const RoutineMap &discoveredMap = exe.findRoutines();
     TRACE(discoveredMap.dump());
     ASSERT_FALSE(discoveredMap.empty());
+
+    Address ep1{loadSegment, 0};
+    Routine far1 = discoveredMap.findByEntrypoint(ep1);
+    ASSERT_TRUE(far1.isValid());
+    ASSERT_EQ(far1.entrypoint().segment, loadSegment);
+
+    Address ep2{loadSegment+1, 4};
+    Routine far2 = discoveredMap.findByEntrypoint(ep2);
+    ASSERT_TRUE(far2.isValid());
+    ASSERT_EQ(far2.entrypoint().segment, loadSegment+1);    
 }
 
 TEST_F(AnalysisTest, RoutineMapCollision) {
     const string path = "bad.map";
     RoutineMap rm = emptyRoutineMap();
-    rm.setSegments({
+    mapSetSegments(rm, {
         {"Code1", Segment::SEG_CODE, 0},
     });
     Block b1{100, 200}, b2{150, 250}, b3{300, 400};

@@ -54,25 +54,27 @@ class RoutineMap {
 
 public:
     RoutineMap() {}
-    RoutineMap(const ScanQueue &sq, const Word loadSegment, const Size codeSize);
+    RoutineMap(const ScanQueue &sq, const std::vector<Segment> &segs, const Word loadSegment, const Size codeSize);
     RoutineMap(const std::string &path, const Word reloc = 0);
 
     Size size() const { return routines.size(); }
     Routine getRoutine(const Size idx) const { return routines.at(idx); }
     Routine getRoutine(const Address &addr) const;
+    Routine findByEntrypoint(const Address &ep) const;
     bool empty() const { return routines.empty(); }
     Size match(const RoutineMap &other) const;
     Routine colidesBlock(const Block &b) const;
     void save(const std::string &path, const Word reloc, const bool overwrite = false) const;
     std::string dump() const;
-    void setSegments(const std::vector<Segment> &seg);
     const auto& getSegments() const { return segments; }
     Size segmentCount(const Segment::Type type) const;
     Segment findSegment(const Word addr) const;
     Segment findSegment(const std::string &name) const;
+    Segment findSegment(const Offset off) const;
     
 private:
-    void closeBlock(Block &b, const Offset off, const ScanQueue &sq, const Word reloc);
+    void setSegments(const std::vector<Segment> &seg);
+    void closeBlock(Block &b, const Address &next, const ScanQueue &sq);
     Block moveBlock(const Block &b, const Word segment) const;
     void sort();
     void loadFromMapFile(const std::string &path, const Word reloc);
