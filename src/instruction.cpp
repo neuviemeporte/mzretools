@@ -348,6 +348,24 @@ Word Instruction::relativeOffset() const {
     return relative;
 }
 
+#include <iostream>
+
+Word Instruction::absoluteOffset() const {
+    Word absolute = 0;
+
+    if (op1.type == OPR_IMM8) {
+        Byte val = op1.immval.u8;
+        if (val >= 0x80) val -= 0x80;
+        absolute = val;
+    }
+    else if (op1.type == OPR_IMM16) {
+        Word val = op1.immval.u16;
+        if (val >= 0x8000) val -= 0x8000;
+        absolute = val;
+    }
+    return absolute;
+}
+
 // return the branch destination address 
 Address Instruction::relativeAddress() const {
     return { addr.segment, relativeOffset() };
@@ -595,8 +613,8 @@ std::string Instruction::toString(const bool extended) const {
             const Word roff = relativeOffset();
             str << hexVal(roff, true, false);
             if (extended) {
-                if (roff > addr.offset) str << " (down)";
-                else str << " (up)";
+                if (roff > addr.offset) str << " (" << hexVal(absoluteOffset(), true, false) << " down)";
+                else str << " (" << hexVal(absoluteOffset(), true, false) << " up)";
             }
         }
         else {

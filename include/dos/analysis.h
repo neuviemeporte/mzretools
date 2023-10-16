@@ -96,10 +96,10 @@ struct Branch {
 // TODO: introduce true strict (now it's "not loose"), compare by opcode
 struct AnalysisOptions {
     bool strict, ignoreDiff, noCall, variant;
-    Size refSkip, tgtSkip;
+    Size refSkip, tgtSkip, ctxCount;
     Address stopAddr;
     std::string exclude;
-    AnalysisOptions() : strict(true), ignoreDiff(false), noCall(false), variant(false), refSkip(0), tgtSkip(0) {}
+    AnalysisOptions() : strict(true), ignoreDiff(false), noCall(false), variant(false), refSkip(0), tgtSkip(0), ctxCount(10) {}
 };
 
 // TODO: compare instructions, not string representations, allow wildcards in place of arguments, e.g. "mov ax, *"

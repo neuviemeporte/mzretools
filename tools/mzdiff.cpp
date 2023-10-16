@@ -26,6 +26,7 @@ void usage() {
            "--nocall       do not follow calls, useful for comparing single functions\n"
            "--rskip count  skip differences, ignore up to 'count' consecutive mismatching instructions in the reference executable\n"
            "--tskip count  skip differences, ignore up to 'count' consecutive mismatching instructions in the target executable\n"
+           "--ctx count    display up to 'count' context instructions after a mismatch\n"
            "--loose        non-strict matching, allows e.g for literal argument differences\n"
            "--variant      treat instruction variants that do the same thing as matching\n"
            "The optional entrypoint spec tells the tool at which offset to start comparing, and can be different\n"
@@ -144,7 +145,11 @@ int main(int argc, char *argv[]) {
         else if (arg == "--tskip") {
             if (aidx + 1 >= argc) fatal("Option requires an argument: --tskip");
             opt.tgtSkip = stoi(argv[++aidx], nullptr, 10);
-        }        
+        }
+        else if (arg == "--ctx") {
+            if (aidx + 1 >= argc) fatal("Option requires an argument: --ctx");
+            opt.ctxCount = stoi(argv[++aidx], nullptr, 10);
+        }
         else if (arg == "--map") {
             if (aidx + 1 >= argc) fatal("Option requires an argument: --map");
             pathMap = argv[++aidx];

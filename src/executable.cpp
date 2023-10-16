@@ -394,7 +394,7 @@ void Executable::storeSegment(const Segment::Type type, const Word addr) {
 }
 
 void Executable::diffContext(const Context &ctx) const {
-    static const int CONTEXT_COUNT = 10; // show 10 subsequent instructions after a mismatch
+    const int CONTEXT_COUNT = ctx.options.ctxCount;
     Address a1 = ctx.refCsip; 
     Address a2 = ctx.tgtCsip;
     const Memory &code2 = ctx.target.code;

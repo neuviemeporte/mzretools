@@ -283,6 +283,7 @@ public:
     InstructionMatch match(const Instruction &other) const;
     void load(const Byte *data);
     Word relativeOffset() const;
+    Word absoluteOffset() const;
     Address relativeAddress() const;
     std::vector<Register> touchedRegs() const;
     SOffset memOffset() const;
