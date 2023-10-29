@@ -736,7 +736,7 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &tar
                     }
                 }
                 else {
-                    verbose("Completed comparison of routine, no more reachable blocks");
+                    verbose("Completed comparison of routine " + routine.name + ", no more reachable blocks");
                 }
                 break;
             }
