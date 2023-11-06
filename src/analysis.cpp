@@ -162,7 +162,7 @@ bool OffsetMap::codeMatch(const Address from, const Address to) {
     return true;    
 }
 
-bool OffsetMap:: dataMatch(const SOffset from, const SOffset to) {
+bool OffsetMap::dataMatch(const SOffset from, const SOffset to) {
     auto &mappings = dataMap[from];
     // matching mapping already exists in map
     if (std::find(begin(mappings), end(mappings), to) != mappings.end()) {

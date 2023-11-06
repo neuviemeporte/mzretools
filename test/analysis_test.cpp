@@ -22,6 +22,14 @@ protected:
     auto& sqEntrypoints(ScanQueue &sq) { return sq.entrypoints; }
     void mapSetSegments(RoutineMap &rm, const vector<Segment> &segments) { rm.setSegments(segments); }
     vector<Block>& mapUnclaimed(RoutineMap &rm) { return rm.unclaimed; }
+    auto makeExeContext(const Executable &tgt, const AnalysisOptions &opt, const Size data) { 
+        return Executable::Context{tgt, opt, data};
+    }
+    auto& exeCode(Executable &exe) { return exe.code; }
+    auto exeInstrMatch(Executable &exe, Executable::Context &ctx, const Instruction &i1, const Instruction &i2) {
+        return exe.instructionsMatch(ctx, i1, i2);
+    }
+    auto exeDiffVal() { return Executable::CMP_DIFFVAL; }
 };
 
 // TODO: divest tests of analysis.cpp as distinct test suite
@@ -403,4 +411,23 @@ TEST_F(AnalysisTest, Variants) {
     ASSERT_FALSE(m.isMatch());
     m = vm.checkMatch({"inc sp", "inc sp"}, {"foobar"});
     ASSERT_FALSE(m.isMatch());
+}
+
+TEST_F(AnalysisTest, DiffRegOffset) {
+    const vector<Byte> refCode = {
+        0xC7, 0x47, 0x06, 0x00, 0x00 // mov word [bx+0x6],0x0
+    };
+    const vector<Byte> objCode = {
+        0xC7, 0x47, 0x0C, 0x00, 0x00 //  mov word [bx+0xc],0x0
+    };
+    AnalysisOptions opt;
+    opt.strict = false;
+    Executable e1{0, refCode}, e2{0, objCode};
+    auto ctx = makeExeContext(e2, opt, 1);
+    // decode instructions
+    Instruction 
+        i1{0, exeCode(e1).pointer(0)}, 
+        i2{0, exeCode(e2).pointer(0)};
+    // yes, the amount of wrapping is ridiculous
+    ASSERT_EQ(exeInstrMatch(e1, ctx, i1, i2), exeDiffVal());
 }

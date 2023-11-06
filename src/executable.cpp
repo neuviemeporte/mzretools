@@ -282,6 +282,12 @@ Executable::ComparisonResult Executable::instructionsMatch(Context &ctx, const I
             }
         }
         else if (operandIsMemWithOffset(refop.type)) {
+            // in strict mode, the offsets are expected to be exactly matching, with no translation
+            if (ctx.options.strict) {
+                debug("Mismatching due to offset difference in strict mode");
+                return CMP_MISMATCH;
+            }
+            // otherwise, apply mapping
             SOffset refOfs = ref.memOffset(), tgtOfs = tgt.memOffset();
             Register segReg = ref.memSegmentId();
             switch (segReg) {
@@ -295,7 +301,6 @@ Executable::ComparisonResult Executable::instructionsMatch(Context &ctx, const I
                 if (!match) verbose("Instruction mismatch due to data segment offset mapping conflict");
                 break;
             case REG_SS:
-                // in strict mode, the stack is expected to have exactly matching layout, with no translation
                 if (!ctx.options.strict) {
                     match = ctx.offMap.stackMatch(refOfs, tgtOfs);
                     if (!match) verbose("Instruction mismatch due to stack segment offset mapping conflict");
@@ -305,12 +310,11 @@ Executable::ComparisonResult Executable::instructionsMatch(Context &ctx, const I
                 throw AnalysisError("Unsupported segment register in instruction comparison: " + regName(segReg));
                 break;
             }
+            return match ? CMP_DIFFVAL : CMP_MISMATCH;
         }
-        else if (operandIsImmediate(refop.type)) {
-            if (!ctx.options.strict) {
-                debug("Ignoring immediate value difference in loose mode");
-                return CMP_DIFFVAL;
-            } 
+        else if (operandIsImmediate(refop.type) && !ctx.options.strict) {
+            debug("Ignoring immediate value difference in loose mode");
+            return CMP_DIFFVAL;
         }
     }
     

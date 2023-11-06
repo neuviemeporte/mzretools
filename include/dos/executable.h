@@ -13,7 +13,7 @@
 struct AnalysisOptions;
 
 class Executable {
-    friend class SystemTest;
+    friend class AnalysisTest;
     const Memory code;
     Word loadSegment;
     Size codeSize;
