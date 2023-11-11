@@ -37,6 +37,9 @@ string output_color(const Color c) {
     case OUT_RED:
         ret = "\033[30;31m";
         break;
+    case OUT_BRIGHTRED:
+        ret = "\033[30;91m";
+        break;        
     case OUT_YELLOW:
         ret = "\033[30;33m";
         break;

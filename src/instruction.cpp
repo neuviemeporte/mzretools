@@ -334,42 +334,26 @@ void Instruction::load(const Byte *data)  {
     DEBUG("Instruction @" + addr.toString() + ": " + toString() + ", length = " + to_string(length));
 }
 
-// calculate the offset that is relative to this instruction's end, based on the immediate operand 
-// - this is useful for branch instructions like call and the various jumps, whose operand is the number of bytes to jump forward or back, relative to the byte past the instruction
-Word Instruction::relativeOffset() const {
-    Word relative = addr.offset + length;
-    if (op1.type == OPR_IMM8) {
-        relative += static_cast<SByte>(op1.immval.u8);
-    }
-    else if (op1.type == OPR_IMM16) {
-        relative += static_cast<SWord>(op1.immval.u16);
-    }
-
-    return relative;
-}
-
-#include <iostream>
-
+// calculate an absolute offset from an offset that is relative to this instruction's end, based on the immediate operand 
+// - this is useful for branch instructions like call and the various jumps, whose operand is the number of bytes to jump forward or back, 
+// relative to the byte past the instruction
 Word Instruction::absoluteOffset() const {
-    Word absolute = 0;
-
-    if (op1.type == OPR_IMM8) {
-        Byte val = op1.immval.u8;
-        if (val >= 0x80) val -= 0x80;
-        absolute = val;
-    }
-    else if (op1.type == OPR_IMM16) {
-        Word val = op1.immval.u16;
-        if (val >= 0x8000) val -= 0x8000;
-        absolute = val;
-    }
-    return absolute;
+    return addr.offset + length + relativeOffset();
 }
 
 // return the branch destination address 
-Address Instruction::relativeAddress() const {
-    return { addr.segment, relativeOffset() };
+Address Instruction::destinationAddress() const {
+    return { addr.segment, absoluteOffset() };
 }
+
+SWord Instruction::relativeOffset() const {
+    switch (op1.type) {
+    case OPR_IMM8: return static_cast<SByte>(op1.immval.u8);
+    case OPR_IMM16: return static_cast<SWord>(op1.immval.u16);
+    }
+    return 0;
+}
+
 
 // lookup table for which instructions modify their first operand
 // 0: doesn't modify any regs, 1: modifies 1st operand, 2: modifies both operands, 3: special case, implicit registers
@@ -607,14 +591,15 @@ std::string Instruction::toString(const bool extended) const {
         // segment override prefix if present
         if (prefix > PRF_NONE && prefix < PRF_CHAIN_REPNZ && operandIsMem(op1.type))
             str << PRF_NAME[prefix];
-        // for near branch instructions (call, jump, loop), the immediate offset operand is added to the address of the byte past the current instruction
-        // to form a relative offset
+        // for near branch instructions (call, jump, loop), the immediate relative offset operand is added to the address 
+        // of the byte past the current instruction to form an absolute offset
         if (isNearBranch() && operandIsImmediate(op1.type)) {
-            const Word roff = relativeOffset();
-            str << hexVal(roff, true, false);
+            const Word aoff = absoluteOffset();
+            str << hexVal(aoff, true, false);
             if (extended) {
-                if (roff > addr.offset) str << " (" << hexVal(absoluteOffset(), true, false) << " down)";
-                else str << " (" << hexVal(absoluteOffset(), true, false) << " up)";
+                SWord roff = relativeOffset();
+                if (roff < 0) { roff = -roff; str << " (" << hexVal(roff, true, false) << " up)"; }
+                else str << " (" << hexVal(roff, true, false) << " down)";
             }
         }
         else {

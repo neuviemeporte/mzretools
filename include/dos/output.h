@@ -28,6 +28,7 @@ enum Color {
     OUT_YELLOW,
     OUT_BLUE,
     OUT_GREEN,
+    OUT_BRIGHTRED,
 };
 
 void output(const std::string &msg, const LogModule mod, const LogPriority pri = LOG_INFO, const bool suppressNewline = false);

@@ -24,7 +24,8 @@ class Executable {
     enum ComparisonResult { 
         CMP_MISMATCH,
         CMP_MATCH,    // full literal or logical match
-        CMP_DIFFVAL,  // match with different literal value, might be allowed depending on options
+        CMP_DIFFVAL,  // match with different immediate/offset value, might be allowed depending on options
+        CMP_DIFFTGT,  // match with different branch (near jump) target, might be allowed depending on options
         CMP_VARIANT,  // match with a variant of an instruction or a sequence of instructions
     };
 

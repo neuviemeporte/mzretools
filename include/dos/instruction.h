@@ -282,9 +282,9 @@ public:
     std::string toString(const bool extended = false) const;
     InstructionMatch match(const Instruction &other) const;
     void load(const Byte *data);
-    Word relativeOffset() const;
     Word absoluteOffset() const;
-    Address relativeAddress() const;
+    Address destinationAddress() const;
+    SWord relativeOffset() const;
     std::vector<Register> touchedRegs() const;
     SOffset memOffset() const;
     Register memSegmentId() const;
@@ -295,7 +295,8 @@ public:
     bool isCall() const { return iclass == INS_CALL || iclass == INS_CALL_FAR; }
     bool isLoop() const { return iclass == INS_LOOP || iclass == INS_LOOPZ || iclass == INS_LOOPNZ; }
     bool isBranch() const { return isJump() || isCall() || isLoop(); }
-    bool isNearBranch() const { return iclass == INS_JMP || iclass == INS_JMP_IF || iclass == INS_CALL || isLoop(); }
+    bool isNearJump() const { return iclass == INS_JMP || iclass == INS_JMP_IF || isLoop(); }
+    bool isNearBranch() const { return isNearJump() || iclass == INS_CALL; }
     bool isReturn() const { return iclass == INS_RET || iclass == INS_RETF || iclass == INS_IRET; }
 
 private:

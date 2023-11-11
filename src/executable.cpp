@@ -113,7 +113,7 @@ Branch Executable::getBranch(const Instruction &i, const RegisterState &regs) co
     switch (i.iclass) {
     // conditional jump
     case INS_JMP_IF:
-        branch.destination = i.relativeAddress();
+        branch.destination = i.destinationAddress();
         searchMessage(addr, "encountered conditional near jump to "s + branch.destination.toString());
         break;
     // unconditional jumps
@@ -121,7 +121,7 @@ Branch Executable::getBranch(const Instruction &i, const RegisterState &regs) co
         switch (i.opcode) {
         case OP_JMP_Jb: 
         case OP_JMP_Jv: 
-            branch.destination = i.relativeAddress();
+            branch.destination = i.destinationAddress();
             branch.isUnconditional = true;
             searchMessage(addr, "encountered unconditional near jump to "s + branch.destination.toString());
             break;
@@ -150,13 +150,13 @@ Branch Executable::getBranch(const Instruction &i, const RegisterState &regs) co
     case INS_LOOP:
     case INS_LOOPNZ:
     case INS_LOOPZ:
-        branch.destination = i.relativeAddress();
+        branch.destination = i.destinationAddress();
         searchMessage(addr, "encountered loop to "s + branch.destination.toString());
         break;
     // calls
     case INS_CALL:
         if (i.op1.type == OPR_IMM16) {
-            branch.destination = i.relativeAddress();
+            branch.destination = i.destinationAddress();
             branch.isCall = true;
             searchMessage(addr, "encountered near call to "s + branch.destination.toString());
         }
@@ -270,6 +270,10 @@ Executable::ComparisonResult Executable::instructionsMatch(Context &ctx, const I
             if (refBranch.destination.isValid() && tgtObranch.destination.isValid()) {
                 match = ctx.offMap.codeMatch(refBranch.destination, tgtObranch.destination);
                 if (!match) debug("Instruction mismatch on branch destination");
+                // near jumps are usually used within a routine to handle looping and conditions,
+                // so a different value (relative jump amount) might mean a wrong flow
+                // -- mark with a different result value to be highlighted
+                else if (ref.isNearJump()) return CMP_DIFFTGT;
             }
             // special case of jmp vs jmp short - allow only if variants enabled
             if (match && ref.opcode != tgt.opcode && (ref.isUnconditionalJump() || tgt.isUnconditionalJump())) {
@@ -662,6 +666,9 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &tar
             case CMP_DIFFVAL:
                 verbose(output_color(OUT_YELLOW) + compareStatus(refInstr, tgtInstr, true) + output_color(OUT_DEFAULT));
                 break;
+            case CMP_DIFFTGT:
+                verbose(output_color(OUT_BRIGHTRED) + compareStatus(refInstr, tgtInstr, true) + output_color(OUT_DEFAULT));
+                break;                
             }
             // comparison result okay (instructions match or skip permitted), interpret the instructions
 
