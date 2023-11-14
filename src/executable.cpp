@@ -2,6 +2,7 @@
 #include <vector>
 #include <algorithm>
 #include <regex>
+#include <set>
 
 #include "dos/executable.h"
 #include "dos/analysis.h"
@@ -260,9 +261,7 @@ Executable::ComparisonResult Executable::instructionsMatch(Context &ctx, const I
 
     bool match = false;
     // instructions differ in value of immediate or memory offset
-    if (insResult == INS_MATCH_DIFFOP1 || insResult == INS_MATCH_DIFFOP2) {
-        const auto &refop = (insResult == INS_MATCH_DIFFOP1 ? ref.op1 : ref.op2);
-        const auto &tgtop = (insResult == INS_MATCH_DIFFOP1 ? tgt.op1 : tgt.op2);
+    if (insResult == INS_MATCH_DIFF || insResult == INS_MATCH_DIFFOP1 || insResult == INS_MATCH_DIFFOP2) {
         if (ref.isBranch()) {
             const Branch 
                 refBranch = getBranch(ref), 
@@ -285,40 +284,50 @@ Executable::ComparisonResult Executable::instructionsMatch(Context &ctx, const I
                 else return CMP_MISMATCH;
             }
         }
-        else if (operandIsMemWithOffset(refop.type)) {
-            // in strict mode, the offsets are expected to be exactly matching, with no translation
-            if (ctx.options.strict) {
-                debug("Mismatching due to offset difference in strict mode");
-                return CMP_MISMATCH;
+        // iterate over operands, either one or both could be different, so check if the difference is acceptable
+        for (int opidx = 1; opidx <= 2; ++opidx) {
+            const Instruction::Operand *op = nullptr;
+            switch(opidx) {
+            case 1: if (insResult != INS_MATCH_DIFFOP2) op = &ref.op1; break;
+            case 2: if (insResult != INS_MATCH_DIFFOP1) op = &ref.op2; break;
             }
-            // otherwise, apply mapping
-            SOffset refOfs = ref.memOffset(), tgtOfs = tgt.memOffset();
-            Register segReg = ref.memSegmentId();
-            switch (segReg) {
-            case REG_CS:
-                match = ctx.offMap.codeMatch(refOfs, tgtOfs);
-                if (!match) verbose("Instruction mismatch due to code segment offset mapping conflict");
-                break;
-            case REG_ES: /* TODO: come up with something better */
-            case REG_DS:
-                match = ctx.offMap.dataMatch(refOfs, tgtOfs);
-                if (!match) verbose("Instruction mismatch due to data segment offset mapping conflict");
-                break;
-            case REG_SS:
-                if (!ctx.options.strict) {
-                    match = ctx.offMap.stackMatch(refOfs, tgtOfs);
-                    if (!match) verbose("Instruction mismatch due to stack segment offset mapping conflict");
+            if (op == nullptr) continue;
+
+            if (operandIsMemWithOffset(op->type)) {
+                // in strict mode, the offsets are expected to be exactly matching, with no translation
+                if (ctx.options.strict) {
+                    debug("Mismatching due to offset difference in strict mode");
+                    return CMP_MISMATCH;
                 }
-                break;
-            default:
-                throw AnalysisError("Unsupported segment register in instruction comparison: " + regName(segReg));
-                break;
+                // otherwise, apply mapping
+                SOffset refOfs = ref.memOffset(), tgtOfs = tgt.memOffset();
+                Register segReg = ref.memSegmentId();
+                switch (segReg) {
+                case REG_CS:
+                    match = ctx.offMap.codeMatch(refOfs, tgtOfs);
+                    if (!match) verbose("Instruction mismatch due to code segment offset mapping conflict");
+                    break;
+                case REG_ES: /* TODO: come up with something better */
+                case REG_DS:
+                    match = ctx.offMap.dataMatch(refOfs, tgtOfs);
+                    if (!match) verbose("Instruction mismatch due to data segment offset mapping conflict");
+                    break;
+                case REG_SS:
+                    if (!ctx.options.strict) {
+                        match = ctx.offMap.stackMatch(refOfs, tgtOfs);
+                        if (!match) verbose("Instruction mismatch due to stack segment offset mapping conflict");
+                    }
+                    break;
+                default:
+                    throw AnalysisError("Unsupported segment register in instruction comparison: " + regName(segReg));
+                    break;
+                }
+                return match ? CMP_DIFFVAL : CMP_MISMATCH;
             }
-            return match ? CMP_DIFFVAL : CMP_MISMATCH;
-        }
-        else if (operandIsImmediate(refop.type) && !ctx.options.strict) {
-            debug("Ignoring immediate value difference in loose mode");
-            return CMP_DIFFVAL;
+            else if (operandIsImmediate(op->type) && !ctx.options.strict) {
+                debug("Ignoring immediate value difference in loose mode");
+                return CMP_DIFFVAL;
+            }
         }
     }
     
@@ -552,6 +561,8 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &tar
     // TODO: implement register value tracing
     ScanQueue compareQ{Destination(entrypoint(), VISITED_ID, true, {})};
     std::regex excludeRe{options.exclude};
+    Size comparedSize = 0;
+    set<string> routineNames;
     while (!compareQ.empty()) {
         // get next location for linear scan and comparison of instructions from the front of the queue,
         // to visit functions in the same order in which they were first encountered
@@ -577,6 +588,7 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &tar
             return false;
         }
         Routine routine{"unknown", {}};
+        Size routineCount = 0;
         Block compareBlock;
         if (!routineMap.empty()) { // comparing with a map
             routine = routineMap.getRoutine(ctx.refCsip);
@@ -585,6 +597,7 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &tar
                 error("Could not find address "s + ctx.refCsip.toString() + " in routine map");
                 return false;
             }
+            routineNames.insert(routine.name);
             compareBlock = routine.blockContaining(compare.address);
             if (!options.exclude.empty() && std::regex_match(routine.name, excludeRe)) {
                 verbose("--- Skipping excluded routine " + routine.toString(false) + " @"s + ctx.refCsip.toString() + ", block " + compareBlock.toString(true) +  ", target @" + ctx.tgtCsip.toString());
@@ -684,6 +697,7 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &tar
                 }
             }
             // instruction is a jump, save the relationship between the reference and the target addresses into the offset map
+            // TODO: isn't this already handled in instructionsMatch()?
             else if (refInstr.isJump() && tgtInstr.isJump() && skipType == SKIP_NONE) {
                 const Branch 
                     refBranch = getBranch(refInstr, {}),
@@ -700,12 +714,16 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &tar
                 debug(compareStatus(refInstr, tgtInstr, false, INS_MATCH_MISMATCH));
                 switch (skipType) {
                 case SKIP_REF: 
+                    comparedSize += refInstr.length;
                     ctx.refCsip += refInstr.length;
                     debug("Skipping over reference instruction mismatch, allowed " + to_string(refSkipCount) + " out of " + to_string(options.refSkip) + ", destination " + ctx.refCsip.toString());
                     break;
                 case SKIP_TGT:
                     // rewind reference position if it was skipped before
-                    if (refSkipOrigin.isValid()) ctx.refCsip = refSkipOrigin;
+                    if (refSkipOrigin.isValid()) {
+                        comparedSize -= ctx.refCsip.offset - refSkipOrigin.offset;
+                        ctx.refCsip = refSkipOrigin;
+                    }
                     ctx.tgtCsip += tgtInstr.length;
                     debug("Skipping over target instruction mismatch, allowed " + to_string(tgtSkipCount)  + " out of " + to_string(options.tgtSkip) + ", destination " + ctx.tgtCsip.toString());
                     break;
@@ -715,12 +733,14 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &tar
                 }
                 break;
             case CMP_VARIANT:
+                comparedSize += refInstr.length;
                 ctx.refCsip += refInstr.length;
                 // in case of a variant match, the instruction pointer in the target binary will have already been advanced by instructionsMatch()
                 debug("Variant match detected, comparison will continue at " + ctx.tgtCsip.toString());
                 break;
             default:
                 // normal case, advance both reference and target positions
+                comparedSize += refInstr.length;
                 ctx.refCsip += refInstr.length;
                 ctx.tgtCsip += tgtInstr.length;
                 break;
@@ -761,6 +781,7 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &tar
     } // iterate over comparison location queue
 
 success:
-    verbose(output_color(OUT_GREEN) + "Comparison result positive" + output_color(OUT_DEFAULT));
+    verbose(output_color(OUT_GREEN) + "Comparison result positive" + ", compared " + to_string(comparedSize) + "/" + hexVal(comparedSize) + " bytes, " 
+        + to_string(routineNames.size()) + " routines" + output_color(OUT_DEFAULT));
     return true;
 }

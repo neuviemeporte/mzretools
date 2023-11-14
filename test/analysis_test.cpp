@@ -431,3 +431,21 @@ TEST_F(AnalysisTest, DiffRegOffset) {
     // yes, the amount of wrapping is ridiculous
     ASSERT_EQ(exeInstrMatch(e1, ctx, i1, i2), exeDiffVal());
 }
+
+TEST_F(AnalysisTest, DiffMemAndImm) {
+    const vector<Byte> refCode = {
+        0xC7,0x06,0x02,0x72,0xCA,0x72 // mov word [0x7202],0x72ca
+    };
+    const vector<Byte> objCode = {
+        0xC7,0x06,0x4A,0x72,0x12,0x73 // mov word [0x724a],0x7312
+    };
+    AnalysisOptions opt;
+    opt.strict = false;
+    Executable e1{0, refCode}, e2{0, objCode};
+    auto ctx = makeExeContext(e2, opt, 1);
+    // decode instructions
+    Instruction 
+        i1{0, exeCode(e1).pointer(0)}, 
+        i2{0, exeCode(e2).pointer(0)};
+    ASSERT_EQ(exeInstrMatch(e1, ctx, i1, i2), exeDiffVal());    
+}

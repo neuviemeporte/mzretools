@@ -624,20 +624,21 @@ InstructionMatch Instruction::match(const Instruction &other) const {
     if (prefix != other.prefix || iclass != other.iclass || (iclass == INS_JMP_IF && opcode != other.opcode))
         return INS_MATCH_MISMATCH;
 
+    // this can only return FULL (everything matches), DIFF (operand type match, different value) or MISMATCH (operand type different)
     const InstructionMatch 
-        op1match = op1.match(other.op1),
+        op1match = op1.match(other.op1), 
         op2match = op2.match(other.op2);
-        
+
     if (op1match == INS_MATCH_MISMATCH || op2match == INS_MATCH_MISMATCH)
         return INS_MATCH_MISMATCH; // either operand mismatch -> instruction mismatch
-    else if (op1match != INS_MATCH_FULL && op2match != INS_MATCH_FULL)
-        return INS_MATCH_MISMATCH; // both operands non-full match -> instruction mismatch
+    else if (op1match == INS_MATCH_DIFF && op2match == INS_MATCH_DIFF)
+        return INS_MATCH_DIFF; // difference on both operands
     else if (op1match == INS_MATCH_DIFF)
         return INS_MATCH_DIFFOP1; // difference on operand 1
     else if (op2match == INS_MATCH_DIFF)
         return INS_MATCH_DIFFOP2; // difference on operand 2
-    else
-        return INS_MATCH_FULL;
+        
+    return INS_MATCH_FULL;
 }
 
 // lookup table for converting modrm mod and mem values into OperandType
