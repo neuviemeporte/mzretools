@@ -6,7 +6,7 @@
 using namespace std;
 
 TEST(Dos, MzHeader) {
-    MzImage mz("bin/hello.exe");
+    MzImage mz("../bin/hello.exe");
     TRACELN(mz.dump());
     ASSERT_EQ(mz.loadModuleSize(), 6723);
     ASSERT_EQ(mz.loadModuleOffset(), 512);

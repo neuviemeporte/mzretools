@@ -174,7 +174,7 @@ TEST_F(AnalysisTest, RoutineMapFromQueue) {
 TEST_F(AnalysisTest, FindRoutines) {
     const Word loadSegment = 0x1234;
     // discover routines inside an executable
-    MzImage mz{"bin/hello.exe"};
+    MzImage mz{"../bin/hello.exe"};
     mz.load(loadSegment);
     Executable exe{mz};
     const RoutineMap &discoveredMap = exe.findRoutines();
@@ -207,7 +207,7 @@ TEST_F(AnalysisTest, FindRoutines) {
 TEST_F(AnalysisTest, FindFarRoutines) {
     const Word loadSegment = 0x1000;
     // discover routines inside an executable
-    MzImage mz{"bin/hellofar.exe"};
+    MzImage mz{"../bin/hellofar.exe"};
     mz.load(loadSegment);
     Executable exe{mz};
     const RoutineMap &discoveredMap = exe.findRoutines();
@@ -257,7 +257,7 @@ TEST_F(AnalysisTest, RoutineMapCollision) {
 }
 
 TEST_F(AnalysisTest, CodeCompare) {
-    MzImage mz{"bin/hello.exe"};
+    MzImage mz{"../bin/hello.exe"};
     mz.load(0);
     Executable e1{mz}, e2{mz};
     auto map = RoutineMap{"hello.map"};
