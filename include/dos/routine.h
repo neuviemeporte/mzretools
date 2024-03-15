@@ -29,7 +29,7 @@ struct Routine {
     Routine(const std::string &name, const Block &extents) : name(name), extents(extents), near(true) {}
     Address entrypoint() const { return extents.begin; }
     // for sorting purposes
-    bool operator<(const Routine &other) { return entrypoint() < other.entrypoint(); }
+    bool operator<(const Routine &other) const { return entrypoint() < other.entrypoint(); }
     bool isValid() const { return extents.isValid(); }
     bool isUnchunked() const { return reachable.size() == 1 && unreachable.empty() && reachable.front() == extents; }
     bool isReachable(const Block &b) const;
