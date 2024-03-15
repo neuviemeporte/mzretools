@@ -2,8 +2,7 @@
 #include "dos/mz.h"
 #include "dos/error.h"
 #include "dos/output.h"
-#include "dos/instruction.h"
-#include "dos/analysis.h"
+#include "dos/executable.h"
 
 #include <iostream>
 #include <string>
@@ -19,13 +18,15 @@ void usage() {
            "Compares two DOS MZ executables instruction by instruction, accounting for differences in code layout\n"
            "Options:\n"
            "--map basemap  map file of base executable to use, if present\n"
+           "--exclude pat  regex pattern of function names to exclude in comparison\n"
            "--verbose      show more detailed information, including compared instructions\n"
            "--debug        show additional debug information\n"
            "--dbgcpu       include CPU-related debug information like instruction decoding\n"
            "--idiff        ignore differences completely\n"
            "--nocall       do not follow calls, useful for comparing single functions\n"
            "--rskip count  skip differences, ignore up to 'count' consecutive mismatching instructions in the reference executable\n"
-           "--cskip count  skip differences, ignore up to 'count' consecutive mismatching instructions in the compared executable\n"
+           "--tskip count  skip differences, ignore up to 'count' consecutive mismatching instructions in the target executable\n"
+           "--ctx count    display up to 'count' context instructions after a mismatch (default 10)\n"
            "--loose        non-strict matching, allows e.g for literal argument differences\n"
            "--variant      treat instruction variants that do the same thing as matching\n"
            "The optional entrypoint spec tells the tool at which offset to start comparing, and can be different\n"
@@ -141,13 +142,21 @@ int main(int argc, char *argv[]) {
             if (aidx + 1 >= argc) fatal("Option requires an argument: --rskip");
             opt.refSkip = stoi(argv[++aidx], nullptr, 10);
         }
-        else if (arg == "--cskip") {
-            if (aidx + 1 >= argc) fatal("Option requires an argument: --cskip");
-            opt.objSkip = stoi(argv[++aidx], nullptr, 10);
-        }        
+        else if (arg == "--tskip") {
+            if (aidx + 1 >= argc) fatal("Option requires an argument: --tskip");
+            opt.tgtSkip = stoi(argv[++aidx], nullptr, 10);
+        }
+        else if (arg == "--ctx") {
+            if (aidx + 1 >= argc) fatal("Option requires an argument: --ctx");
+            opt.ctxCount = stoi(argv[++aidx], nullptr, 10);
+        }
         else if (arg == "--map") {
             if (aidx + 1 >= argc) fatal("Option requires an argument: --map");
             pathMap = argv[++aidx];
+        }
+        else if (arg == "--exclude") {
+            if (aidx + 1 >= argc) fatal("Option requires an argument: --exclude");
+            opt.exclude = argv[++aidx];
         }        
         else if (arg == "--loose") opt.strict = false;
         else if (arg == "--variant") opt.variant = true;

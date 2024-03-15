@@ -1,11 +1,3 @@
-- fix problem with unreachable block in a routine interrupting comparison with a success prematurely, add locations of other reachable blocks to the comparison queue too somehow
-
-- scripted input mode
-- tests for SUB, check behaviour of signed operands in dosbox
-
-1. implement mz file load to arena and unit test (Dos::loadExe())
-2. implement text output with sdl and vga font
-3. make hello.exe run
-4. implement record functionality, record hello.exe
-5. implement trace verify functionality, verify hello.exe rerun with recorded trace, implement functional unit test for implement
-6. move onto f15.com etc.
+- add segments to routine map constructor, trace current segment, place unclaimed blocks in current rather than load segment
+- OMF parser, extract segments, function signatures etc
+- finish refactoring of ref/obj -> target on experimental branch

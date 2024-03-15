@@ -2,26 +2,17 @@
 #include <algorithm>
 #include "debug.h"
 #include "gtest/gtest.h"
-#include "dos/system.h"
 #include "dos/util.h"
 #include "dos/error.h"
 #include "dos/mz.h"
 #include "dos/analysis.h"
 #include "dos/opcodes.h"
+#include "dos/executable.h"
 
 using namespace std;
 
-// TODO: remove/rename this test, turn into library module test
-class SystemTest : public ::testing::Test {
+class AnalysisTest : public ::testing::Test {
 protected:
-    System sys;
-
-protected:
-    void TearDown() override {
-        // if (HasFailure()) {
-        //     TRACELN(sys.cpuInfo());
-        // }
-    }
 
     // access to private fields
     auto& getRoutines(RoutineMap &rm) { return rm.routines; }
@@ -29,17 +20,20 @@ protected:
     auto emptyScanQueue() { return ScanQueue(); }
     auto& sqVisited(ScanQueue &sq) { return sq.visited; }
     auto& sqEntrypoints(ScanQueue &sq) { return sq.entrypoints; }
+    void mapSetSegments(RoutineMap &rm, const vector<Segment> &segments) { rm.setSegments(segments); }
+    vector<Block>& mapUnclaimed(RoutineMap &rm) { return rm.unclaimed; }
+    auto makeExeContext(const Executable &tgt, const AnalysisOptions &opt, const Size data) { 
+        return Executable::Context{tgt, opt, data};
+    }
+    auto& exeCode(Executable &exe) { return exe.code; }
+    auto exeInstrMatch(Executable &exe, Executable::Context &ctx, const Instruction &i1, const Instruction &i2) {
+        return exe.instructionsMatch(ctx, i1, i2);
+    }
+    auto exeDiffVal() { return Executable::CMP_DIFFVAL; }
 };
 
-TEST_F(SystemTest, DISABLED_HelloWorld) {
-    ASSERT_EQ(sys.command("load bin/hello.exe"), CMD_OK);
-    EXPECT_THROW(sys.command("run"), CpuError);
-    // TODO: reenable when complete instruction set implemented
-    //ASSERT_EQ(sys.command("run"), CMD_OK);
-}
-
 // TODO: divest tests of analysis.cpp as distinct test suite
-TEST_F(SystemTest, RegisterState) {
+TEST_F(AnalysisTest, RegisterState) {
     RegisterState rs;
 
     TRACELN("Setting AX to 0x1234");
@@ -102,7 +96,7 @@ TEST_F(SystemTest, RegisterState) {
     TRACELN(rs.toString());    
 }
 
-TEST_F(SystemTest, RoutineMap) {
+TEST_F(AnalysisTest, RoutineMap) {
     // test loading of routine map from ida file
     const RoutineMap idaMap{"../bin/hello.lst"};
     idaMap.dump();
@@ -115,15 +109,27 @@ TEST_F(SystemTest, RoutineMap) {
 
 }
 
-TEST_F(SystemTest, RoutineMapFromQueue) {
+TEST_F(AnalysisTest, RoutineMapFromQueue) {
     // test routine map generation from contents of a search queue
     ScanQueue sq = emptyScanQueue();
     vector<int> &visited = sqVisited(sq);
     vector<RoutineEntrypoint> &entrypoints = sqEntrypoints(sq);
-    //          0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f  10 11 12 13 14 15 16 17
-    visited = { 0, 0, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 2, 2, 0, 0, 1, 1, 3, 0, 3, 3, 3, 0 };
+    const Word loadSegment = 0;
+    vector<Segment> segments = {
+        {"TestSeg1", Segment::SEG_CODE, loadSegment},
+        {"TestSeg2", Segment::SEG_CODE, 0x1},
+        {"TestSeg3", Segment::SEG_CODE, 0x2},
+        {"TestSeg4", Segment::SEG_CODE, 0x3},
+    };
+    visited = { 
+    //  0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f
+        0, 0, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 2, 2, 0, 0, // 0
+        1, 1, 3, 0, 3, 3, 3, 0, 0, 0, 0, 0, 0, 2, 2, 2, // 1
+        3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 2
+        0, 0                                            // 3
+    };
     entrypoints = { {0x8, 1}, {0xc, 2}, {0x12, 3} };
-    RoutineMap queueMap{sq, 0, visited.size()};
+    RoutineMap queueMap{sq, segments, loadSegment, visited.size()};
     queueMap.dump();
     ASSERT_EQ(queueMap.size(), 3);
 
@@ -140,21 +146,32 @@ TEST_F(SystemTest, RoutineMapFromQueue) {
     Routine r2 = queueMap.getRoutine(1);
     ASSERT_FALSE(r2.name.empty());
     ASSERT_EQ(r2.extents, Block(0xc, 0xd));
-    ASSERT_EQ(r2.reachable.size(), 1);
+    ASSERT_EQ(r2.reachable.size(), 2);
     ASSERT_EQ(r2.reachable.at(0), Block(0xc, 0xd));
+    ASSERT_EQ(r2.reachable.at(1), Block(0x1d, 0x1f));    
     ASSERT_EQ(r2.unreachable.size(), 0);
 
     Routine r3 = queueMap.getRoutine(2);
     ASSERT_FALSE(r3.name.empty());
     ASSERT_EQ(r3.extents, Block(0x12, 0x16));
-    ASSERT_EQ(r3.reachable.size(), 2);
+    ASSERT_EQ(r3.reachable.size(), 3);
     ASSERT_EQ(r3.reachable.at(0), Block(0x12, 0x12));
     ASSERT_EQ(r3.reachable.at(1), Block(0x14, 0x16));
+    ASSERT_EQ(r3.reachable.at(2), Block(0x20, 0x22));
     ASSERT_EQ(r3.unreachable.size(), 1);
-    ASSERT_EQ(r3.unreachable.at(0), Block(0x13, 0x13));    
+    ASSERT_EQ(r3.unreachable.at(0), Block(0x13, 0x13));
+
+    const auto &unclaimed = mapUnclaimed(queueMap);
+    ASSERT_EQ(unclaimed.size(), 4);
+    ASSERT_EQ(unclaimed.at(0), Block(0x0, 0x1));
+    ASSERT_EQ(unclaimed.at(1), Block(0xe, 0xf));
+    ASSERT_EQ(unclaimed.at(2), Block(0x17, 0x1c));
+    ASSERT_EQ(unclaimed.at(3), Block(0x23, 0x31));
+
+    TRACELN(queueMap.dump());
 }
 
-TEST_F(SystemTest, FindRoutines) {
+TEST_F(AnalysisTest, FindRoutines) {
     const Word loadSegment = 0x1234;
     // discover routines inside an executable
     MzImage mz{"bin/hello.exe"};
@@ -173,7 +190,7 @@ TEST_F(SystemTest, FindRoutines) {
     ASSERT_GE(matchCount, idaMatchCount);
     
     // save to file and reload
-    discoveredMap.save("hello.map", true);
+    discoveredMap.save("hello.map", loadSegment, true);
     RoutineMap reloadMap("hello.map", loadSegment);
     ASSERT_EQ(reloadMap.size(), discoveredMap.size());
 
@@ -187,35 +204,59 @@ TEST_F(SystemTest, FindRoutines) {
     ASSERT_EQ(matchCount, discoveredMap.size());
 }
 
-TEST_F(SystemTest, RoutineMapCollision) {
+TEST_F(AnalysisTest, FindFarRoutines) {
+    const Word loadSegment = 0x1000;
+    // discover routines inside an executable
+    MzImage mz{"bin/hellofar.exe"};
+    mz.load(loadSegment);
+    Executable exe{mz};
+    const RoutineMap &discoveredMap = exe.findRoutines();
+    TRACE(discoveredMap.dump());
+    ASSERT_FALSE(discoveredMap.empty());
+
+    Address ep1{loadSegment, 0};
+    Routine far1 = discoveredMap.findByEntrypoint(ep1);
+    ASSERT_TRUE(far1.isValid());
+    ASSERT_EQ(far1.entrypoint().segment, loadSegment);
+
+    Address ep2{loadSegment+1, 4};
+    Routine far2 = discoveredMap.findByEntrypoint(ep2);
+    ASSERT_TRUE(far2.isValid());
+    ASSERT_EQ(far2.entrypoint().segment, loadSegment+1);    
+}
+
+TEST_F(AnalysisTest, RoutineMapCollision) {
     const string path = "bad.map";
     RoutineMap rm = emptyRoutineMap();
+    mapSetSegments(rm, {
+        {"Code1", Segment::SEG_CODE, 0},
+    });
     Block b1{100, 200}, b2{150, 250}, b3{300, 400};
     Routine r1{"r1", b1},  r2{"r2", b2}, r3{"r3", b3};
     auto &rv = getRoutines(rm);
 
     TRACELN("--- testing coliding routine extents");
     rv = { r1, r2 };
-    rm.dump();
-    rm.save(path, true);
-    ASSERT_THROW(rm = RoutineMap{path}, AnalysisError);
+    TRACE(rm.dump());
+    rm.save(path, 0, true);
+    ASSERT_THROW(rm = RoutineMap{path}, ParseError);
 
     TRACELN("--- testing coliding routine extent with chunk");
     rv = { r1, r3 };
     rv.back().reachable.push_back(b2);
-    rm.dump();
-    rm.save(path, true);
-    ASSERT_THROW(rm = RoutineMap{path}, AnalysisError);
+    TRACE(rm.dump());
+    rm.save(path, 0, true);
+    ASSERT_THROW(rm = RoutineMap{path}, ParseError);
 
     TRACELN("--- testing no colision");
     rv = { r1, r3 };
-    rm.dump();
-    rm.save(path, true);
+    TRACE(rm.dump());
+    rm.save(path, 0, true);
     rm = RoutineMap{path};
     ASSERT_EQ(rm.size(), 2);
 }
 
-TEST_F(SystemTest, CodeCompare) {
+TEST_F(AnalysisTest, CodeCompare) {
     MzImage mz{"bin/hello.exe"};
     mz.load(0);
     Executable e1{mz}, e2{mz};
@@ -230,7 +271,7 @@ TEST_F(SystemTest, CodeCompare) {
     ASSERT_FALSE(e1.compareCode(map, e2, {}));
 }
 
-TEST_F(SystemTest, CodeCompareSkip) {
+TEST_F(AnalysisTest, CodeCompareSkip) {
     // compare with skip
     const vector<Byte> refCode = {
         0x90, // nop
@@ -238,51 +279,51 @@ TEST_F(SystemTest, CodeCompareSkip) {
         0x0e, // push cs
         0x41, // inc cx
     };
-    const vector<Byte> objCode = {
+    const vector<Byte> tgtCode = {
         0x58, // pop ax
         0x9c, // pushf
         0x41, // inc cx
     };
 
-    Executable e1{0, refCode}, e2{0, objCode};
+    Executable e1{0, refCode}, e2{0, tgtCode};
     AnalysisOptions opt;
     
     // test failure case
     opt.refSkip = 2;
-    opt.objSkip = 2;
+    opt.tgtSkip = 2;
     ASSERT_FALSE(e1.compareCode(RoutineMap{}, e2, opt));
 
     // test success case
     opt.refSkip = 3;
-    opt.objSkip = 2;
+    opt.tgtSkip = 2;
     ASSERT_TRUE(e1.compareCode(RoutineMap{}, e2, opt));
     
     const vector<Byte> ref2Code = {
         0x41, // inc cx
     };    
-    const vector<Byte> obj2Code = {
+    const vector<Byte> tgt2Code = {
         0x41, // inc cx
     };
-    Executable e3{0, ref2Code}, e4{0, obj2Code};
+    Executable e3{0, ref2Code}, e4{0, tgt2Code};
 
     // test only ref skip
     opt.refSkip = 3;
-    opt.objSkip = 0;
+    opt.tgtSkip = 0;
     ASSERT_TRUE(e1.compareCode(RoutineMap{}, e4, opt));
 
-    // test only obj skip
+    // test only tgt skip
     opt.refSkip = 0;
-    opt.objSkip = 2;
+    opt.tgtSkip = 2;
     ASSERT_TRUE(e3.compareCode(RoutineMap{}, e2, opt));
 }
 
-TEST_F(SystemTest, CodeCompareUnreachable) {
+TEST_F(AnalysisTest, CodeCompareUnreachable) {
     // two blocks of identical code with an undefined opcode in the middle
     TRACELN("=== case 1");
     vector<Byte> 
         refCode = { OP_POP_ES, OP_PUSH_CS, OP_INC_CX, 0x60, OP_INC_AX, OP_PUSH_ES },
-        objCode = refCode;
-    Executable e1{0, refCode}, e2{0, objCode};
+        tgtCode = refCode;
+    Executable e1{0, refCode}, e2{0, tgtCode};
     AnalysisOptions opt;
     Routine r1{"test1", {0, refCode.size()}};
     // two reachable blocks separated by an unreachable one
@@ -298,8 +339,8 @@ TEST_F(SystemTest, CodeCompareUnreachable) {
     // different size of unreachable region, but make it possible to derive the offset mapping from a jump destination
     TRACELN("=== case 2");
     refCode = { OP_POP_ES, OP_PUSH_CS, OP_JMP_Jb, 0x1, 0x60, OP_INC_AX, OP_PUSH_ES };
-    objCode = { OP_POP_ES, OP_PUSH_CS, OP_JMP_Jb, 0x3, 0x60, 0x61, 0x62, OP_INC_AX, OP_PUSH_ES };
-    Executable e3{0, refCode}, e4 = Executable{0, objCode};
+    tgtCode = { OP_POP_ES, OP_PUSH_CS, OP_JMP_Jb, 0x3, 0x60, 0x61, 0x62, OP_INC_AX, OP_PUSH_ES };
+    Executable e3{0, refCode}, e4 = Executable{0, tgtCode};
     Routine r2{"test2", {0, refCode.size()}};
     r2.reachable.push_back({0, 3});
     r2.unreachable.push_back({4, 4});
@@ -313,8 +354,8 @@ TEST_F(SystemTest, CodeCompareUnreachable) {
     // impossible to derive the offset mapping from a jump destination and instructions don't match
     TRACELN("=== case 3");
     refCode = { OP_POP_ES, OP_PUSH_CS, OP_NOP, 0x60, OP_INC_AX, OP_PUSH_ES };
-    objCode = { OP_POP_ES, OP_PUSH_CS, OP_NOP, 0x60, OP_INC_CX, OP_PUSH_DS };
-    Executable e5{0, refCode}, e6 = Executable{0, objCode};
+    tgtCode = { OP_POP_ES, OP_PUSH_CS, OP_NOP, 0x60, OP_INC_CX, OP_PUSH_DS };
+    Executable e5{0, refCode}, e6 = Executable{0, tgtCode};
     Routine r3{"test3", {0, refCode.size()}};
     r3.reachable.push_back({0, 2});
     r3.unreachable.push_back({3, 3});
@@ -328,7 +369,7 @@ TEST_F(SystemTest, CodeCompareUnreachable) {
     // TODO: implement test for different sized region and no jump after lookahead impemented, currently throws 
 }
 
-TEST_F(SystemTest, SignedHex) {
+TEST_F(AnalysisTest, SignedHex) {
     SWord pos16val = 0x1234;
     ASSERT_EQ(signedHexVal(pos16val), "+0x1234");    
     SWord neg16val = -31989;
@@ -339,7 +380,7 @@ TEST_F(SystemTest, SignedHex) {
     ASSERT_EQ(signedHexVal(neg8val), "-0x0a");
 }
 
-TEST_F(SystemTest, Variants) {
+TEST_F(AnalysisTest, Variants) {
     ASSERT_EQ(splitString("a;bc;def", ';'), vector<string>({"a", "bc", "def"}));
     ASSERT_EQ(splitString("abcdef", ';'), vector<string>({"abcdef"}));
     stringstream str;
@@ -370,4 +411,41 @@ TEST_F(SystemTest, Variants) {
     ASSERT_FALSE(m.isMatch());
     m = vm.checkMatch({"inc sp", "inc sp"}, {"foobar"});
     ASSERT_FALSE(m.isMatch());
+}
+
+TEST_F(AnalysisTest, DiffRegOffset) {
+    const vector<Byte> refCode = {
+        0xC7, 0x47, 0x06, 0x00, 0x00 // mov word [bx+0x6],0x0
+    };
+    const vector<Byte> objCode = {
+        0xC7, 0x47, 0x0C, 0x00, 0x00 //  mov word [bx+0xc],0x0
+    };
+    AnalysisOptions opt;
+    opt.strict = false;
+    Executable e1{0, refCode}, e2{0, objCode};
+    auto ctx = makeExeContext(e2, opt, 1);
+    // decode instructions
+    Instruction 
+        i1{0, exeCode(e1).pointer(0)}, 
+        i2{0, exeCode(e2).pointer(0)};
+    // yes, the amount of wrapping is ridiculous
+    ASSERT_EQ(exeInstrMatch(e1, ctx, i1, i2), exeDiffVal());
+}
+
+TEST_F(AnalysisTest, DiffMemAndImm) {
+    const vector<Byte> refCode = {
+        0xC7,0x06,0x02,0x72,0xCA,0x72 // mov word [0x7202],0x72ca
+    };
+    const vector<Byte> objCode = {
+        0xC7,0x06,0x4A,0x72,0x12,0x73 // mov word [0x724a],0x7312
+    };
+    AnalysisOptions opt;
+    opt.strict = false;
+    Executable e1{0, refCode}, e2{0, objCode};
+    auto ctx = makeExeContext(e2, opt, 1);
+    // decode instructions
+    Instruction 
+        i1{0, exeCode(e1).pointer(0)}, 
+        i2{0, exeCode(e2).pointer(0)};
+    ASSERT_EQ(exeInstrMatch(e1, ctx, i1, i2), exeDiffVal());    
 }

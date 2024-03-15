@@ -66,14 +66,19 @@ void Address::normalize() {
     offset &= OFFSET_NORMAL_MASK;
 }
 
-void Address::rebase(const Word base) {
-    auto linear = toLinear(), baseLinear = SEG_TO_OFFSET(base);
-    if (linear < baseLinear) throw MemoryError("Unable to rebase address " + toString() + " to " + hexVal(base));
-    linear -= baseLinear;
-    set(linear);
+// advance segment by specified amount, relocate(234:a, 0x1000) -> 1234:a
+void Address::relocate(const Word reloc) { 
+    if (segment > OFFSET_MAX - reloc) throw MemoryError("Unable to relocate address " + toString() + " by " + hexVal(reloc));
+    segment += reloc; 
 }
 
-// move address to another segment, if possible
+// inverse of relocate, e.g. rebase(1234:a, 0x1000) -> 234:a
+void Address::rebase(const Word base) {
+    if (base > segment) throw MemoryError("Unable to rebase address " + toString() + " to " + hexVal(base));
+    segment -= base;
+}
+
+// move(1234:a, 1000) -> 1000:234a, effective address remains the same
 void Address::move(const Word arg) {
     if (!inSegment(arg)) throw MemoryError("Unable to move address "s + toString() + " to segment " + hexVal(arg));
     offset = toLinear() - SEG_TO_OFFSET(arg);
@@ -155,4 +160,35 @@ Block Block::coalesce(const Block &other) const {
 
 std::ostream& operator<<(std::ostream &os, const Block &arg) {
     return os << arg.toString();
+}
+
+Segment::Segment(const std::smatch &match) {
+    if (match.empty()) throw ArgError("Segment string mismatch");
+    name = match.str(1);
+    address = stoi(match.str(3), nullptr, 16);
+    const string segtype = match.str(2);
+    if (segtype == "CODE") type = SEG_CODE;
+    else if (segtype == "DATA") type = SEG_DATA;
+    else if (segtype == "STACK") type = SEG_STACK;
+    else throw ArgError("Invalid segment type string: " + segtype);
+}
+
+std::smatch Segment::stringMatch(const std::string &str) {
+    static const regex SEG_RE{"^([_a-zA-Z0-9]+) (CODE|DATA|STACK) ([0-9a-fA-F]{1,4})"};
+    smatch match;
+    regex_match(str, match, SEG_RE);
+    return match;
+}
+
+std::string Segment::toString() const {
+    ostringstream str;
+    str << name << " ";
+    switch (type) {
+    case SEG_CODE:  str << "CODE "; break;
+    case SEG_DATA:  str << "DATA "; break;
+    case SEG_STACK: str << "STACK "; break;
+    default:        str << "??? "; break; 
+    }
+    str << hexVal(address, false);
+    return str.str();
 }

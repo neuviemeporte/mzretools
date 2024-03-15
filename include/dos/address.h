@@ -3,6 +3,8 @@
 
 #include <string>
 #include <cassert>
+#include <regex>
+
 #include "dos/types.h"
 
 static constexpr Size MEM_TOTAL = 1_MB;
@@ -28,7 +30,6 @@ inline Word DWORD_SEGMENT(const DWord val) { return val >> 16; }
 inline Word DWORD_OFFSET(const DWord val) { return val & 0xffff; }
 inline bool linearPastSegment(const Offset linear, const Word segment) { return linear >= SEG_TO_OFFSET(segment); }
 inline bool linearInSegment(const Offset linear, const Word segment) { return linearPastSegment(linear, segment) && linear - SEG_TO_OFFSET(segment) <= OFFSET_MAX; }
-//inline Word linear
 
 // A segmented address
 struct Address {
@@ -45,7 +46,6 @@ struct Address {
     bool operator>(const Address &arg) const { return toLinear() > arg.toLinear(); }
     bool operator<=(const Address &arg) const { return toLinear() <= arg.toLinear(); }
     bool operator>=(const Address &arg) const { return toLinear() >= arg.toLinear(); }
-    // TODO: handle overflow
     Address operator+(const SByte arg) const { return {segment, static_cast<Word>(offset + arg)}; }
     Address operator+(const SWord arg) const { return {segment, static_cast<Word>(offset + arg)}; }
     Address operator+(const DWord arg) const;
@@ -63,7 +63,7 @@ struct Address {
     bool isValid() const { return segment != ADDR_INVALID || offset != ADDR_INVALID; }
     bool inSegment(const Word arg) const { return toLinear() >= SEG_TO_OFFSET(arg) && toLinear() - SEG_TO_OFFSET(arg) <= OFFSET_MAX; }
     void normalize();
-    void relocate(const Word reloc) { segment += reloc; }
+    void relocate(const Word reloc);
     void rebase(const Word base);
     void move(const Word segment);
 };
@@ -100,5 +100,28 @@ struct Block {
 };
 std::ostream& operator<<(std::ostream &os, const Block &arg);
 inline std::string operator+(const std::string &str, const Block &arg) { return str + arg.toString(); }
+
+struct Segment {
+    std::string name;
+    enum Type {
+        SEG_NONE,
+        SEG_CODE,
+        SEG_DATA,
+        SEG_STACK
+    } type;
+    Word address;
+
+    static std::smatch stringMatch(const std::string &str);
+
+    Segment(const std::string &name, Type type, Word address) : name(name), type(type), address(address) {}
+    Segment(const std::smatch &match);
+    Segment(const std::string &str) : Segment(stringMatch(str)) {}
+    Segment() : Segment("", SEG_NONE, 0) {}
+
+    bool operator==(const Segment &other) const { return type == other.type && address == other.address; }
+    bool operator!=(const Segment &other) const { return !(*this == other); }
+    bool operator<(const Segment &other) const { return address < other.address; }
+    std::string toString() const;
+};
 
 #endif // ADDRESS_H

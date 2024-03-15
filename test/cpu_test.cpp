@@ -453,3 +453,28 @@ TEST_F(CpuTest, InstructionMatch) {
     ASSERT_EQ(i1.match(i2), INS_MATCH_MISMATCH);
     ASSERT_EQ(i2.match(i1), INS_MATCH_MISMATCH);
 }
+
+TEST_F(CpuTest, BranchOffset) {
+    const Word base = 0x6b00;
+    const Address a{0x1000, base};
+    const Byte code[] = {
+        0x75, 0x22, // jnz +34
+        0x75, 0xde, // jnz -34
+        0xe8, 0xbc, 0x6a, // call +27324
+        0xe8, 0x44, 0x95, // call -27324
+    };
+    Instruction i1{a, code}, i2{a, code + i1.length};
+    ASSERT_EQ(i1.relativeOffset(), 34);
+    ASSERT_EQ(i1.absoluteOffset(), base + 2 + 0x22);
+    ASSERT_EQ(i1.toString(true), "jnz 0x6b24 (0x22 down)");
+    ASSERT_EQ(i2.relativeOffset(), -34);
+    ASSERT_EQ(i2.absoluteOffset(), base + 2 - 0x22);
+    ASSERT_EQ(i2.toString(true), "jnz 0x6ae0 (0x22 up)");
+    Instruction i3{a, code + 4}, i4{a, code + 7};
+    ASSERT_EQ(i3.relativeOffset(), 27324);
+    ASSERT_EQ(i3.absoluteOffset(), base + 3 + 27324);
+    ASSERT_EQ(i3.toString(true), "call 0xd5bf (0x6abc down)");
+    ASSERT_EQ(i4.relativeOffset(), -27324);
+    ASSERT_EQ(i4.absoluteOffset(), base + 3 - 27324);
+    ASSERT_EQ(i4.toString(true), "call 0x47 (0x6abc up)");
+}

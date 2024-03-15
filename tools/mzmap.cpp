@@ -2,8 +2,7 @@
 #include "dos/mz.h"
 #include "dos/error.h"
 #include "dos/output.h"
-#include "dos/instruction.h"
-#include "dos/analysis.h"
+#include "dos/executable.h"
 
 #include <iostream>
 #include <string>
@@ -51,7 +50,7 @@ string mzInfo(const MzImage &mz) {
 }
 
 Executable loadExe(const string &spec, const Word loadSegment) {
-    static const regex EXESPEC_RE{"([-_./a-zA-Z0-9]*)(:([a-fA-F0-9]+))?"};
+    static const regex EXESPEC_RE{"([-_./a-zA-Z0-9]*)(:([xa-fA-F0-9]+))?"};
     smatch match;
     if (!regex_match(spec, match, EXESPEC_RE)) {
         fatal("Invalid exe spec string: "s + spec);
@@ -66,8 +65,9 @@ Executable loadExe(const string &spec, const Word loadSegment) {
     debug(mzInfo(mz));
     Executable exe{mz};
 
-    if (match.size() > 3) {
-        Address epAddr(match[3].str(), false);
+    const string epStr = match[3].str();
+    if (!epStr.empty()) {
+        Address epAddr(epStr, false);
         debug("Entrypoint override: "s + epAddr.toString());
         exe.setEntrypoint(epAddr);
     }
@@ -102,7 +102,7 @@ int main(int argc, char *argv[]) {
             return 1;
         }
         verbose(map.dump(), true);
-        map.save(pathMap);
+        map.save(pathMap, loadSegment);
     }
     catch (Error &e) {
         fatal(e.why());

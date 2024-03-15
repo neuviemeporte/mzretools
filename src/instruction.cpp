@@ -334,24 +334,26 @@ void Instruction::load(const Byte *data)  {
     DEBUG("Instruction @" + addr.toString() + ": " + toString() + ", length = " + to_string(length));
 }
 
-// calculate the offset that is relative to this instruction's end, based on the immediate operand 
-// - this is useful for branch instructions like call and the various jumps, whose operand is the number of bytes to jump forward or back, relative to the byte past the instruction
-Word Instruction::relativeOffset() const {
-    Word relative = addr.offset + length;
-    if (op1.type == OPR_IMM8) {
-        relative += static_cast<SByte>(op1.immval.u8);
-    }
-    else if (op1.type == OPR_IMM16) {
-        relative += static_cast<SWord>(op1.immval.u16);
-    }
-
-    return relative;
+// calculate an absolute offset from an offset that is relative to this instruction's end, based on the immediate operand 
+// - this is useful for branch instructions like call and the various jumps, whose operand is the number of bytes to jump forward or back, 
+// relative to the byte past the instruction
+Word Instruction::absoluteOffset() const {
+    return addr.offset + length + relativeOffset();
 }
 
 // return the branch destination address 
-Address Instruction::relativeAddress() const {
-    return { addr.segment, relativeOffset() };
+Address Instruction::destinationAddress() const {
+    return { addr.segment, absoluteOffset() };
 }
+
+SWord Instruction::relativeOffset() const {
+    switch (op1.type) {
+    case OPR_IMM8: return static_cast<SByte>(op1.immval.u8);
+    case OPR_IMM16: return static_cast<SWord>(op1.immval.u16);
+    }
+    return 0;
+}
+
 
 // lookup table for which instructions modify their first operand
 // 0: doesn't modify any regs, 1: modifies 1st operand, 2: modifies both operands, 3: special case, implicit registers
@@ -589,14 +591,15 @@ std::string Instruction::toString(const bool extended) const {
         // segment override prefix if present
         if (prefix > PRF_NONE && prefix < PRF_CHAIN_REPNZ && operandIsMem(op1.type))
             str << PRF_NAME[prefix];
-        // for near branch instructions (call, jump, loop), the immediate offset operand is added to the address of the byte past the current instruction
-        // to form a relative offset
+        // for near branch instructions (call, jump, loop), the immediate relative offset operand is added to the address 
+        // of the byte past the current instruction to form an absolute offset
         if (isNearBranch() && operandIsImmediate(op1.type)) {
-            const Word roff = relativeOffset();
-            str << hexVal(roff, true, false);
+            const Word aoff = absoluteOffset();
+            str << hexVal(aoff, true, false);
             if (extended) {
-                if (roff > addr.offset) str << " (down)";
-                else str << " (up)";
+                SWord roff = relativeOffset();
+                if (roff < 0) { roff = -roff; str << " (" << hexVal(roff, true, false) << " up)"; }
+                else str << " (" << hexVal(roff, true, false) << " down)";
             }
         }
         else {
@@ -621,20 +624,21 @@ InstructionMatch Instruction::match(const Instruction &other) const {
     if (prefix != other.prefix || iclass != other.iclass || (iclass == INS_JMP_IF && opcode != other.opcode))
         return INS_MATCH_MISMATCH;
 
+    // this can only return FULL (everything matches), DIFF (operand type match, different value) or MISMATCH (operand type different)
     const InstructionMatch 
-        op1match = op1.match(other.op1),
+        op1match = op1.match(other.op1), 
         op2match = op2.match(other.op2);
-        
+
     if (op1match == INS_MATCH_MISMATCH || op2match == INS_MATCH_MISMATCH)
         return INS_MATCH_MISMATCH; // either operand mismatch -> instruction mismatch
-    else if (op1match != INS_MATCH_FULL && op2match != INS_MATCH_FULL)
-        return INS_MATCH_MISMATCH; // both operands non-full match -> instruction mismatch
+    else if (op1match == INS_MATCH_DIFF && op2match == INS_MATCH_DIFF)
+        return INS_MATCH_DIFF; // difference on both operands
     else if (op1match == INS_MATCH_DIFF)
         return INS_MATCH_DIFFOP1; // difference on operand 1
     else if (op2match == INS_MATCH_DIFF)
         return INS_MATCH_DIFFOP2; // difference on operand 2
-    else
-        return INS_MATCH_FULL;
+        
+    return INS_MATCH_FULL;
 }
 
 // lookup table for converting modrm mod and mem values into OperandType

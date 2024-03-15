@@ -4,6 +4,8 @@
 #include <cstdint>
 #include <cstdlib>
 
+#include <unistd.h> // for ssize_t
+
 using Byte   = uint8_t;
 using SByte  = int8_t;
 using Word   = uint16_t;

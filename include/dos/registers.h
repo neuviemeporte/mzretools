@@ -65,4 +65,26 @@ private:
     inline const Word& reg(const Register r) const { return values[r - REG_AX]; }
 };
 
+class RegisterState {
+private:
+    static constexpr Word WORD_KNOWN = 0xffff;
+    static constexpr Word BYTE_KNOWN = 0xff;
+    Registers regs_;
+    Registers known_;
+
+public:
+    RegisterState();
+    RegisterState(const Address &code, const Address &stack);
+    bool isKnown(const Register r) const;
+    Word getValue(const Register r) const;
+    void setValue(const Register r, const Word value);
+    void setUnknown(const Register r);
+    std::string regString(const Register r) const;
+    std::string toString() const;
+
+private:
+    void setState(const Register r, const Word value, const bool known);
+    std::string stateString(const Register r) const;
+};
+
 #endif // REGISTERS_H
