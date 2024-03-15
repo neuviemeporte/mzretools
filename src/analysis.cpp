@@ -1521,7 +1521,7 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
                 // so it gets picked up immediately on the next iteration of the outer loop
                 const Block rb = routine.nextReachable(ctx.csip);
                 if (rb.isValid()) {
-                    verbose("Routine still contains reachable blocks, next @ " + rb.toString());
+                    verbose("Routine " + routine.name + " still contains reachable blocks, next @ " + rb.toString());
                     compareQ.saveJump(rb.begin, {});
                     if (!ctx.offMap.getCode(rb.begin).isValid()) {
                         // the offset map between the reference and the target does not have a matching entry for the next reachable block's destination,
@@ -1534,7 +1534,7 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &oth
                     }
                 }
                 else {
-                    verbose("Completed comparison of routine, no more reachable blocks");
+                    verbose("Completed comparison of routine " + routine.name + ", no more reachable blocks");
                 }
                 break;
             }
