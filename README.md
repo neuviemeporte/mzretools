@@ -124,3 +124,19 @@ There are a bunch of other simple tools inside that aren't worth mentioning.
 The project contains a unit test suite written with GTest that runs by default on every build. The build system is CMake.
 
 Patches and improvement suggestions are welcome. I hope this can be of use to somebody.
+
+## building
+
+Clone repository, then do:
+
+```
+# download the google test framework for unit tests
+$ git submodule init
+$ git submodule update
+$ mkdir build && cd build
+$ cmake ..
+# this will build the tool executables and run the test suite
+$ make
+```
+
+The test suite can also be run independently after building, by executing the `runtest` binary. It also supports some undocumented flags for debug output, see `test_main.cpp`.

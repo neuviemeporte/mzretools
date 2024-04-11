@@ -1,5 +1,6 @@
 debug/
 release/
+build*/
 *.user
 *.idb
 *.id0
