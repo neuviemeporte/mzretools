@@ -130,6 +130,7 @@ RegisterState::RegisterState() {
     }
 }
 
+// TODO: set other known register types
 RegisterState::RegisterState(const Address &code, const Address &stack) : RegisterState() {
     setValue(REG_CS, code.segment);
     setValue(REG_IP, code.offset);

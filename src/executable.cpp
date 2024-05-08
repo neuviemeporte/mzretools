@@ -540,8 +540,9 @@ RoutineMap Executable::findRoutines() {
         } // next instructions
     } // next address from search queue
     info("Done analyzing code");
-    // XXX: debug, remove
+#ifdef DEBUG
     searchQ.dumpVisited("routines.visited", SEG_TO_OFFSET(loadSegment), codeSize);
+#endif
 
     // iterate over discovered memory map and create routine map
     auto ret = RoutineMap{searchQ, segments, loadSegment, codeSize};

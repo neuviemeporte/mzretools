@@ -359,6 +359,7 @@ SWord Instruction::relativeOffset() const {
 // 0: doesn't modify any regs, 1: modifies 1st operand, 2: modifies both operands, 3: special case, implicit registers
 // TODO: ret accepts operand?
 // TODO: doesn't include flags register
+// TODO: put values in enum
 static const int OPERAND_MODIFIED[] = {
     //INS_ERR   INS_ADD      INS_PUSH    INS_POP    INS_OR     INS_ADC    INS_SBB     INS_AND    INS_DAA    INS_SUB   INS_DAS       INS_XOR   INS_AAA    INS_CMP   INS_AAS    INS_INC   INS_DEC
     0,          1,           3,          3,         1,         1,         1,          1,         3,         1,        3,            1,        3,         0,        3,         1,        1,

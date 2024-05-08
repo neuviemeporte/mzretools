@@ -118,7 +118,7 @@ struct Segment {
     Segment(const std::string &str) : Segment(stringMatch(str)) {}
     Segment() : Segment("", SEG_NONE, 0) {}
 
-    bool operator==(const Segment &other) const { return type == other.type && address == other.address; }
+    bool operator==(const Segment &other) const { return type != SEG_NONE && type == other.type && address == other.address; }
     bool operator!=(const Segment &other) const { return !(*this == other); }
     bool operator<(const Segment &other) const { return address < other.address; }
     std::string toString() const;

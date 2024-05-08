@@ -65,6 +65,7 @@ private:
     inline const Word& reg(const Register r) const { return values[r - REG_AX]; }
 };
 
+// TODO: implement CPU logic, execute arithmetic instructions and update register state in a more complete way than what is done now
 class RegisterState {
 private:
     static constexpr Word WORD_KNOWN = 0xffff;

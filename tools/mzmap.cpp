@@ -15,7 +15,7 @@ using namespace std;
 
 void usage() {
     output("usage: mzmap <file.exe[:entrypoint]> <output.map> [options]\n"
-           "Scans a DOS MZ executable and tries to find routine boundaries, saves output into a file\n"
+           "Scans a DOS MZ executable and tries to find routine boundaries, saves output into an editable map file\n"
            "Options:\n"
            "--verbose:      show more detailed information, including compared instructions\n"
            "--debug:        show additional debug information\n"
@@ -91,7 +91,7 @@ int main(int argc, char *argv[]) {
             loadSegment = static_cast<Word>(stoi(loadSegStr, nullptr, 16));
             verbose("Overloading default load segment: "s + hexVal(loadSegment));
         }
-        else fatal("Unrecognized parameter: "s + arg);
+        else fatal("Unrecognized argument: "s + arg);
     }
     const string spec{argv[1]}, pathMap{argv[2]};
     try {

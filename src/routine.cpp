@@ -109,13 +109,13 @@ RoutineMap::RoutineMap(const ScanQueue &sq, const std::vector<Segment> &segs, co
     const Offset endOffset = startOffset + codeSize;
     Block b(startOffset);
     prevId = curBlockId = prevBlockId = NULL_ROUTINE;
-    Segment curSeg = findSegment(startOffset);
-    debug("=== Starting in segment " + curSeg.toString());
+    Segment curSeg;
 
     for (Offset mapOffset = startOffset; mapOffset < endOffset; ++mapOffset) {
         // find segment matching currently processed offset
         // TODO: add size field to Segment, calculate segment bounds in routine find routine, verify going out of segment range? In that case also don't need to check every iteration
         Segment offSeg = findSegment(mapOffset);
+        if (offSeg.type == Segment::SEG_NONE) continue;
         if (offSeg != curSeg) {
             curSeg = offSeg;
             debug("=== Segment change to " + curSeg.toString());
