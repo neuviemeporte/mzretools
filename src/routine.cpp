@@ -22,6 +22,18 @@ bool Routine::isUnreachable(const Block &b) const {
     return std::find(unreachable.begin(), unreachable.end(), b) != unreachable.end();
 }
 
+Size Routine::reachableSize() const {
+    Size ret = 0;
+    for (auto &b : reachable) ret += b.size();
+    return ret;
+}
+
+Size Routine::unreachableSize() const {
+    Size ret = 0;
+    for (auto &b : unreachable) ret += b.size();
+    return ret;
+}
+
 Block Routine::mainBlock() const {
     const Address ep = entrypoint();
     const auto &found = std::find_if(reachable.begin(), reachable.end(), [&ep](const Block &b){

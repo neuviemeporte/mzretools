@@ -138,6 +138,18 @@ std::string hexVal(const void* ptr) {
     return str.str();
 }
 
+std::string sizeStr(const Size s) {
+    ostringstream str;
+    str << to_string(s) << "/" << hexVal(s);
+    return str.str();
+}
+
+std::string ratioStr(const Size p, const Size q) {
+    ostringstream str;
+    str << to_string((p * 100)/q) << "%";
+    return str.str();
+}
+
 std::istream& safeGetline(std::istream& is, std::string& t) {
     t.clear();
 

@@ -28,6 +28,9 @@ struct Routine {
     Routine() : near(true) {}
     Routine(const std::string &name, const Block &extents) : name(name), extents(extents), near(true) {}
     Address entrypoint() const { return extents.begin; }
+    Size size() const { return extents.size(); }
+    Size reachableSize() const;
+    Size unreachableSize() const;
     // for sorting purposes
     bool operator<(const Routine &other) const { return entrypoint() < other.entrypoint(); }
     bool isValid() const { return extents.isValid(); }

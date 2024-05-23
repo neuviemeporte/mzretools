@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <regex>
 #include <set>
+#include <iostream>
 
 #include "dos/executable.h"
 #include "dos/analysis.h"
@@ -34,7 +35,6 @@ static const map<string, vector<vector<string>>> INSTR_VARIANT = {
         },
     },    
 };
-
 
 // TODO: include information of existing address mapping contributing to a match/mismatch in the output
 // TODO: make jump instructions compare the match with the relative offset value
@@ -546,10 +546,12 @@ RoutineMap Executable::findRoutines() {
 
     // iterate over discovered memory map and create routine map
     auto ret = RoutineMap{searchQ, segments, loadSegment, codeSize};
+    // TODO: stats like for compare
     return ret;
 }
 
 // TODO: move this out of Executable, will help with unifying how both executables are referenced inside
+// TODO: consider getting rid of the map-less comparison mode, instead of following branches, just do a linear sweep of the reachable ranges from the map?
 bool Executable::compareCode(const RoutineMap &routineMap, const Executable &target, const AnalysisOptions &options) {
     verbose("Comparing code between reference (entrypoint "s + entrypoint().toString() + ") and target (entrypoint " + target.entrypoint().toString() + ") executables");
     debug("Routine map of reference binary has " + to_string(routineMap.size()) + " entries");
@@ -563,7 +565,7 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &tar
     ScanQueue compareQ{Destination(entrypoint(), VISITED_ID, true, {})};
     std::regex excludeRe{options.exclude};
     Size comparedSize = 0;
-    set<string> routineNames;
+    set<string> routineNames, excludedNames;
     while (!compareQ.empty()) {
         // get next location for linear scan and comparison of instructions from the front of the queue,
         // to visit functions in the same order in which they were first encountered
@@ -602,6 +604,7 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &tar
             compareBlock = routine.blockContaining(compare.address);
             if (!options.exclude.empty() && std::regex_match(routine.name, excludeRe)) {
                 verbose("--- Skipping excluded routine " + routine.toString(false) + " @"s + ctx.refCsip.toString() + ", block " + compareBlock.toString(true) +  ", target @" + ctx.tgtCsip.toString());
+                excludedNames.insert(routine.name);
                 continue;
             }
             verbose("--- Now @"s + ctx.refCsip.toString() + ", routine " + routine.toString(false) + ", block " + compareBlock.toString(true) +  ", target @" + ctx.tgtCsip.toString());
@@ -782,7 +785,66 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &tar
     } // iterate over comparison location queue
 
 success:
-    verbose(output_color(OUT_GREEN) + "Comparison result positive" + ", compared " + to_string(comparedSize) + "/" + hexVal(comparedSize) + " bytes, " 
-        + to_string(routineNames.size()) + " routines" + output_color(OUT_DEFAULT));
+    // display comparison statistics
+    // TODO: also display on failure?
+    const Size 
+        visitedCount = routineNames.size(),
+        ignoredCount = excludedNames.size(),
+        codeSize = size();
+    ostringstream msg;
+    msg << output_color(OUT_GREEN) << "Comparison result positive" << output_color(OUT_DEFAULT);
+    if (!routineMap.empty()) {
+        const Size 
+            routineMapSize = routineMap.size(),
+            loadModuleSize = size();
+        Size routineSumSize = 0, reachableSize = 0, unreachableSize = 0, 
+            excludedSize = 0, excludedCount = 0, missedSize = 0, ignoredSize = 0;
+        vector<std::string> missedNames;
+        for (Size i = 0; i < routineMapSize; i++) {
+            const Routine r = routineMap.getRoutine(i);
+            routineSumSize += r.size();
+            reachableSize += r.reachableSize();
+            unreachableSize += r.unreachableSize();
+            if (std::regex_match(r.name, excludeRe)) {
+                excludedCount++;
+                excludedSize += r.size();
+            }
+            else if (routineNames.count(r.name) == 0) {
+                missedSize += r.size();
+                missedNames.push_back(r.toString(false));
+            }
+            if (excludedNames.count(r.name)) {
+                ignoredSize += r.size();
+            }
+        }
+        msg << endl 
+            << "Load module of executable is " << sizeStr(loadModuleSize) << " bytes"
+            << endl
+            << "Routine map of " << routineMapSize << " routines covers " << sizeStr(routineSumSize) 
+            << " bytes (" << ratioStr(routineSumSize,loadModuleSize) << " of the load module)"
+            << endl
+            << "Reachable routine code totals " << sizeStr(reachableSize) << " bytes (" << ratioStr(reachableSize, routineSumSize) << " of the covered area)" 
+            << endl
+            << "Unreachable routine code totals " << sizeStr(unreachableSize) << " bytes (" << ratioStr(unreachableSize, routineSumSize) << " of the covered area)";
+        if (excludedCount) {
+            msg << endl 
+            << "Excluded " << excludedCount << " routines totaling " << sizeStr(excludedSize) 
+            << " bytes ("  << ratioStr(excludedSize, routineSumSize) << " of the covered area)";
+        }
+        msg << endl 
+            << "Compared " << sizeStr(comparedSize) << " bytes of opcodes (" << ratioStr(comparedSize, reachableSize) << " of the reachable area)"
+            << endl
+            << "Visited " << to_string(visitedCount) << " routines, ignored (visited but excluded) " << ignoredCount 
+            << " routines totaling " << sizeStr(ignoredSize) << " bytes (" << ratioStr(ignoredSize, routineSumSize) 
+            << " of the covered area)";
+        if (missedNames.size()) {
+            msg << endl 
+                << "Missed (not visited and not excluded) " << missedNames.size() 
+                << " routines totaling " << sizeStr(missedSize) 
+                << " bytes ("  << ratioStr(missedSize, routineSumSize) << " of the covered area)";
+            for (const auto &n : missedNames) msg << endl << n;
+        }
+    }
+    verbose(msg.str());
     return true;
 }

@@ -81,7 +81,7 @@ vector<Routine> ScanQueue::getRoutines() const {
         // assign automatic names to routines
         if (ep.addr == startAddress()) r.name = "start";
         else r.name = "routine_"s + to_string(ep.id);
-    }   
+    }
     return routines;
 }
 

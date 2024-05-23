@@ -41,6 +41,7 @@ public:
     const Address& entrypoint() const { return ep; }
     void setEntrypoint(const Address &addr);
 
+    Size size() const { return codeSize; }
     bool contains(const Address &addr) const { return codeExtents.contains(addr); }
     RoutineMap findRoutines();
     bool compareCode(const RoutineMap &map, const Executable &other, const AnalysisOptions &options);

@@ -169,11 +169,17 @@ int main(int argc, char *argv[]) {
         }
     }
     try {
+
         Executable exeBase = loadExe(baseSpec, loadSeg, opt);
         Executable exeCompare = loadExe(compareSpec, loadSeg, opt);
         RoutineMap map;
-        if (!pathMap.empty()) map = {pathMap, loadSeg};
-        if (!exeBase.compareCode(map, exeCompare, opt)) return 1;
+        Size mapSize = 0;
+        if (!pathMap.empty()) {
+            map = {pathMap, loadSeg};
+            mapSize = map.size();
+        } 
+        bool compareResult = exeBase.compareCode(map, exeCompare, opt);
+        return compareResult ? 0 : 1;
     }
     catch (Error &e) {
         fatal(e.why());
