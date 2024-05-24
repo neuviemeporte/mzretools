@@ -102,6 +102,7 @@ int main(int argc, char *argv[]) {
             return 1;
         }
         verbose(map.dump(), true);
+        // TODO: sort by extents in output file
         map.save(pathMap, loadSegment);
     }
     catch (Error &e) {

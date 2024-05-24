@@ -786,7 +786,9 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &tar
 
 success:
     // display comparison statistics
+    // TODO: move to separate function
     // TODO: also display on failure?
+    // TODO: display total size of code segments between load module and routine map size
     const Size 
         visitedCount = routineNames.size(),
         ignoredCount = excludedNames.size(),
