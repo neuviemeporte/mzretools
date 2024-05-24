@@ -2,6 +2,7 @@
 #define EXECUTABLE_H
 
 #include <vector>
+#include <set>
 
 #include "dos/types.h"
 #include "dos/address.h"
@@ -64,6 +65,8 @@ private:
     void storeSegment(const Segment::Type type, const Word addr);
     void diffContext(const Context &ctx) const;
     void skipContext(const Context &ctx, Address refAddr, Address tgtAddr, Size refSkipped, Size tgtSkipped) const;
+    void compareSummary(const Size comparedSize, const RoutineMap &routineMap, 
+        const std::set<std::string> &routineNames, const std::set<std::string> &excludedNames, const AnalysisOptions &options, const bool showMissed) const;
 };
 
 #endif // EXECUTABLE_H

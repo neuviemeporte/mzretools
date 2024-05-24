@@ -2,8 +2,6 @@
 #include <vector>
 #include <algorithm>
 #include <regex>
-#include <set>
-#include <iostream>
 
 #include "dos/executable.h"
 #include "dos/analysis.h"
@@ -677,6 +675,7 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &tar
                     verbose(output_color(OUT_RED) + compareStatus(refInstr, tgtInstr, true) + output_color(OUT_DEFAULT));
                     error("Instruction mismatch in routine " + routine.name + " at " + compareStatus(refInstr, tgtInstr, false));
                     diffContext(ctx);
+                    compareSummary(comparedSize, routineMap, routineNames, excludedNames, options, false);
                     return false;
                 }
                 break;
@@ -785,68 +784,67 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &tar
     } // iterate over comparison location queue
 
 success:
-    // display comparison statistics
-    // TODO: move to separate function
-    // TODO: also display on failure?
+    verbose(output_color(OUT_GREEN) + "Comparison result positive" + output_color(OUT_DEFAULT));
+    compareSummary(comparedSize, routineMap, routineNames, excludedNames, options, true);
+    return true;
+}
+
+// display comparison statistics
+void Executable::compareSummary(const Size comparedSize, const RoutineMap &routineMap, const std::set<string> &routineNames, const std::set<string> &excludedNames, const AnalysisOptions &options, const bool showMissed) const {
     // TODO: display total size of code segments between load module and routine map size
+    if (routineMap.empty()) return;
     const Size 
         visitedCount = routineNames.size(),
         ignoredCount = excludedNames.size(),
-        codeSize = size();
-    ostringstream msg;
-    msg << output_color(OUT_GREEN) << "Comparison result positive" << output_color(OUT_DEFAULT);
-    if (!routineMap.empty()) {
-        const Size 
-            routineMapSize = routineMap.size(),
-            loadModuleSize = size();
-        Size routineSumSize = 0, reachableSize = 0, unreachableSize = 0, 
-            excludedSize = 0, excludedCount = 0, missedSize = 0, ignoredSize = 0;
-        vector<std::string> missedNames;
-        for (Size i = 0; i < routineMapSize; i++) {
-            const Routine r = routineMap.getRoutine(i);
-            routineSumSize += r.size();
-            reachableSize += r.reachableSize();
-            unreachableSize += r.unreachableSize();
-            if (std::regex_match(r.name, excludeRe)) {
-                excludedCount++;
-                excludedSize += r.size();
-            }
-            else if (routineNames.count(r.name) == 0) {
-                missedSize += r.size();
-                missedNames.push_back(r.toString(false));
-            }
-            if (excludedNames.count(r.name)) {
-                ignoredSize += r.size();
-            }
+        routineMapSize = routineMap.size(),
+        loadModuleSize = size();
+    Size routineSumSize = 0, reachableSize = 0, unreachableSize = 0, 
+        excludedSize = 0, excludedCount = 0, missedSize = 0, ignoredSize = 0;
+    vector<std::string> missedNames;
+    std::regex excludeRe{options.exclude};
+    for (Size i = 0; i < routineMapSize; i++) {
+        const Routine r = routineMap.getRoutine(i);
+        routineSumSize += r.size();
+        reachableSize += r.reachableSize();
+        unreachableSize += r.unreachableSize();
+        if (std::regex_match(r.name, excludeRe)) {
+            excludedCount++;
+            excludedSize += r.size();
         }
-        msg << endl 
-            << "Load module of executable is " << sizeStr(loadModuleSize) << " bytes"
-            << endl
-            << "Routine map of " << routineMapSize << " routines covers " << sizeStr(routineSumSize) 
-            << " bytes (" << ratioStr(routineSumSize,loadModuleSize) << " of the load module)"
-            << endl
-            << "Reachable routine code totals " << sizeStr(reachableSize) << " bytes (" << ratioStr(reachableSize, routineSumSize) << " of the covered area)" 
-            << endl
-            << "Unreachable routine code totals " << sizeStr(unreachableSize) << " bytes (" << ratioStr(unreachableSize, routineSumSize) << " of the covered area)";
-        if (excludedCount) {
-            msg << endl 
-            << "Excluded " << excludedCount << " routines totaling " << sizeStr(excludedSize) 
-            << " bytes ("  << ratioStr(excludedSize, routineSumSize) << " of the covered area)";
+        else if (routineNames.count(r.name) == 0) {
+            missedSize += r.size();
+            missedNames.push_back(r.toString(false));
         }
-        msg << endl 
-            << "Compared " << sizeStr(comparedSize) << " bytes of opcodes (" << ratioStr(comparedSize, reachableSize) << " of the reachable area)"
-            << endl
-            << "Visited " << to_string(visitedCount) << " routines, ignored (visited but excluded) " << ignoredCount 
-            << " routines totaling " << sizeStr(ignoredSize) << " bytes (" << ratioStr(ignoredSize, routineSumSize) 
-            << " of the covered area)";
-        if (missedNames.size()) {
-            msg << endl 
-                << "Missed (not visited and not excluded) " << missedNames.size() 
-                << " routines totaling " << sizeStr(missedSize) 
-                << " bytes ("  << ratioStr(missedSize, routineSumSize) << " of the covered area)";
-            for (const auto &n : missedNames) msg << endl << n;
+        if (excludedNames.count(r.name)) {
+            ignoredSize += r.size();
         }
     }
+    ostringstream msg;
+    msg << "Load module of executable is " << sizeStr(loadModuleSize) << " bytes"
+        << endl
+        << "Routine map of " << routineMapSize << " routines covers " << sizeStr(routineSumSize) 
+        << " bytes (" << ratioStr(routineSumSize,loadModuleSize) << " of the load module)"
+        << endl
+        << "Reachable routine code totals " << sizeStr(reachableSize) << " bytes (" << ratioStr(reachableSize, routineSumSize) << " of the covered area)" 
+        << endl
+        << "Unreachable routine code totals " << sizeStr(unreachableSize) << " bytes (" << ratioStr(unreachableSize, routineSumSize) << " of the covered area)";
+    if (excludedCount) {
+        msg << endl 
+        << "Excluded " << excludedCount << " routines totaling " << sizeStr(excludedSize) 
+        << " bytes ("  << ratioStr(excludedSize, routineSumSize) << " of the covered area)";
+    }
+    msg << endl 
+        << "Compared " << sizeStr(comparedSize) << " bytes of opcodes (" << ratioStr(comparedSize, reachableSize) << " of the reachable area)"
+        << endl
+        << "Visited " << to_string(visitedCount) << " routines, ignored (visited but excluded) " << ignoredCount 
+        << " routines totaling " << sizeStr(ignoredSize) << " bytes (" << ratioStr(ignoredSize, routineSumSize) 
+        << " of the covered area)";
+    if (missedNames.size()) {
+        msg << endl 
+            << "Missed (not visited and not excluded) " << missedNames.size() 
+            << " routines totaling " << sizeStr(missedSize) 
+            << " bytes ("  << ratioStr(missedSize, routineSumSize) << " of the covered area)";
+        if (showMissed) for (const auto &n : missedNames) msg << endl << n;
+    }
     verbose(msg.str());
-    return true;
 }
