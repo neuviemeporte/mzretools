@@ -784,7 +784,7 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &tar
     } // iterate over comparison location queue
 
 success:
-    verbose(output_color(OUT_GREEN) + "Comparison result positive" + output_color(OUT_DEFAULT));
+    verbose(output_color(OUT_GREEN) + "Comparison result: match" + output_color(OUT_DEFAULT));
     compareSummary(comparedSize, routineMap, routineNames, excludedNames, options, true);
     return true;
 }
@@ -799,7 +799,7 @@ void Executable::compareSummary(const Size comparedSize, const RoutineMap &routi
         routineMapSize = routineMap.size(),
         loadModuleSize = size();
     Size routineSumSize = 0, reachableSize = 0, unreachableSize = 0, 
-        excludedSize = 0, excludedCount = 0, missedSize = 0, ignoredSize = 0;
+        excludedSize = 0, excludedCount = 0, excludedReachableSize = 0, missedSize = 0, ignoredSize = 0;
     vector<std::string> missedNames;
     std::regex excludeRe{options.exclude};
     for (Size i = 0; i < routineMapSize; i++) {
@@ -810,6 +810,7 @@ void Executable::compareSummary(const Size comparedSize, const RoutineMap &routi
         if (std::regex_match(r.name, excludeRe)) {
             excludedCount++;
             excludedSize += r.size();
+            excludedReachableSize += r.reachableSize();
         }
         else if (routineNames.count(r.name) == 0) {
             missedSize += r.size();
@@ -825,25 +826,27 @@ void Executable::compareSummary(const Size comparedSize, const RoutineMap &routi
         << "Routine map of " << routineMapSize << " routines covers " << sizeStr(routineSumSize) 
         << " bytes (" << ratioStr(routineSumSize,loadModuleSize) << " of the load module)"
         << endl
-        << "Reachable routine code totals " << sizeStr(reachableSize) << " bytes (" << ratioStr(reachableSize, routineSumSize) << " of the covered area)" 
+        << "Reachable code totals " << sizeStr(reachableSize) << " bytes (" << ratioStr(reachableSize, routineSumSize) << " of the mapped area)" 
         << endl
-        << "Unreachable routine code totals " << sizeStr(unreachableSize) << " bytes (" << ratioStr(unreachableSize, routineSumSize) << " of the covered area)";
+        << "Unreachable code totals " << sizeStr(unreachableSize) << " bytes (" << ratioStr(unreachableSize, routineSumSize) << " of the mapped area)" << endl;
     if (excludedCount) {
-        msg << endl 
-        << "Excluded " << excludedCount << " routines totaling " << sizeStr(excludedSize) 
-        << " bytes ("  << ratioStr(excludedSize, routineSumSize) << " of the covered area)";
+        msg << "Excluded " << excludedCount << " routines totaling " << sizeStr(excludedSize) 
+            << " bytes ("  << ratioStr(excludedSize, routineSumSize) << " of the mapped area)" << endl;
     }
-    msg << endl 
-        << "Compared " << sizeStr(comparedSize) << " bytes of opcodes (" << ratioStr(comparedSize, reachableSize) << " of the reachable area)"
+    msg << "Compared " << sizeStr(comparedSize) << " bytes of opcodes (" << ratioStr(comparedSize, reachableSize) << " of the reachable area)"
         << endl
-        << "Visited " << to_string(visitedCount) << " routines, ignored (visited but excluded) " << ignoredCount 
+        << "Seen " << to_string(visitedCount) << " routines, ignored (seen but excluded) " << ignoredCount 
         << " routines totaling " << sizeStr(ignoredSize) << " bytes (" << ratioStr(ignoredSize, routineSumSize) 
-        << " of the covered area)";
+        << " of the mapped area)"
+        << endl
+        << "Excluded routines take " << sizeStr(excludedReachableSize) << " bytes (" << ratioStr(excludedReachableSize, reachableSize)
+        << " of the reachable area)" << endl 
+        << "Total coverage (seen + excluded) is " << sizeStr(comparedSize + excludedReachableSize) 
+        << " (" << output_color(OUT_GREEN) << ratioStr(comparedSize + excludedReachableSize, reachableSize) << output_color(OUT_DEFAULT) << " of the reachable area)" << endl;
     if (missedNames.size()) {
-        msg << endl 
-            << "Missed (not visited and not excluded) " << missedNames.size() 
+        msg << "Missed (not seen and not excluded) " << missedNames.size() 
             << " routines totaling " << sizeStr(missedSize) 
-            << " bytes ("  << ratioStr(missedSize, routineSumSize) << " of the covered area)";
+            << " bytes (" << output_color(OUT_RED) << ratioStr(missedSize, routineSumSize) << output_color(OUT_DEFAULT) << " of the covered area)";
         if (showMissed) for (const auto &n : missedNames) msg << endl << n;
     }
     verbose(msg.str());
