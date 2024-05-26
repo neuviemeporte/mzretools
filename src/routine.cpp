@@ -84,6 +84,7 @@ string Routine::toString(const bool showChunks) const {
     str << extents.toString(false, true) << ": " << name;
     if (near) str << " [near]";
     else str << " [far]";
+    if (ignore) str << " [ignored]";
     if (!showChunks || isUnchunked()) return str.str();
 
     auto blocks = sortedBlocks();
@@ -328,10 +329,10 @@ void RoutineMap::save(const std::string &path, const Word reloc, const bool over
                 throw AnalysisError("Block of routine " + r.name + " lies in different segment than routine extents: " + rblock.toString() + " vs " + rextent.toString());
             if (rblock.begin.segment != rblock.end.segment)
                 throw AnalysisError("Beginning and end of block of routine " + r.name + " lie in different segments: " + rblock.toString());
-            if (r.isReachable(b)) file << " R";
-            else file << " U";
+            file << " " << (r.isReachable(b) ? "R" : "U");
             file <<  hexVal(rblock.begin.offset, false) << "-" << hexVal(rblock.end.offset, false);
         }
+        if (r.ignore) file << " ignore";
         file << endl;
     }
 }
@@ -429,8 +430,8 @@ void RoutineMap::loadFromMapFile(const std::string &path, const Word reloc) {
         Segment rseg;
         smatch match;
         int tokenno = 0;
-        BlockType bt = BLOCK_NONE;
         while (sstr >> token) {
+            BlockType bt = BLOCK_NONE;
             tokenno++;
             if (token.empty()) continue;
             switch (tokenno) {
@@ -452,6 +453,7 @@ void RoutineMap::loadFromMapFile(const std::string &path, const Word reloc) {
             default: // reachable and unreachable blocks follow
                 if (token.front() == 'R') bt = BLOCK_REACHABLE;
                 else if (token.front() == 'U') bt = BLOCK_UNREACHABLE;
+                else if (token == "ignore") r.ignore = true;
                 else throw ParseError("Line " + to_string(lineno) + ": invalid block definition '" + token + "'");
                 token = token.substr(1, token.size() - 1);
                 break;

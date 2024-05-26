@@ -23,9 +23,9 @@ struct Routine {
     std::string name;
     Block extents; // largest contiguous block starting at routine entrypoint, may contain unreachable regions
     std::vector<Block> reachable, unreachable;
-    bool near;
+    bool near, ignore;
 
-    Routine() : near(true) {}
+    Routine() : near(true), ignore(false) {}
     Routine(const std::string &name, const Block &extents) : name(name), extents(extents), near(true) {}
     Address entrypoint() const { return extents.begin; }
     Size size() const { return extents.size(); }

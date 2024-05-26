@@ -561,7 +561,6 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &tar
     // TODO: use routine map to fill compareQ in advance
     // TODO: implement register value tracing
     ScanQueue compareQ{Destination(entrypoint(), VISITED_ID, true, {})};
-    std::regex excludeRe{options.exclude};
     Size comparedSize = 0;
     set<string> routineNames, excludedNames;
     while (!compareQ.empty()) {
@@ -600,7 +599,7 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &tar
             }
             routineNames.insert(routine.name);
             compareBlock = routine.blockContaining(compare.address);
-            if (!options.exclude.empty() && std::regex_match(routine.name, excludeRe)) {
+            if (routine.ignore) {
                 verbose("--- Skipping excluded routine " + routine.toString(false) + " @"s + ctx.refCsip.toString() + ", block " + compareBlock.toString(true) +  ", target @" + ctx.tgtCsip.toString());
                 excludedNames.insert(routine.name);
                 continue;
@@ -801,13 +800,12 @@ void Executable::compareSummary(const Size comparedSize, const RoutineMap &routi
     Size routineSumSize = 0, reachableSize = 0, unreachableSize = 0, 
         excludedSize = 0, excludedCount = 0, excludedReachableSize = 0, missedSize = 0, ignoredSize = 0;
     vector<std::string> missedNames;
-    std::regex excludeRe{options.exclude};
     for (Size i = 0; i < routineMapSize; i++) {
         const Routine r = routineMap.getRoutine(i);
         routineSumSize += r.size();
         reachableSize += r.reachableSize();
         unreachableSize += r.unreachableSize();
-        if (std::regex_match(r.name, excludeRe)) {
+        if (r.ignore) {
             excludedCount++;
             excludedSize += r.size();
             excludedReachableSize += r.reachableSize();

@@ -322,6 +322,7 @@ void Instruction::load(const Byte *data)  {
         op2.size = MODRM_OPR_SIZE[modop2];
     }
 
+    // TODO: handle gracefully, throw
     assert(op1.type != OPR_ERR && op2.type != OPR_ERR);
     DEBUG("generalized operands, op1: type = "s + OPR_TYPE_ID[op1.type] + ", size = " + OPR_SIZE_ID[op1.size] + ", op2: type = " + OPR_TYPE_ID[op2.type] + ", size = " + OPR_SIZE_ID[op2.size]);
     // load immediate values if present

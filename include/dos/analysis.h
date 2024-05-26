@@ -98,7 +98,6 @@ struct AnalysisOptions {
     bool strict, ignoreDiff, noCall, variant;
     Size refSkip, tgtSkip, ctxCount;
     Address stopAddr;
-    std::string exclude;
     AnalysisOptions() : strict(true), ignoreDiff(false), noCall(false), variant(false), refSkip(0), tgtSkip(0), ctxCount(10) {}
 };
 
