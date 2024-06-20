@@ -86,7 +86,7 @@ struct Block {
 
     std::string toString(const bool linear = false, const bool showSize = true) const;
     Size size() const { return (isValid() ? (end - begin) + 1 : 0); }
-    bool isValid() const { return begin <= end; }
+    bool isValid() const { return begin.isValid() && end.isValid() && begin <= end; }
     bool inSegment(const Word seg) const { return begin.inSegment(seg) && end.inSegment(seg); }
     bool contains(const Address &addr) const { return addr >= begin && addr <= end; }
     bool intersects(const Block &other) const;

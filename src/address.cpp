@@ -120,8 +120,8 @@ Block::Block(const std::string &from, const std::string &to) {
 }
 
 std::string Block::toString(const bool linear, const bool showSize) const {
-    if (!isValid()) return "[invalid]";
     ostringstream str;
+    if (!isValid()) str << "[invalid] ";
     if (!linear) str << begin.toString(true) << "-" << end.toString(true);
     else str << hexVal(begin.toLinear(), false, OFFSET_STRLEN) << "-" << hexVal(end.toLinear(), false, OFFSET_STRLEN);
     if (showSize) str << "/" << hex << setw(OFFSET_STRLEN) << setfill('0') << size();

@@ -145,6 +145,7 @@ std::string sizeStr(const Size s) {
 }
 
 std::string ratioStr(const Size p, const Size q) {
+    if (p == 0 || q == 0) return "0%"s;
     ostringstream str;
     str << to_string((p * 100)/q) << "%";
     return str.str();

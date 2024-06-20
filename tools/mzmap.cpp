@@ -14,11 +14,13 @@
 using namespace std;
 
 void usage() {
-    output("usage: mzmap <file.exe[:entrypoint]> <output.map> [options]\n"
+    output("usage: mzmap [options] [<file.exe[:entrypoint]>] <output.map>\n"
            "Scans a DOS MZ executable and tries to find routine boundaries, saves output into an editable map file\n"
+           "Without an exe file, prints a summary of an existing map file"
            "Options:\n"
            "--verbose:      show more detailed information, including compared instructions\n"
            "--debug:        show additional debug information\n"
+           "--hide:         only show uncompleted and unclaimed areas in map summary\n"
            "--nocpu:        omit CPU-related information like instruction decoding\n"
            "--noanal:       omit analysis-related information\n"
            "--load segment: overrride default load segment (0x1000)", LOG_OTHER, LOG_ERROR);
@@ -74,36 +76,53 @@ Executable loadExe(const string &spec, const Word loadSegment) {
     return exe;
 }
 
+void loadAndPrintMap(const string &mapfile, const bool verbose, const bool hide) {
+    debug("Single parameter specified, printing existing mapfile");
+    auto fs = checkFile(mapfile);
+    if (!fs.exists) fatal("Mapfile does not exist: " + mapfile);
+    RoutineMap map(mapfile);
+    cout << map.dump(verbose, hide);
+}
+
 int main(int argc, char *argv[]) {
-    setOutputLevel(LOG_WARN);
-    if (argc < 3) {
+    setOutputLevel(LOG_INFO);
+    if (argc < 2) {
         usage();
     }
     Word loadSegment = 0x1000;
-    for (int aidx = 3; aidx < argc; ++aidx) {
+    string file1, file2;
+    bool verbose = false;
+    bool hide = false;
+    for (int aidx = 1; aidx < argc; ++aidx) {
         string arg(argv[aidx]);
         if (arg == "--debug") setOutputLevel(LOG_DEBUG);
-        else if (arg == "--verbose") setOutputLevel(LOG_VERBOSE);
+        else if (arg == "--verbose") { verbose = true; setOutputLevel(LOG_VERBOSE); }
         else if (arg == "--nocpu") setModuleVisibility(LOG_CPU, false);
         else if (arg == "--noanal") setModuleVisibility(LOG_ANALYSIS, false);
+        else if (arg == "--hide") hide = true;
         else if (arg == "--load" && (aidx + 1 < argc)) {
             string loadSegStr(argv[aidx+1]);
             loadSegment = static_cast<Word>(stoi(loadSegStr, nullptr, 16));
-            verbose("Overloading default load segment: "s + hexVal(loadSegment));
+            info("Overloading default load segment: "s + hexVal(loadSegment));
         }
+        else if (file1.empty()) file1 = arg;
+        else if (file2.empty()) file2 = arg;
         else fatal("Unrecognized argument: "s + arg);
     }
-    const string spec{argv[1]}, pathMap{argv[2]};
     try {
-        Executable exe = loadExe(spec, loadSegment);
-        RoutineMap map = exe.findRoutines();
-        if (map.empty()) {
-            fatal("Unable to find any routines");
-            return 1;
+        if (file2.empty()) { // print existing map and exit
+            loadAndPrintMap(file1, verbose, hide);
         }
-        verbose(map.dump(), true);
-        // TODO: sort by extents in output file
-        map.save(pathMap, loadSegment);
+        else { // regular operation, scan executable for routines
+            Executable exe = loadExe(file1, loadSegment);
+            RoutineMap map = exe.findRoutines();
+            if (map.empty()) {
+                fatal("Unable to find any routines");
+                return 1;
+            }
+            if (verbose) cout << map.dump(verbose, hide);
+            map.save(file2, loadSegment);
+        }
     }
     catch (Error &e) {
         fatal(e.why());

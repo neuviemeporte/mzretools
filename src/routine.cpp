@@ -3,6 +3,7 @@
 #include <sstream>
 #include <regex>
 #include <fstream>
+#include <iostream>
 
 #include "dos/routine.h"
 #include "dos/output.h"
@@ -85,6 +86,9 @@ string Routine::toString(const bool showChunks) const {
     if (near) str << " [near]";
     else str << " [far]";
     if (ignore) str << " [ignored]";
+    if (complete) str << " [complete]";
+    if (unclaimed) str << " [unclaimed]";
+    if (external) str << " [external]";
     if (!showChunks || isUnchunked()) return str.str();
 
     auto blocks = sortedBlocks();
@@ -109,7 +113,7 @@ std::vector<Block> Routine::sortedBlocks() const {
     return blocks;
 }
 
-RoutineMap::RoutineMap(const ScanQueue &sq, const std::vector<Segment> &segs, const Word loadSegment, const Size codeSize) : codeSize(codeSize) {
+RoutineMap::RoutineMap(const ScanQueue &sq, const std::vector<Segment> &segs, const Word loadSegment, const Size mapSize) : mapSize(mapSize) {
     const Size routineCount = sq.routineCount();
     if (routineCount == 0)
         throw AnalysisError("Attempted to create routine map from search queue with no routines");
@@ -119,7 +123,7 @@ RoutineMap::RoutineMap(const ScanQueue &sq, const std::vector<Segment> &segs, co
     routines = sq.getRoutines();
 
     const Offset startOffset = SEG_TO_OFFSET(loadSegment);
-    const Offset endOffset = startOffset + codeSize;
+    const Offset endOffset = startOffset + mapSize;
     Block b(startOffset);
     prevId = curBlockId = prevBlockId = NULL_ROUTINE;
     Segment curSeg;
@@ -176,7 +180,59 @@ RoutineMap::RoutineMap(const ScanQueue &sq, const std::vector<Segment> &segs, co
     sort();
 }
 
-RoutineMap::RoutineMap(const std::string &path, const Word reloc) {
+// recreate list of unclaimed blocks (lost after map is saved to file) from holes in the map coverage after loading the map back from a file
+void RoutineMap::buildUnclaimed(const Word loadSegment) {
+    if (mapSize == 0) return;
+    Block b(loadSegment, 0);
+    debug("Building unclaimed blocks, mapSize = " + sizeStr(mapSize) + ", load segment: " + hexVal(loadSegment));
+    // expecting routines to be sorted
+    sort();
+    for (Size ri = 0; ri < size(); ++ri) {
+        const Routine &r = getRoutine(ri);
+        debug("Processing routine " + r.name + ": " + r.extents.toString());
+        // the current routine starts after the last claimed position
+        if (r.extents.begin > b.begin) {
+            debug("Unclaimed block found starting at " + b.begin.toString());
+            // unclaimed block crosses segment boundary, split into two
+            if (r.extents.begin.segment != b.begin.segment) {
+                // first block ends before the segment start of the current routine
+                b.end = Address(SEG_TO_OFFSET(r.extents.begin.segment) - 1);
+                b.end.move(b.begin.segment);
+                debug("Unclaimed block crosses segment boundary, forcing split: " + b.toString());
+                if (b.isValid() && findSegment(b.begin.segment).type == Segment::SEG_CODE) 
+                    unclaimed.push_back(b);
+                // the second part of the unclaimed block starts at the segment start of the current routine, 
+                // but make sure the routine doesn't start there as well
+                if (r.extents.begin.offset > 0) {
+                    Address newBegin = Address(r.extents.begin.segment, 0);
+                    // make sure the new beginning is not before the original beginning 
+                    // (routine from old segment could have spanned the current segment)
+                    if (newBegin > b.begin) b.begin = newBegin;
+                    else b.begin.move(r.extents.begin.segment);
+                }
+                else b.begin = {};
+                debug("Unclaimed block in new segment starts at " + b.begin.toString());
+            }
+            // create unclaimed block between the last claimed position and the beginning of this routine
+            b.end = r.extents.begin - 1;
+            debug("Setting end of unclaimed block: " + b.toString());
+            if (b.isValid() && findSegment(b.begin.segment).type == Segment::SEG_CODE) 
+                unclaimed.push_back(b);
+        }
+        // start next potential unclaimed block past the end of the current routine
+        b = Block(r.extents.end + Offset(1));
+    }
+    Address mapEnd{mapSize};
+    // check last block, create unclaimed if it does not match the end of the load module
+    if (b.begin < mapEnd) {
+        b.end = mapEnd;
+        b.end.move(b.begin.segment);
+        debug("Last block before map end: " + b.toString());
+        unclaimed.push_back(b);
+    }
+}
+
+RoutineMap::RoutineMap(const std::string &path, const Word reloc) : RoutineMap() {
     static const regex LSTFILE_RE{".*\\.(lst|LST)"};
     const auto fstat = checkFile(path);
     if (!fstat.exists) throw ArgError("File does not exist: "s + path);
@@ -184,7 +240,8 @@ RoutineMap::RoutineMap(const std::string &path, const Word reloc) {
     if (regex_match(path, match, LSTFILE_RE)) loadFromIdaFile(path, reloc);
     else loadFromMapFile(path, reloc);
     debug("Done, found "s + to_string(routines.size()) + " routines");
-    sort();
+    // TODO: overridable value
+    buildUnclaimed(0);
 }
 
 Routine RoutineMap::getRoutine(const Address &addr) const {
@@ -333,12 +390,13 @@ void RoutineMap::save(const std::string &path, const Word reloc, const bool over
             file <<  hexVal(rblock.begin.offset, false) << "-" << hexVal(rblock.end.offset, false);
         }
         if (r.ignore) file << " ignore";
+        if (r.complete) file << " complete";
         file << endl;
     }
 }
 
 // TODO: implement a print mode of all blocks (reachable, unreachable, unclaimed) printed linearly, not grouped under routines
-string RoutineMap::dump() const {
+string RoutineMap::dump(const bool verbose, const bool hide) const {
     ostringstream str;
     if (empty()) {
         str << "--- Empty routine map";
@@ -349,20 +407,51 @@ string RoutineMap::dump() const {
     // create fake "routines" representing unclaimed blocks for the purpose of printing
     Size unclaimedIdx = 0;
     for (const Block &b : unclaimed) {
-        printRoutines.emplace_back(Routine{"unclaimed_"s + to_string(++unclaimedIdx), b});
+        auto r = Routine{"unclaimed_"s + to_string(++unclaimedIdx), b};
+        r.unclaimed = true;
+        printRoutines.emplace_back(r);
     }
     std::sort(printRoutines.begin(), printRoutines.end());
 
-    str << "--- Routine map containing " << routines.size() << " routines" << endl;
-
+    str << "--- Routine map containing " << routines.size() << " routines" << endl
+        << "Size " << sizeStr(mapSize) << endl;
     for (const auto &s : segments) {
         str << s.toString() << endl;
     }
 
-    // display routines
+    // display routines, gather statistics
+    Size codeSize = 0, ignoredSize = 0, completedSize = 0, unclaimedSize = 0, externalSize = 0;
     for (const auto &r : printRoutines) {
-        str << r.toString(true) << endl;
+        const auto seg = findSegment(r.extents.begin.segment);
+        if (seg.type == Segment::SEG_CODE) {
+            codeSize += r.size();
+            // TODO: f15 does not have routines in the data segment other than the jump trampolines, 
+            // but what about other projects?
+            if (r.ignore) ignoredSize += r.size();
+            if (r.complete) completedSize += r.size();
+            if (r.unclaimed) unclaimedSize += r.size();
+            if (r.external) externalSize += r.size();
+        }
+        // print routine unless hide mode enabled and it's not important - show only uncompleted routines and unclaimed blocks within a code segment
+        if (!(hide && (r.ignore || r.complete || r.external || r.size() < 2 || seg.type != Segment::SEG_CODE))) {
+            str << r.toString(verbose);
+            if (seg.type == Segment::SEG_DATA) str << " [data]";
+            str << endl;
+        }
     }
+    // print statistics
+    const Size 
+        dataSize = mapSize - codeSize,
+        nonExternalSize = ignoredSize - externalSize,
+        uncompleteSize = codeSize - (completedSize + ignoredSize + unclaimedSize);
+    str << "Code size: " << sizeStr(codeSize) << " (" << ratioStr(codeSize, mapSize) << " of load module)" << endl
+        << "Data size: " << sizeStr(dataSize) << " (" << ratioStr(dataSize, mapSize) << " of load module)" << endl
+        << "Completed code: " << sizeStr(completedSize) << " (" << ratioStr(completedSize, codeSize) << " of code) - ported to high level language" << endl
+        << "Ignored code: " << sizeStr(ignoredSize) << " (" << ratioStr(ignoredSize, codeSize) << " of code) - excluded from comparison" << endl
+        << "External ignored code: " << sizeStr(externalSize) << " (" << ratioStr(externalSize, ignoredSize) << " of ignored) - typically library code" << endl
+        << "Other ignored code: " << sizeStr(nonExternalSize) << " (" << ratioStr(nonExternalSize, ignoredSize) << " of ignored) - typically assembly which can't be ported to identical code" << endl
+        << "Unclaimed code: " << sizeStr(unclaimedSize) << " (" << ratioStr(unclaimedSize, codeSize) << " of code) - holes between routines not covered by map" << endl
+        << "Uncompleted code: " << sizeStr(uncompleteSize) << " (" << ratioStr(uncompleteSize, codeSize) << " of code) - routines not completed and not ignored" << endl;
     return str.str();
 }
 
@@ -406,7 +495,9 @@ Segment RoutineMap::findSegment(const Offset off) const {
 enum BlockType { BLOCK_NONE, BLOCK_EXTENTS, BLOCK_REACHABLE, BLOCK_UNREACHABLE };
 
 void RoutineMap::loadFromMapFile(const std::string &path, const Word reloc) {
-    static const regex RANGE_RE{"([0-9a-fA-F]{1,4})-([0-9a-fA-F]{1,4})"};
+    static const regex 
+        RANGE_RE{"([0-9a-fA-F]{1,4})-([0-9a-fA-F]{1,4})"},
+        SIZE_RE{"Size\\s+([0-9a-fA-F]+)"};
     debug("Loading routine map from "s + path + ", relocating to " + hexVal(reloc));
     ifstream mapFile{path};
     string line, token;
@@ -416,6 +507,11 @@ void RoutineMap::loadFromMapFile(const std::string &path, const Word reloc) {
         lineno++;
         // ignore comments
         if (line[0] == '#') continue;
+        // try to interpret as code size
+        else if (regex_match(line, match, SIZE_RE)) {
+            mapSize = std::stoi(match.str(1), nullptr, 16);
+            continue;
+        }
         // try to interpret as a segment
         else if (!(match = Segment::stringMatch(line)).empty()) {
             Segment s(match);
@@ -454,7 +550,9 @@ void RoutineMap::loadFromMapFile(const std::string &path, const Word reloc) {
                 if (token.front() == 'R') bt = BLOCK_REACHABLE;
                 else if (token.front() == 'U') bt = BLOCK_UNREACHABLE;
                 else if (token == "ignore") r.ignore = true;
-                else throw ParseError("Line " + to_string(lineno) + ": invalid block definition '" + token + "'");
+                else if (token == "complete") r.complete = true;
+                else if (token == "external") { r.ignore = true; r.external = true; }
+                else throw ParseError("Line " + to_string(lineno) + ": invalid token: '" + token + "'");
                 token = token.substr(1, token.size() - 1);
                 break;
             }

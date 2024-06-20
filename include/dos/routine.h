@@ -23,10 +23,10 @@ struct Routine {
     std::string name;
     Block extents; // largest contiguous block starting at routine entrypoint, may contain unreachable regions
     std::vector<Block> reachable, unreachable;
-    bool near, ignore;
+    bool near, ignore, complete, unclaimed, external;
 
-    Routine() : near(true), ignore(false) {}
-    Routine(const std::string &name, const Block &extents) : name(name), extents(extents), near(true) {}
+    Routine() : near(true), ignore(false), complete(false), unclaimed(false), external(false) {}
+    Routine(const std::string &name, const Block &extents) : name(name), extents(extents), near(true), ignore(false), complete(false), unclaimed(false), external(false) {}
     Address entrypoint() const { return extents.begin; }
     Size size() const { return extents.size(); }
     Size reachableSize() const;
@@ -48,7 +48,7 @@ struct Routine {
 // A map of an executable, records which areas have been claimed by routines, and which have not, serializable to a file
 class RoutineMap {
     friend class AnalysisTest;
-    Size codeSize;
+    Size mapSize;
     std::vector<Routine> routines;
     std::vector<Block> unclaimed;
     std::vector<Segment> segments;
@@ -56,8 +56,8 @@ class RoutineMap {
     RoutineId curId, prevId, curBlockId, prevBlockId;
 
 public:
-    RoutineMap() {}
-    RoutineMap(const ScanQueue &sq, const std::vector<Segment> &segs, const Word loadSegment, const Size codeSize);
+    RoutineMap() : mapSize(0), curId(0), prevId(0), curBlockId(0), prevBlockId(0) {}
+    RoutineMap(const ScanQueue &sq, const std::vector<Segment> &segs, const Word loadSegment, const Size mapSize);
     RoutineMap(const std::string &path, const Word reloc = 0);
 
     Size size() const { return routines.size(); }
@@ -68,7 +68,7 @@ public:
     Size match(const RoutineMap &other) const;
     Routine colidesBlock(const Block &b) const;
     void save(const std::string &path, const Word reloc, const bool overwrite = false) const;
-    std::string dump() const;
+    std::string dump(const bool verbose = true, const bool hide = false) const;
     const auto& getSegments() const { return segments; }
     Size segmentCount(const Segment::Type type) const;
     Segment findSegment(const Word addr) const;
@@ -80,6 +80,7 @@ private:
     void closeBlock(Block &b, const Address &next, const ScanQueue &sq);
     Block moveBlock(const Block &b, const Word segment) const;
     void sort();
+    void buildUnclaimed(const Word loadSegment);
     void loadFromMapFile(const std::string &path, const Word reloc);
     void loadFromIdaFile(const std::string &path, const Word reloc);
 };
