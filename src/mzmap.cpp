@@ -16,7 +16,7 @@ using namespace std;
 void usage() {
     output("usage: mzmap [options] [<file.exe[:entrypoint]>] <output.map>\n"
            "Scans a DOS MZ executable and tries to find routine boundaries, saves output into an editable map file\n"
-           "Without an exe file, prints a summary of an existing map file"
+           "Without an exe file, prints a summary of an existing map file\n"
            "Options:\n"
            "--verbose:      show more detailed information, including compared instructions\n"
            "--debug:        show additional debug information\n"
