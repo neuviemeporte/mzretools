@@ -128,6 +128,12 @@ std::string Block::toString(const bool linear, const bool showSize) const {
     return str.str();
 }
 
+std::string Block::toHex() const {
+    ostringstream str;
+    str << hexVal(begin.offset, false) << "-" << hexVal(end.offset, false);
+    return str.str();
+}
+
 // check if blocks overlap each other (by at least one byte)
 bool Block::intersects(const Block &other) const {
     if (!isValid()) return false;

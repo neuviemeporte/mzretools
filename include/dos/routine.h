@@ -23,10 +23,10 @@ struct Routine {
     std::string name;
     Block extents; // largest contiguous block starting at routine entrypoint, may contain unreachable regions
     std::vector<Block> reachable, unreachable;
-    bool near, ignore, complete, unclaimed, external;
+    bool near, ignore, complete, unclaimed, external, detached;
 
-    Routine() : near(true), ignore(false), complete(false), unclaimed(false), external(false) {}
-    Routine(const std::string &name, const Block &extents) : name(name), extents(extents), near(true), ignore(false), complete(false), unclaimed(false), external(false) {}
+    Routine() : near(true), ignore(false), complete(false), unclaimed(false), external(false), detached(false) {}
+    Routine(const std::string &name, const Block &extents) : name(name), extents(extents), near(true), ignore(false), complete(false), unclaimed(false), external(false), detached(false) {}
     Address entrypoint() const { return extents.begin; }
     Size size() const { return extents.size(); }
     Size reachableSize() const;
@@ -68,7 +68,7 @@ public:
     Size match(const RoutineMap &other) const;
     Routine colidesBlock(const Block &b) const;
     void save(const std::string &path, const Word reloc, const bool overwrite = false) const;
-    std::string dump(const bool verbose = true, const bool hide = false) const;
+    std::string dump(const bool verbose = true, const bool hide = false, const bool format = false) const;
     const auto& getSegments() const { return segments; }
     Size segmentCount(const Segment::Type type) const;
     Segment findSegment(const Word addr) const;
@@ -83,6 +83,7 @@ private:
     void buildUnclaimed(const Word loadSegment);
     void loadFromMapFile(const std::string &path, const Word reloc);
     void loadFromIdaFile(const std::string &path, const Word reloc);
+    std::string routineString(const Routine &r, const Word reloc) const;
 };
 
 #endif // ROUTINE_H

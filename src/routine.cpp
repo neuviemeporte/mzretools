@@ -360,6 +360,39 @@ void RoutineMap::sort() {
     std::sort(segments.begin(), segments.end());
 }
 
+std::string RoutineMap::routineString(const Routine &r, const Word reloc) const {
+    ostringstream str;
+    Block rextent{r.extents};
+    rextent.rebase(reloc);
+    if (rextent.begin.segment != rextent.end.segment) 
+        throw AnalysisError("Beginning and end of extents of routine " + r.name + " lie in different segments: " + rextent.toString());
+    Segment rseg = findSegment(r.extents.begin.segment);
+    if (rseg.type == Segment::SEG_NONE) 
+        throw AnalysisError("Unable to find segment for routine " + r.name + ", start addr " + r.extents.begin.toString() + ", relocated " + rextent.begin.toString());
+    str << r.name << ": " << rseg.name << " " << (r.near ? "NEAR " : "FAR ") << rextent.toHex();
+    if (r.unclaimed) {
+        str << " U" << rextent.toHex();
+    }
+    else {
+        const auto blocks = r.sortedBlocks();
+        for (const auto &b : blocks) {
+            Block rblock{b};
+            rblock.rebase(reloc);
+            if (rblock.begin.segment != rextent.begin.segment)
+                throw AnalysisError("Block of routine " + r.name + " lies in different segment than routine extents: " + rblock.toString() + " vs " + rextent.toString());
+            if (rblock.begin.segment != rblock.end.segment)
+                throw AnalysisError("Beginning and end of block of routine " + r.name + " lie in different segments: " + rblock.toString());
+            str << " " << (r.isReachable(b) ? "R" : "U");
+            str <<  rblock.toHex();
+        }
+    }
+    if (r.ignore) str << " ignore";
+    if (r.complete) str << " complete";
+    if (r.external) str << " external";
+    if (r.detached) str << " detached";
+    return str.str();
+}
+
 void RoutineMap::save(const std::string &path, const Word reloc, const bool overwrite) const {
     if (empty()) return;
     if (checkFile(path).exists && !overwrite) throw AnalysisError("Map file already exists: " + path);
@@ -370,33 +403,12 @@ void RoutineMap::save(const std::string &path, const Word reloc, const bool over
         file << s.toString() << endl;
     }
     for (const auto &r : routines) {
-        Block rextent{r.extents};
-        rextent.rebase(reloc);
-        if (rextent.begin.segment != rextent.end.segment) 
-            throw AnalysisError("Beginning and end of extents of routine " + r.name + " lie in different segments: " + rextent.toString());
-        Segment rseg = findSegment(r.extents.begin.segment);
-        if (rseg.type == Segment::SEG_NONE) 
-            throw AnalysisError("Unable to find segment for routine " + r.name + ", start addr " + r.extents.begin.toString() + ", relocated " + rextent.begin.toString());
-        file << r.name << ": " << rseg.name << " " << (r.near ? "NEAR " : "FAR ") << hexVal(rextent.begin.offset, false) << "-" << hexVal(rextent.end.offset, false);
-        const auto blocks = r.sortedBlocks();
-        for (const auto &b : blocks) {
-            Block rblock{b};
-            rblock.rebase(reloc);
-            if (rblock.begin.segment != rextent.begin.segment)
-                throw AnalysisError("Block of routine " + r.name + " lies in different segment than routine extents: " + rblock.toString() + " vs " + rextent.toString());
-            if (rblock.begin.segment != rblock.end.segment)
-                throw AnalysisError("Beginning and end of block of routine " + r.name + " lie in different segments: " + rblock.toString());
-            file << " " << (r.isReachable(b) ? "R" : "U");
-            file <<  hexVal(rblock.begin.offset, false) << "-" << hexVal(rblock.end.offset, false);
-        }
-        if (r.ignore) file << " ignore";
-        if (r.complete) file << " complete";
-        file << endl;
+        file << routineString(r, reloc) << endl;
     }
 }
 
 // TODO: implement a print mode of all blocks (reachable, unreachable, unclaimed) printed linearly, not grouped under routines
-string RoutineMap::dump(const bool verbose, const bool hide) const {
+string RoutineMap::dump(const bool verbose, const bool hide, const bool format) const {
     ostringstream str;
     if (empty()) {
         str << "--- Empty routine map";
@@ -412,46 +424,59 @@ string RoutineMap::dump(const bool verbose, const bool hide) const {
         printRoutines.emplace_back(r);
     }
     std::sort(printRoutines.begin(), printRoutines.end());
-
-    str << "--- Routine map containing " << routines.size() << " routines" << endl
+    Size mapCount = size();
+    str << "--- Routine map containing " << mapCount << " routines" << endl
         << "Size " << sizeStr(mapSize) << endl;
     for (const auto &s : segments) {
         str << s.toString() << endl;
     }
 
     // display routines, gather statistics
-    Size codeSize = 0, ignoredSize = 0, completedSize = 0, unclaimedSize = 0, externalSize = 0;
+    Size codeSize = 0, ignoredSize = 0, completedSize = 0, unclaimedSize = 0, externalSize = 0, dataCodeSize = 0;
+    Size ignoreCount = 0, completeCount = 0, unclaimedCount = 0, externalCount = 0, dataCodeCount = 0;
     for (const auto &r : printRoutines) {
         const auto seg = findSegment(r.extents.begin.segment);
         if (seg.type == Segment::SEG_CODE) {
             codeSize += r.size();
             // TODO: f15 does not have routines in the data segment other than the jump trampolines, 
             // but what about other projects?
-            if (r.ignore) ignoredSize += r.size();
-            if (r.complete) completedSize += r.size();
-            if (r.unclaimed) unclaimedSize += r.size();
-            if (r.external) externalSize += r.size();
+            if (r.ignore) { ignoredSize += r.size(); ignoreCount++; }
+            if (r.complete) { completedSize += r.size(); completeCount++; }
+            if (r.unclaimed) { unclaimedSize += r.size(); unclaimedCount++; }
+            if (r.external) { externalSize += r.size(); externalCount++; }
+        }
+        else if (!r.unclaimed) {
+            dataCodeSize += r.size();
+            dataCodeCount++;
         }
         // print routine unless hide mode enabled and it's not important - show only uncompleted routines and unclaimed blocks within a code segment
         if (!(hide && (r.ignore || r.complete || r.external || r.size() < 2 || seg.type != Segment::SEG_CODE))) {
-            str << r.toString(verbose);
-            if (seg.type == Segment::SEG_DATA) str << " [data]";
-            str << endl;
+            if (!format) {
+                str << r.toString(verbose);
+                if (seg.type == Segment::SEG_DATA) str << " [data]";
+                str << endl;
+            }
+            else {
+                str << routineString(r, 0) << endl;
+            }
         }
-    }
+    }   
     // print statistics
     const Size 
         dataSize = mapSize - codeSize,
         nonExternalSize = ignoredSize - externalSize,
-        uncompleteSize = codeSize - (completedSize + ignoredSize + unclaimedSize);
+        nonExternalCount = ignoreCount - externalCount,
+        uncompleteSize = codeSize - (completedSize + ignoredSize + unclaimedSize),
+        uncompleteCount = mapCount - (completeCount + ignoreCount + dataCodeCount);
     str << "Code size: " << sizeStr(codeSize) << " (" << ratioStr(codeSize, mapSize) << " of load module)" << endl
-        << "Data size: " << sizeStr(dataSize) << " (" << ratioStr(dataSize, mapSize) << " of load module)" << endl
-        << "Completed code: " << sizeStr(completedSize) << " (" << ratioStr(completedSize, codeSize) << " of code) - ported to high level language" << endl
-        << "Ignored code: " << sizeStr(ignoredSize) << " (" << ratioStr(ignoredSize, codeSize) << " of code) - excluded from comparison" << endl
-        << "External ignored code: " << sizeStr(externalSize) << " (" << ratioStr(externalSize, ignoredSize) << " of ignored) - typically library code" << endl
-        << "Other ignored code: " << sizeStr(nonExternalSize) << " (" << ratioStr(nonExternalSize, ignoredSize) << " of ignored) - typically assembly which can't be ported to identical code" << endl
-        << "Unclaimed code: " << sizeStr(unclaimedSize) << " (" << ratioStr(unclaimedSize, codeSize) << " of code) - holes between routines not covered by map" << endl
-        << "Uncompleted code: " << sizeStr(uncompleteSize) << " (" << ratioStr(uncompleteSize, codeSize) << " of code) - routines not completed and not ignored" << endl;
+        << "Data size: " << sizeStr(dataSize) << " (" <<ratioStr(dataSize, mapSize) << " of load module)" << endl
+        << "Routines in data segment; " << sizeStr(dataCodeSize) << ", " << dataCodeCount << " routines" << endl
+        << "Completed code: " << sizeStr(completedSize) << " (" << completeCount << " routines, " << ratioStr(completedSize, codeSize) << " of code) - ported to high level language" << endl
+        << "Ignored code: " << sizeStr(ignoredSize) << " (" << ignoreCount << " routines, " << ratioStr(ignoredSize, codeSize) << " of code) - excluded from comparison" << endl
+        << "External ignored code: " << sizeStr(externalSize) << " (" << externalCount << " routines, " << ratioStr(externalSize, ignoredSize) << " of ignored) - typically library code" << endl
+        << "Other ignored code: " << sizeStr(nonExternalSize) << " (" << nonExternalCount << " routines, " << ratioStr(nonExternalSize, ignoredSize) << " of ignored) - typically assembly which can't be ported to identical code" << endl
+        << "Unclaimed code: " << sizeStr(unclaimedSize) << " (" << unclaimedCount << " blocks, " << ratioStr(unclaimedSize, codeSize) << " of code) - holes between routines not covered by map" << endl
+        << "Uncompleted code: " << sizeStr(uncompleteSize) << " (" << uncompleteCount << " routines, " << ratioStr(uncompleteSize, codeSize) << " of code) - routines not completed and not ignored" << endl;
     return str.str();
 }
 
@@ -552,6 +577,7 @@ void RoutineMap::loadFromMapFile(const std::string &path, const Word reloc) {
                 else if (token == "ignore") r.ignore = true;
                 else if (token == "complete") r.complete = true;
                 else if (token == "external") { r.ignore = true; r.external = true; }
+                else if (token == "detached") { r.ignore = true; r.detached = true; }
                 else throw ParseError("Line " + to_string(lineno) + ": invalid token: '" + token + "'");
                 token = token.substr(1, token.size() - 1);
                 break;

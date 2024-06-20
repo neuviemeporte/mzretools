@@ -21,6 +21,7 @@ void usage() {
            "--verbose:      show more detailed information, including compared instructions\n"
            "--debug:        show additional debug information\n"
            "--hide:         only show uncompleted and unclaimed areas in map summary\n"
+           "--format:       format printed routines in a way that's directly writable back to the map file\n"
            "--nocpu:        omit CPU-related information like instruction decoding\n"
            "--noanal:       omit analysis-related information\n"
            "--load segment: overrride default load segment (0x1000)", LOG_OTHER, LOG_ERROR);
@@ -76,12 +77,12 @@ Executable loadExe(const string &spec, const Word loadSegment) {
     return exe;
 }
 
-void loadAndPrintMap(const string &mapfile, const bool verbose, const bool hide) {
+void loadAndPrintMap(const string &mapfile, const bool verbose, const bool hide, const bool format) {
     debug("Single parameter specified, printing existing mapfile");
     auto fs = checkFile(mapfile);
     if (!fs.exists) fatal("Mapfile does not exist: " + mapfile);
     RoutineMap map(mapfile);
-    cout << map.dump(verbose, hide);
+    cout << map.dump(verbose, hide, format);
 }
 
 int main(int argc, char *argv[]) {
@@ -92,7 +93,7 @@ int main(int argc, char *argv[]) {
     Word loadSegment = 0x1000;
     string file1, file2;
     bool verbose = false;
-    bool hide = false;
+    bool hide = false, format = false;
     for (int aidx = 1; aidx < argc; ++aidx) {
         string arg(argv[aidx]);
         if (arg == "--debug") setOutputLevel(LOG_DEBUG);
@@ -100,6 +101,7 @@ int main(int argc, char *argv[]) {
         else if (arg == "--nocpu") setModuleVisibility(LOG_CPU, false);
         else if (arg == "--noanal") setModuleVisibility(LOG_ANALYSIS, false);
         else if (arg == "--hide") hide = true;
+        else if (arg == "--format") format = true;
         else if (arg == "--load" && (aidx + 1 < argc)) {
             string loadSegStr(argv[aidx+1]);
             loadSegment = static_cast<Word>(stoi(loadSegStr, nullptr, 16));
@@ -111,7 +113,7 @@ int main(int argc, char *argv[]) {
     }
     try {
         if (file2.empty()) { // print existing map and exit
-            loadAndPrintMap(file1, verbose, hide);
+            loadAndPrintMap(file1, verbose, hide, format);
         }
         else { // regular operation, scan executable for routines
             Executable exe = loadExe(file1, loadSegment);
