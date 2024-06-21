@@ -12,3 +12,4 @@ bin/*.asm
 bin/*.map
 bin/*.exe
 .vscode/
+tools/__pycache__

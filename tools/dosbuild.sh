@@ -39,6 +39,7 @@ function dossep() {
 }
 
 which dosbox &> /dev/null || fatal "Dosbox not installed"
+[ -f "$CONF_FILE" ] || fatal "Dosbox configuration file does not exist: $CONF_FILE"
 
 # extract tool name (compiler/linker/assembler) and toolchain from cmdline
 tool=$1
