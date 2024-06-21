@@ -62,6 +62,7 @@ def main():
         info("Input file empty, no action")
         # touch output file for make
         Path(asmpath).touch()
+        sys.exit(0)
 
     asmdir = os.path.dirname(asmpath)
     if not os.path.isdir(asmdir):
