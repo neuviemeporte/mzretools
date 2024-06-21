@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import sys
 import os
+from pathlib import Path
 from output import error, debug, info, setDebug
 from config import Config
 from util import Regex, parseNum, joinStrings, sizeStr, ignoredProc, splitData, percentStr, tweakComment
@@ -424,8 +425,11 @@ def main():
     outdir = sys.argv[2]
     confpath = sys.argv[3]
 
+    lstname, _ = os.path.splitext(os.path.basename(lstpath))
     output_c = True
     output_h = True
+    hpath = f"{outdir}/{lstname}.h"
+    cpath = f"{outdir}/{lstname}.c"
     for i in range(4, argc):
         argv = sys.argv[i]
         if argv == "--noc":
@@ -457,20 +461,26 @@ def main():
     # discover functions and data from lst file
     debug(f"Parsing listing file")
     lstfile = open(lstpath, 'r', encoding='cp437')
-    lstname, _ = os.path.splitext(os.path.basename(lstpath))
     lst_iter = LstIterator(lstfile)
     procs, vars, proc_ignored, total_data = parseListing(lst_iter, config, structs)
+    # don't continue if input file was empty
+    if len(procs) == 0 and len(vars) == 0:
+        info("Input file empty, no action")
+        # touch files for make
+        if output_h:
+            Path(hpath).touch()
+        if output_c:
+            Path(cpath).touch()
+        sys.exit(0)
 
     hfile = None
     if output_h:
-        hpath = f"{outdir}/{lstname}.h"
         info("Writing C header file: " + hpath)
         hfile = open(hpath, "w", encoding='cp437')
         if config.header_preamble:
             hfile.write(joinStrings(config.header_preamble))
     cfile = None
     if output_c:
-        cpath = f"{outdir}/{lstname}.c"
         info("Writing C source file: " + cpath)
         cfile = open(cpath, "w", encoding='cp437')
 

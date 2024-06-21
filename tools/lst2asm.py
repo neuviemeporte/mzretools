@@ -6,6 +6,7 @@
 import sys
 import re
 import os.path
+from pathlib import Path
 
 from output import debug, info, error, setDebug
 from helper import LstIterator, Output
@@ -56,6 +57,11 @@ def main():
         error(f"Input file does not exist: {lstpath}")
     if not os.path.isfile(confpath):
         error(f"Config file does not exist: {confpath}")
+    lst_stat = os.stat(lstpath)
+    if lst_stat.st_size == 0:
+        info("Input file empty, no action")
+        # touch output file for make
+        Path(asmpath).touch()
 
     asmdir = os.path.dirname(asmpath)
     if not os.path.isdir(asmdir):
