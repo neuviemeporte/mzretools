@@ -432,18 +432,19 @@ string RoutineMap::dump(const bool verbose, const bool hide, const bool format) 
     }
 
     // display routines, gather statistics
-    Size codeSize = 0, ignoredSize = 0, completedSize = 0, unclaimedSize = 0, externalSize = 0, dataCodeSize = 0;
-    Size ignoreCount = 0, completeCount = 0, unclaimedCount = 0, externalCount = 0, dataCodeCount = 0;
+    Size codeSize = 0, ignoredSize = 0, completedSize = 0, unclaimedSize = 0, externalSize = 0, dataCodeSize = 0, detachedSize = 0;
+    Size ignoreCount = 0, completeCount = 0, unclaimedCount = 0, externalCount = 0, dataCodeCount = 0, detachedCount = 0;
     for (const auto &r : printRoutines) {
         const auto seg = findSegment(r.extents.begin.segment);
         if (seg.type == Segment::SEG_CODE) {
             codeSize += r.size();
-            // TODO: f15 does not have routines in the data segment other than the jump trampolines, 
+            // TODO: f15 does not have meaningful routines in the data segment other than the jump trampolines, 
             // but what about other projects?
             if (r.ignore) { ignoredSize += r.size(); ignoreCount++; }
             if (r.complete) { completedSize += r.size(); completeCount++; }
             if (r.unclaimed) { unclaimedSize += r.size(); unclaimedCount++; }
             if (r.external) { externalSize += r.size(); externalCount++; }
+            if (r.detached) { detachedSize += r.size(); detachedCount++; }
         }
         else if (!r.unclaimed) {
             dataCodeSize += r.size();
@@ -460,21 +461,27 @@ string RoutineMap::dump(const bool verbose, const bool hide, const bool format) 
                 str << routineString(r, 0) << endl;
             }
         }
-    }   
+    }
+
     // print statistics
+    // TODO: prevent illegal annotation combinations (e.g. external detached) in mapfile
     const Size 
         dataSize = mapSize - codeSize,
         nonExternalSize = ignoredSize - externalSize,
         nonExternalCount = ignoreCount - externalCount,
         uncompleteSize = codeSize - (completedSize + ignoredSize + unclaimedSize),
-        uncompleteCount = mapCount - (completeCount + ignoreCount + dataCodeCount);
+        uncompleteCount = mapCount - (completeCount + ignoreCount + dataCodeCount),
+        indiSize = nonExternalSize - detachedSize,
+        indiCount = nonExternalCount - detachedCount;
     str << "Code size: " << sizeStr(codeSize) << " (" << ratioStr(codeSize, mapSize) << " of load module)" << endl
         << "Data size: " << sizeStr(dataSize) << " (" <<ratioStr(dataSize, mapSize) << " of load module)" << endl
         << "Routines in data segment; " << sizeStr(dataCodeSize) << ", " << dataCodeCount << " routines" << endl
         << "Completed code: " << sizeStr(completedSize) << " (" << completeCount << " routines, " << ratioStr(completedSize, codeSize) << " of code) - ported to high level language" << endl
         << "Ignored code: " << sizeStr(ignoredSize) << " (" << ignoreCount << " routines, " << ratioStr(ignoredSize, codeSize) << " of code) - excluded from comparison" << endl
         << "External ignored code: " << sizeStr(externalSize) << " (" << externalCount << " routines, " << ratioStr(externalSize, ignoredSize) << " of ignored) - typically library code" << endl
-        << "Other ignored code: " << sizeStr(nonExternalSize) << " (" << nonExternalCount << " routines, " << ratioStr(nonExternalSize, ignoredSize) << " of ignored) - typically assembly which can't be ported to identical code" << endl
+        << "Internal ignored code: " << sizeStr(nonExternalSize) << " (" << nonExternalCount << " routines, " << ratioStr(nonExternalSize, ignoredSize) << " of ignored) - typically assembly which can't be ported to identical code" << endl
+        << "Detached ignored code: " << sizeStr(detachedSize) << " (" << detachedCount << " routines, " << ratioStr(detachedSize, ignoredSize) << " of ignored) - internal routines which appear unreachable" << endl
+        << "Internal, non-detached ignored code: " << sizeStr(indiSize) << " (" << indiCount << " routines, " << ratioStr(indiSize, ignoredSize) << " of ignored) - assembly routines in need of porting" << endl        
         << "Unclaimed code: " << sizeStr(unclaimedSize) << " (" << unclaimedCount << " blocks, " << ratioStr(unclaimedSize, codeSize) << " of code) - holes between routines not covered by map" << endl
         << "Uncompleted code: " << sizeStr(uncompleteSize) << " (" << uncompleteCount << " routines, " << ratioStr(uncompleteSize, codeSize) << " of code) - routines not completed and not ignored" << endl;
     return str.str();
