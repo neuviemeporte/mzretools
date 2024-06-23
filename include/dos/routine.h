@@ -23,10 +23,11 @@ struct Routine {
     std::string name;
     Block extents; // largest contiguous block starting at routine entrypoint, may contain unreachable regions
     std::vector<Block> reachable, unreachable;
-    bool near, ignore, complete, unclaimed, external, detached;
+    bool near, ignore, complete, unclaimed, external, detached, assembly;
 
-    Routine() : near(true), ignore(false), complete(false), unclaimed(false), external(false), detached(false) {}
-    Routine(const std::string &name, const Block &extents) : name(name), extents(extents), near(true), ignore(false), complete(false), unclaimed(false), external(false), detached(false) {}
+    Routine(const std::string &name, const Block &extents) : name(name), extents(extents), 
+        near(true), ignore(false), complete(false), unclaimed(false), external(false), detached(false), assembly(false) {}
+    Routine() : Routine("", {}) {}
     Address entrypoint() const { return extents.begin; }
     Size size() const { return extents.size(); }
     Size reachableSize() const;

@@ -89,6 +89,7 @@ string Routine::toString(const bool showChunks) const {
     if (complete) str << " [complete]";
     if (unclaimed) str << " [unclaimed]";
     if (external) str << " [external]";
+    if (assembly) str << " [assembly]";
     if (!showChunks || isUnchunked()) return str.str();
 
     auto blocks = sortedBlocks();
@@ -185,14 +186,25 @@ void RoutineMap::buildUnclaimed(const Word loadSegment) {
     if (mapSize == 0) return;
     Block b(loadSegment, 0);
     debug("Building unclaimed blocks, mapSize = " + sizeStr(mapSize) + ", load segment: " + hexVal(loadSegment));
-    // expecting routines to be sorted
+    // need routines to be sorted
     sort();
     for (Size ri = 0; ri < size(); ++ri) {
         const Routine &r = getRoutine(ri);
         debug("Processing routine " + r.name + ": " + r.extents.toString());
         // the current routine starts after the last claimed position
         if (r.extents.begin > b.begin) {
-            debug("Unclaimed block found starting at " + b.begin.toString());
+            debug("Potential unclaimed block found starting at " + b.begin.toString());
+            // check if the potential unclaimed block does not really belong to any routine,
+            // it could be a detached chunk outside the main extents
+            const auto chunkRoutine = getRoutine(b.begin);
+            if (chunkRoutine.isValid()) {
+                const auto chunkBlock = chunkRoutine.blockContaining(b.begin);
+                // the found chunk could not encompass the entire potential unclaimed block,
+                // so just advance the potential block's beginning past the chunk
+                b.begin = chunkBlock.end + Offset(1);
+                debug("Block belongs to chunk " + chunkBlock.toString() + " of routine " + chunkRoutine.name + ", advanced block to " + b.begin.toString());
+            }
+            
             // unclaimed block crosses segment boundary, split into two
             if (r.extents.begin.segment != b.begin.segment) {
                 // first block ends before the segment start of the current routine
@@ -215,7 +227,7 @@ void RoutineMap::buildUnclaimed(const Word loadSegment) {
             }
             // create unclaimed block between the last claimed position and the beginning of this routine
             b.end = r.extents.begin - 1;
-            debug("Setting end of unclaimed block: " + b.toString());
+            debug("Closing unclaimed block: " + b.toString());
             if (b.isValid() && findSegment(b.begin.segment).type == Segment::SEG_CODE) 
                 unclaimed.push_back(b);
         }
@@ -360,6 +372,7 @@ void RoutineMap::sort() {
     std::sort(segments.begin(), segments.end());
 }
 
+// this is the string representation written to the mapfile, while Routine::toString() is the stdout representation for info/debugging
 std::string RoutineMap::routineString(const Routine &r, const Word reloc) const {
     ostringstream str;
     Block rextent{r.extents};
@@ -390,6 +403,7 @@ std::string RoutineMap::routineString(const Routine &r, const Word reloc) const 
     if (r.complete) str << " complete";
     if (r.external) str << " external";
     if (r.detached) str << " detached";
+    if (r.detached) str << " assembly";
     return str.str();
 }
 
@@ -408,7 +422,7 @@ void RoutineMap::save(const std::string &path, const Word reloc, const bool over
 }
 
 // TODO: implement a print mode of all blocks (reachable, unreachable, unclaimed) printed linearly, not grouped under routines
-string RoutineMap::dump(const bool verbose, const bool hide, const bool format) const {
+string RoutineMap::dump(const bool verbose, const bool brief, const bool format) const {
     ostringstream str;
     if (empty()) {
         str << "--- Empty routine map";
@@ -432,8 +446,8 @@ string RoutineMap::dump(const bool verbose, const bool hide, const bool format) 
     }
 
     // display routines, gather statistics
-    Size codeSize = 0, ignoredSize = 0, completedSize = 0, unclaimedSize = 0, externalSize = 0, dataCodeSize = 0, detachedSize = 0;
-    Size ignoreCount = 0, completeCount = 0, unclaimedCount = 0, externalCount = 0, dataCodeCount = 0, detachedCount = 0;
+    Size codeSize = 0, ignoredSize = 0, completedSize = 0, unclaimedSize = 0, externalSize = 0, dataCodeSize = 0, detachedSize = 0, assemblySize = 0;
+    Size ignoreCount = 0, completeCount = 0, unclaimedCount = 0, externalCount = 0, dataCodeCount = 0, detachedCount = 0, assemblyCount = 0;
     for (const auto &r : printRoutines) {
         const auto seg = findSegment(r.extents.begin.segment);
         if (seg.type == Segment::SEG_CODE) {
@@ -445,13 +459,14 @@ string RoutineMap::dump(const bool verbose, const bool hide, const bool format) 
             if (r.unclaimed) { unclaimedSize += r.size(); unclaimedCount++; }
             if (r.external) { externalSize += r.size(); externalCount++; }
             if (r.detached) { detachedSize += r.size(); detachedCount++; }
+            if (r.assembly) { assemblySize += r.size(); assemblyCount++; }
         }
         else if (!r.unclaimed) {
             dataCodeSize += r.size();
             dataCodeCount++;
         }
-        // print routine unless hide mode enabled and it's not important - show only uncompleted routines and unclaimed blocks within a code segment
-        if (!(hide && (r.ignore || r.complete || r.external || r.size() < 2 || seg.type != Segment::SEG_CODE))) {
+        // print routine unless hide mode enabled and it's not important - show only uncompleted routines and big enough unclaimed blocks within code segments
+        if (!(brief && (r.ignore || r.complete || r.external || r.assembly || r.size() < 3 || seg.type != Segment::SEG_CODE))) {
             if (!format) {
                 str << r.toString(verbose);
                 if (seg.type == Segment::SEG_DATA) str << " [data]";
@@ -464,26 +479,30 @@ string RoutineMap::dump(const bool verbose, const bool hide, const bool format) 
     }
 
     // print statistics
-    // TODO: prevent illegal annotation combinations (e.g. external detached) in mapfile
     const Size 
         dataSize = mapSize - codeSize,
-        nonExternalSize = ignoredSize - externalSize,
-        nonExternalCount = ignoreCount - externalCount,
-        uncompleteSize = codeSize - (completedSize + ignoredSize + unclaimedSize),
-        uncompleteCount = mapCount - (completeCount + ignoreCount + dataCodeCount),
-        indiSize = nonExternalSize - detachedSize,
-        indiCount = nonExternalCount - detachedCount;
-    str << "Code size: " << sizeStr(codeSize) << " (" << ratioStr(codeSize, mapSize) << " of load module)" << endl
+        otherSize = ignoredSize - externalSize,
+        otherCount = ignoreCount - externalCount,
+        ignoredReachableSize = otherSize - detachedSize,
+        ignoredReachableCount = otherCount - detachedCount,
+        uncompleteSize = codeSize - (completedSize + ignoredSize + assemblySize + unclaimedSize),
+        uncompleteCount = mapCount - (completeCount + ignoreCount + dataCodeCount + assemblyCount),
+        unaccountedSize = codeSize - (completedSize + uncompleteSize + assemblySize + externalSize + ignoredReachableSize + detachedSize + unclaimedSize),
+        unaccountedCount = mapCount - (completeCount + uncompleteCount + assemblyCount + externalCount + ignoredReachableCount + detachedCount + dataCodeCount);
+    str << "--- Summary:" << endl
+        << "Code size: " << sizeStr(codeSize) << " (" << ratioStr(codeSize, mapSize) << " of load module)" << endl
+        << "  Completed: " << sizeStr(completedSize) << " (" << completeCount << " routines, " << ratioStr(completedSize, codeSize) << " of code) - 1:1 rewritten to high level language" << endl
+        << "  Uncompleted: " << sizeStr(uncompleteSize) << " (" << uncompleteCount << " routines, " << ratioStr(uncompleteSize, codeSize) << " of code) - routines not yet rewritten which can be" << endl
+        << "  Assembly: " << sizeStr(assemblySize) << " (" << assemblyCount << " routines, " << ratioStr(assemblySize, codeSize) << " of code) - impossible to rewrite 1:1" << endl
+        << "  Ignored: " << sizeStr(ignoredSize) << " (" << ignoreCount << " routines, " << ratioStr(ignoredSize, codeSize) << " of code) - excluded from comparison" << endl
+        << "    External: " << sizeStr(externalSize) << " (" << externalCount << " routines, " << ratioStr(externalSize, ignoredSize) << " of ignored) - e.g. libc library code" << endl
+        << "    Other: " << sizeStr(otherSize) << " (" << otherCount << " routines, " << ratioStr(otherSize, ignoredSize) << " of ignored) - code ignored for other reasons" << endl
+        << "      Reachable: " << sizeStr(ignoredReachableSize) << " (" << ignoredReachableCount << " routines, " << ratioStr(ignoredReachableSize, otherSize) << " of other) - code which has callers" << endl        
+        << "      Unreachable: " << sizeStr(detachedSize) << " (" << detachedCount << " routines, " << ratioStr(detachedSize, otherSize) << " of other) - code which appears unreachable" << endl
+        << "  Unclaimed: " << sizeStr(unclaimedSize) << " (" << unclaimedCount << " blocks, " << ratioStr(unclaimedSize, codeSize) << " of code) - holes between routines not covered by map" << endl
+        << "  Unaccounted: " << sizeStr(unaccountedSize) << " (" << unaccountedCount << " routines) - consistency check, should be zero" << endl
         << "Data size: " << sizeStr(dataSize) << " (" <<ratioStr(dataSize, mapSize) << " of load module)" << endl
-        << "Routines in data segment; " << sizeStr(dataCodeSize) << ", " << dataCodeCount << " routines" << endl
-        << "Completed code: " << sizeStr(completedSize) << " (" << completeCount << " routines, " << ratioStr(completedSize, codeSize) << " of code) - ported to high level language" << endl
-        << "Ignored code: " << sizeStr(ignoredSize) << " (" << ignoreCount << " routines, " << ratioStr(ignoredSize, codeSize) << " of code) - excluded from comparison" << endl
-        << "External ignored code: " << sizeStr(externalSize) << " (" << externalCount << " routines, " << ratioStr(externalSize, ignoredSize) << " of ignored) - typically library code" << endl
-        << "Internal ignored code: " << sizeStr(nonExternalSize) << " (" << nonExternalCount << " routines, " << ratioStr(nonExternalSize, ignoredSize) << " of ignored) - typically assembly which can't be ported to identical code" << endl
-        << "Detached ignored code: " << sizeStr(detachedSize) << " (" << detachedCount << " routines, " << ratioStr(detachedSize, ignoredSize) << " of ignored) - internal routines which appear unreachable" << endl
-        << "Internal, non-detached ignored code: " << sizeStr(indiSize) << " (" << indiCount << " routines, " << ratioStr(indiSize, ignoredSize) << " of ignored) - assembly routines in need of porting" << endl        
-        << "Unclaimed code: " << sizeStr(unclaimedSize) << " (" << unclaimedCount << " blocks, " << ratioStr(unclaimedSize, codeSize) << " of code) - holes between routines not covered by map" << endl
-        << "Uncompleted code: " << sizeStr(uncompleteSize) << " (" << uncompleteCount << " routines, " << ratioStr(uncompleteSize, codeSize) << " of code) - routines not completed and not ignored" << endl;
+        << "  Routines in data segment: " << sizeStr(dataCodeSize) << ", " << dataCodeCount << " routines" << endl;
     return str.str();
 }
 
@@ -581,10 +600,12 @@ void RoutineMap::loadFromMapFile(const std::string &path, const Word reloc) {
             default: // reachable and unreachable blocks follow
                 if (token.front() == 'R') bt = BLOCK_REACHABLE;
                 else if (token.front() == 'U') bt = BLOCK_UNREACHABLE;
+                // TODO: prevent illegal annotation combinations (e.g. external detached) in mapfile                
                 else if (token == "ignore") r.ignore = true;
                 else if (token == "complete") r.complete = true;
                 else if (token == "external") { r.ignore = true; r.external = true; }
                 else if (token == "detached") { r.ignore = true; r.detached = true; }
+                else if (token == "assembly") { r.assembly = true; }
                 else throw ParseError("Line " + to_string(lineno) + ": invalid token: '" + token + "'");
                 token = token.substr(1, token.size() - 1);
                 break;
