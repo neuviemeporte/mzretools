@@ -95,7 +95,7 @@ struct Branch {
 
 // TODO: introduce true strict (now it's "not loose"), compare by opcode
 struct AnalysisOptions {
-    bool strict, ignoreDiff, noCall, variant;
+    bool strict, ignoreDiff, noCall, variant, checkAsm;
     Size refSkip, tgtSkip, ctxCount;
     Address stopAddr;
     AnalysisOptions() : strict(true), ignoreDiff(false), noCall(false), variant(false), refSkip(0), tgtSkip(0), ctxCount(10) {}

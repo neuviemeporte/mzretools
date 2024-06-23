@@ -599,7 +599,7 @@ bool Executable::compareCode(const RoutineMap &routineMap, const Executable &tar
             }
             routineNames.insert(routine.name);
             compareBlock = routine.blockContaining(compare.address);
-            if (routine.ignore) {
+            if (routine.ignore || (routine.assembly && !options.checkAsm)) {
                 verbose("--- Skipping excluded routine " + routine.toString(false) + " @"s + ctx.refCsip.toString() + ", block " + compareBlock.toString(true) +  ", target @" + ctx.tgtCsip.toString());
                 excludedNames.insert(routine.name);
                 continue;
@@ -810,7 +810,7 @@ void Executable::compareSummary(const Size comparedSize, const RoutineMap &routi
             excludedSize += r.size();
             excludedReachableSize += r.reachableSize();
         }
-        else if (routineNames.count(r.name) == 0) {
+        else if (routineNames.count(r.name) == 0 && (!r.assembly || options.checkAsm)) {
             missedSize += r.size();
             missedNames.push_back(r.toString(false));
         }
@@ -840,9 +840,10 @@ void Executable::compareSummary(const Size comparedSize, const RoutineMap &routi
         << "Excluded routines take " << sizeStr(excludedReachableSize) << " bytes (" << ratioStr(excludedReachableSize, reachableSize)
         << " of the reachable area)" << endl 
         << "Total coverage (seen + excluded) is " << sizeStr(comparedSize + excludedReachableSize) 
-        << " (" << output_color(OUT_GREEN) << ratioStr(comparedSize + excludedReachableSize, reachableSize) << output_color(OUT_DEFAULT) << " of the reachable area)" << endl;
+        << " (" << output_color(OUT_GREEN) << ratioStr(comparedSize + excludedReachableSize, reachableSize) << output_color(OUT_DEFAULT) << " of the reachable area)";
     if (missedNames.size()) {
-        msg << "Missed (not seen and not excluded) " << missedNames.size() 
+        msg << endl
+            << "Missed (not seen and not excluded) " << missedNames.size() 
             << " routines totaling " << sizeStr(missedSize) 
             << " bytes (" << output_color(OUT_RED) << ratioStr(missedSize, routineSumSize) << output_color(OUT_DEFAULT) << " of the covered area)";
         if (showMissed) for (const auto &n : missedNames) msg << endl << n;

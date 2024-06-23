@@ -204,7 +204,6 @@ void RoutineMap::buildUnclaimed(const Word loadSegment) {
                 b.begin = chunkBlock.end + Offset(1);
                 debug("Block belongs to chunk " + chunkBlock.toString() + " of routine " + chunkRoutine.name + ", advanced block to " + b.begin.toString());
             }
-            
             // unclaimed block crosses segment boundary, split into two
             if (r.extents.begin.segment != b.begin.segment) {
                 // first block ends before the segment start of the current routine
