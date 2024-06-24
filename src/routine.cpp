@@ -88,6 +88,7 @@ string Routine::toString(const bool showChunks) const {
     if (ignore) str << " [ignored]";
     if (complete) str << " [complete]";
     if (unclaimed) str << " [unclaimed]";
+    if (detached) str << " [detached]";
     if (external) str << " [external]";
     if (assembly) str << " [assembly]";
     if (!showChunks || isUnchunked()) return str.str();
@@ -402,7 +403,7 @@ std::string RoutineMap::routineString(const Routine &r, const Word reloc) const 
     if (r.complete) str << " complete";
     if (r.external) str << " external";
     if (r.detached) str << " detached";
-    if (r.detached) str << " assembly";
+    if (r.assembly) str << " assembly";
     return str.str();
 }
 
@@ -555,8 +556,8 @@ void RoutineMap::loadFromMapFile(const std::string &path, const Word reloc) {
     smatch match;
     while (safeGetline(mapFile, line)) {
         lineno++;
-        // ignore comments
-        if (line[0] == '#') continue;
+        // ignore comments and empty lines
+        if (line.empty() || line[0] == '#') continue;
         // try to interpret as code size
         else if (regex_match(line, match, SIZE_RE)) {
             mapSize = std::stoi(match.str(1), nullptr, 16);
@@ -640,6 +641,7 @@ void RoutineMap::loadFromMapFile(const std::string &path, const Word reloc) {
             debug("routine: "s + r.toString());
             routines.push_back(r);
         }
+        else throw ParseError("Line " + to_string(lineno) + ": invalid routine extents " + r.extents.toString());
     } // iterate over mapfile lines
 }
 

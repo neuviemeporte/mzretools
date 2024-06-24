@@ -789,38 +789,43 @@ success:
 }
 
 // display comparison statistics
-void Executable::compareSummary(const Size comparedSize, const RoutineMap &routineMap, const std::set<string> &routineNames, const std::set<string> &excludedNames, const AnalysisOptions &options, const bool showMissed) const {
+void Executable::compareSummary(const Size comparedSize, const RoutineMap &routineMap, const std::set<string> &visitedNames, const std::set<string> &ignoredNames, const AnalysisOptions &options, const bool showMissed) const {
     // TODO: display total size of code segments between load module and routine map size
     if (routineMap.empty()) return;
     const Size 
-        visitedCount = routineNames.size(),
-        ignoredCount = excludedNames.size(),
+        visitedCount = visitedNames.size(),
+        ignoredCount = ignoredNames.size(),
         routineMapSize = routineMap.size(),
         loadModuleSize = size();
     Size routineSumSize = 0, reachableSize = 0, unreachableSize = 0, 
         excludedSize = 0, excludedCount = 0, excludedReachableSize = 0, missedSize = 0, ignoredSize = 0;
     vector<std::string> missedNames;
     for (Size i = 0; i < routineMapSize; i++) {
+        // gather static routine map stats
         const Routine r = routineMap.getRoutine(i);
         routineSumSize += r.size();
         reachableSize += r.reachableSize();
         unreachableSize += r.unreachableSize();
-        if (r.ignore) {
+        if (r.ignore || (r.assembly && !options.checkAsm)) {
             excludedCount++;
             excludedSize += r.size();
             excludedReachableSize += r.reachableSize();
         }
-        else if (routineNames.count(r.name) == 0 && (!r.assembly || options.checkAsm)) {
+        // check against routines which we actually visited at runtime
+        // report routines in map which were not visited as missed, unless they were assembly 
+        // and we are not in checkAsm mode
+        else if (visitedNames.count(r.name) == 0 && (!r.assembly || options.checkAsm)) {
             missedSize += r.size();
             missedNames.push_back(r.toString(false));
         }
-        if (excludedNames.count(r.name)) {
+        // sum up actual encountered but ignored area during comparison
+        if (ignoredNames.count(r.name)) {
             ignoredSize += r.size();
         }
     }
     ostringstream msg;
     msg << "Load module of executable is " << sizeStr(loadModuleSize) << " bytes"
-        << endl
+        << endl << "--- Routine map stats (static):" << endl
         << "Routine map of " << routineMapSize << " routines covers " << sizeStr(routineSumSize) 
         << " bytes (" << ratioStr(routineSumSize,loadModuleSize) << " of the load module)"
         << endl
@@ -828,18 +833,21 @@ void Executable::compareSummary(const Size comparedSize, const RoutineMap &routi
         << endl
         << "Unreachable code totals " << sizeStr(unreachableSize) << " bytes (" << ratioStr(unreachableSize, routineSumSize) << " of the mapped area)" << endl;
     if (excludedCount) {
-        msg << "Excluded " << excludedCount << " routines totaling " << sizeStr(excludedSize) 
-            << " bytes ("  << ratioStr(excludedSize, routineSumSize) << " of the mapped area)" << endl;
+        msg << "Excluded " << excludedCount << " routines take " << sizeStr(excludedSize) 
+            << " bytes ("  << ratioStr(excludedSize, routineSumSize) << " of the mapped area)"
+            << endl
+            << "Reachable area of excluded routines is " << sizeStr(excludedReachableSize) << " bytes (" << ratioStr(excludedReachableSize, reachableSize) << " of the reachable area)" << endl;
     }
-    msg << "Compared " << sizeStr(comparedSize) << " bytes of opcodes (" << ratioStr(comparedSize, reachableSize) << " of the reachable area)"
+    msg << "--- Comparison run stats (dynamic):" << endl
+        << "Seen " << to_string(visitedCount) << " routines, visited " << visitedCount - ignoredCount
+        << " and compared " << sizeStr(comparedSize) << " bytes of opcodes inside (" << ratioStr(comparedSize, reachableSize) << " of the reachable area)"
         << endl
-        << "Seen " << to_string(visitedCount) << " routines, ignored (seen but excluded) " << ignoredCount 
-        << " routines totaling " << sizeStr(ignoredSize) << " bytes (" << ratioStr(ignoredSize, routineSumSize) 
-        << " of the mapped area)"
+        << "Ignored (seen but excluded) " << ignoredCount << " routines totaling " << sizeStr(ignoredSize) << " bytes (" << ratioStr(ignoredSize, reachableSize) << " of the reachable area)"
         << endl
-        << "Excluded routines take " << sizeStr(excludedReachableSize) << " bytes (" << ratioStr(excludedReachableSize, reachableSize)
-        << " of the reachable area)" << endl 
-        << "Total coverage (seen + excluded) is " << sizeStr(comparedSize + excludedReachableSize) 
+        << "Practical coverage (visited & compared + ignored) is " << sizeStr(comparedSize + ignoredSize)
+        << " (" << output_color(OUT_GREEN) << ratioStr(comparedSize + ignoredSize, reachableSize) << output_color(OUT_DEFAULT) << " of the reachable area)"
+        << endl
+        << "Theoretical(*) coverage (visited & compared + reachable excluded area) is " << sizeStr(comparedSize + excludedReachableSize) 
         << " (" << output_color(OUT_GREEN) << ratioStr(comparedSize + excludedReachableSize, reachableSize) << output_color(OUT_DEFAULT) << " of the reachable area)";
     if (missedNames.size()) {
         msg << endl
@@ -848,5 +856,8 @@ void Executable::compareSummary(const Size comparedSize, const RoutineMap &routi
             << " bytes (" << output_color(OUT_RED) << ratioStr(missedSize, routineSumSize) << output_color(OUT_DEFAULT) << " of the covered area)";
         if (showMissed) for (const auto &n : missedNames) msg << endl << n;
     }
+    msg << endl 
+        << "(*) Any routines called only by ignored routines have not been seen and will lower the practical score," << endl 
+        << "    but theoretically if we stepped into ignored routines, we would have seen and ignored any that were excluded.";
     verbose(msg.str());
 }
