@@ -368,7 +368,7 @@ def calculateExtracts(config, procs, proc_ignored, remaining_size):
     ported_size = 0
     ported_routines = 0
     for e in config.extract:
-        if not e.ported:
+        if not e.ported or not e.segment in config.code_segments:
             continue
         if e.end == 'endp':
             ported_routines += 1
@@ -381,8 +381,8 @@ def calculateExtracts(config, procs, proc_ignored, remaining_size):
     needport_size = remaining_size - ported_size
     needport_percent = percentStr(needport_size/remaining_size) if remaining_size else '100%'
     # TODO subtract or display number of extract routines
-    info(f"Found routines: total: {total_routines}, ignored: {proc_ignored}, remaining: {remain_routines}, ported: {ported_routines}, need porting: {needport_routines}")
-    info(f"Accumulated routines' size: remaining: {sizeStr(remaining_size)}/100%, ported: {sizeStr(ported_size)}/{ported_percent}, need porting: {sizeStr(needport_size)}/{needport_percent}")    
+    info(f"Found routines: total: {total_routines}, ignored: {proc_ignored}, remaining: {remain_routines}, ported: {ported_routines}, unported: {needport_routines}")
+    info(f"Accumulated routines' size: remaining: {sizeStr(remaining_size)}/100%, ported: {sizeStr(ported_size)}/{ported_percent}, unported: {sizeStr(needport_size)}/{needport_percent}")    
 
 def writeEnums(enums, hfile):
     if not hfile:

@@ -48,10 +48,28 @@ def main():
     asmpath = sys.argv[2]
     confpath = sys.argv[3]
 
+    # routine processing modes:
+    # 1. all routines copied verbatim (default)
+    # 2. routines replaced with stubs for comparison (--stub)
+    # 3. no routines copied, just data remains (--noproc)
+    # 4. preserves present in config: keep these despite --noproc
+    # 5. preserves disabled (--nopreserve)
+    stub = False
+    noProc = False
+    noPreserve = False
+
     for i in range(4, len(sys.argv)):
         argv = sys.argv[i]
         if argv == "--debug":
             setDebug(True)
+        elif argv == '--stub':
+            stub = True
+        elif argv == '--noproc':
+            noProc = True
+        elif argv == '--nopreserve':
+            noPreserve = True
+        else:
+            error(f"Unsupported option: {argv}")
 
     if not os.path.isfile(lstpath):
         error(f"Input file does not exist: {lstpath}")
@@ -94,6 +112,7 @@ def main():
     cur_proc = None
     output = Output(asmfile)
     lst_iter = LstIterator(lstfile)
+    output_procs = []
 
     while True:
         # lstfile eof
@@ -113,24 +132,39 @@ def main():
             continue
 
         # handle routine preservation and elimination
-        if segment in config.code_segments and config.preserves:
+        if segment in config.code_segments:
+            # routine start
             if (match := Regex.PROC.match(instr)) is not None: # procedure start
                 cur_proc = match.group(1)
+                if noProc and (noPreserve or cur_proc not in config.preserves):
+                    debug(f"Ignoring start of non-preserved routine {cur_proc}")
+                    skipWrite = True
+            # routine end
             elif (match := Regex.ENDP.match(instr)) is not None: # procedure end
                 endproc = match.group(1)
                 if not cur_proc:
-                    error(f"End of procedure {endproc} while not inside a procedure?")
+                    error(f"End of routine {endproc} while not inside a routine?")
                 elif endproc != cur_proc:
-                    error(f"End of procedure {endproc} while inside procedure {cur_proc}?")
-                cur_proc = None
-                if endproc not in config.preserves: # prepend near return to write list on procedure end
+                    error(f"End of routine {endproc} while inside routine {cur_proc}?")
+                if noProc and (noPreserve or cur_proc not in config.preserves):
+                    skipWrite = True                
+                # prepend near return to write list on procedure end for stubs
+                elif stub and (noPreserve or cur_proc not in config.preserves): 
                     writeList.insert(0, 'retn')
-            elif not cur_proc: # some instructions outside a procedure
-                if not (contains(instr, "segment") or contains(instr, "ends") or isData(instr)):
-                    debug(f"Ignoring instructions outside procedure")
+                # gather names of all procs written to output
+                output_procs.append(cur_proc)
+                cur_proc = None
+            # some instructions outside a procedure
+            elif not cur_proc: 
+                if noProc or not (contains(instr, "segment") or contains(instr, "ends") or isData(instr)):
+                    debug(f"Ignoring instructions outside routine")
                     skipWrite = True
-            elif cur_proc not in config.preserves: # instructions inside a non-preserved procedure, ignore
-                debug(f"Ignoring instructions of non-preserved procedure {cur_proc}")
+            # instructions inside a procedure
+            elif stub and (noPreserve or cur_proc not in config.preserves):
+                debug(f"Ignoring instructions in stubbed routine {cur_proc}")
+                skipWrite = True                
+            elif noProc and (noPreserve or cur_proc not in config.preserves):
+                debug(f"Ignoring instructions of non-preserved routine {cur_proc}")
                 skipWrite = True
 
         # open new extraction sink if segment:offset and optionally current line matches an entry
@@ -166,6 +200,7 @@ def main():
                 comment += instr
                 writeList = r.getReplace()
                 debug(f'Matched location to replace with: {writeList}')
+                actionMatch = True
                 break
         # handle insertions
         for i in config.insert:
@@ -175,6 +210,7 @@ def main():
                 insertions = i.getReplace()
                 writeList.extend(insertions)
                 debug(f'Matched location to insert: {insertions}')
+                actionMatch = True
                 break
 
         # prefix underscore in public and external symbol names as they need to be visible to/from C
@@ -253,6 +289,12 @@ def main():
             debug(f"{segment}:{hex(offset)}: ending extraction on '{instr}'")
         
     closeExtracts(config.extract, asmdir)
+    # check if all preserved routines were written out to output file
+    if config.preserves and not noPreserve:
+        for p in config.preserves:
+            if p not in output_procs:
+                info(f"WARNING: Preserved routine not written to output: {p}")
+
 
 if __name__ == '__main__':
     main()
