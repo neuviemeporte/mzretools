@@ -40,7 +40,7 @@ def closeExtracts(items, dir):
 
 def main():
     if len(sys.argv) < 4:
-        error("Syntax: lst2asm infile outfile conffile [--debug]")
+        error("Syntax: lst2asm infile outfile conffile [--debug] [--stub] [--noproc] [--nopreserve]")
 
     opcode_map = { 'add': '05h', 'cmp': '3Dh', 'and': '25h', 'sub': '2Dh', 'sbb': '1Dh' }
 
@@ -84,7 +84,7 @@ def main():
 
     asmdir = os.path.dirname(asmpath)
     if not os.path.isdir(asmdir):
-        error(f"Unexpected directory for assembly files: {asmdir}")
+        asmdir = '.'
 
     # import settings from conffile
     config = Config(confpath)
@@ -99,7 +99,9 @@ def main():
     for e in config.externs:
         asmfile.write(f'EXTRN _{e}:PROC\n')
     for p in config.publics:
-        asmfile.write(f'PUBLIC _{p}\n')
+        # only write out publics for symbols not in preserves, or if preserves are... preserved
+        if p not in config.preserves or not noPreserve:
+            asmfile.write(f'PUBLIC _{p}\n')
     # process include file if present
     if config.include:
         if not os.path.isfile(config.include):
