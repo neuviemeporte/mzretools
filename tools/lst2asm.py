@@ -291,6 +291,10 @@ def main():
             debug(f"{segment}:{hex(offset)}: ending extraction on '{instr}'")
         
     closeExtracts(config.extract, asmdir)
+
+    for p in config.coda:
+        asmfile.write(p + "\n")
+
     # check if all preserved routines were written out to output file
     if config.preserves and not noPreserve:
         for p in config.preserves:

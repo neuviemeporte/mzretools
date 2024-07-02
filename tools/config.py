@@ -11,6 +11,7 @@ class Config:
         debug(f"Loading configuration from {confpath}")
         self.confpath = confpath
         self.preamble = []
+        self.coda = []
         self.include = ""
         self.in_segments = []
         self.out_segments = []
@@ -29,7 +30,7 @@ class Config:
         self.loadConfig()
         self.setConfig()
     def setConfig(self):
-        for name in [ "preamble", "include", "in_segments", "code_segments", "data_segments", "preserves", "externs", "publics", "header_preamble", "header_coda" ]:
+        for name in [ "preamble", "coda", "include", "in_segments", "code_segments", "data_segments", "preserves", "externs", "publics", "header_preamble", "header_coda" ]:
             if name in self.config:
                 v = self.config[name]
                 debug(f"{name}: {v}")
