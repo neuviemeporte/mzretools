@@ -34,32 +34,6 @@ static const map<string, vector<vector<string>>> INSTR_VARIANT = {
     },    
 };
 
-// TODO: include information of existing address mapping contributing to a match/mismatch in the output
-// TODO: make jump instructions compare the match with the relative offset value
-static string compareStatus(const Instruction &i1, const Instruction &i2, const bool align, InstructionMatch match = INS_MATCH_ERROR) {
-    static const int ALIGN = 50;
-    string status;
-    if (i1.isValid()) {
-        status = i1.addr.toString() + ": " + i1.toString(align);
-    }
-    if (!i2.isValid()) return status;
-
-    if (align && status.length() < ALIGN) status.append(ALIGN - status.length(), ' ');
-    if (i1.isValid()) {
-        if (match == INS_MATCH_ERROR) match = i1.match(i2);
-        switch (match) {
-        case INS_MATCH_FULL:     status += " == "; break;
-        case INS_MATCH_DIFF:     status += " ~~ "; break;
-        case INS_MATCH_DIFFOP1:  status += " ~= "; break;
-        case INS_MATCH_DIFFOP2:  status += " =~ "; break;
-        case INS_MATCH_MISMATCH: status += " != "; break; 
-        }
-    }
-    else status.append(4, ' ');
-    status += i2.addr.toString() + ": " + i2.toString(align);
-    return status;
-}
-
 Executable::Executable(const MzImage &mz) : 
     code(mz.loadSegment(), mz.loadModuleData(), mz.loadModuleSize()),
     loadSegment(mz.loadSegment()),

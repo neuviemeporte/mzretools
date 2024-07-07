@@ -36,9 +36,7 @@ public:
     Word getLoadSegment() const { return loadSegment; }
 
 private:
-    static constexpr RoutineId VISITED_ID = 1;
     void init();
-    
 };
 
 #endif // EXECUTABLE_H

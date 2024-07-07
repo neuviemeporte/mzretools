@@ -381,6 +381,32 @@ static void applyMov(const Instruction &i, RegisterState &regs, Executable &exe)
     }    
 }
 
+// TODO: include information of existing address mapping contributing to a match/mismatch in the output
+// TODO: make jump instructions compare the match with the relative offset value
+static string compareStatus(const Instruction &i1, const Instruction &i2, const bool align, InstructionMatch match = INS_MATCH_ERROR) {
+    static const int ALIGN = 50;
+    string status;
+    if (i1.isValid()) {
+        status = i1.addr.toString() + ": " + i1.toString(align);
+    }
+    if (!i2.isValid()) return status;
+
+    if (align && status.length() < ALIGN) status.append(ALIGN - status.length(), ' ');
+    if (i1.isValid()) {
+        if (match == INS_MATCH_ERROR) match = i1.match(i2);
+        switch (match) {
+        case INS_MATCH_FULL:     status += " == "; break;
+        case INS_MATCH_DIFF:     status += " ~~ "; break;
+        case INS_MATCH_DIFFOP1:  status += " ~= "; break;
+        case INS_MATCH_DIFFOP2:  status += " =~ "; break;
+        case INS_MATCH_MISMATCH: status += " != "; break; 
+        }
+    }
+    else status.append(4, ' ');
+    status += i2.addr.toString() + ": " + i2.toString(align);
+    return status;
+}
+
 
 // explore the code without actually executing instructions, discover routine boundaries
 // TODO: identify routines through signatures generated from OMF libraries
@@ -465,84 +491,84 @@ RoutineMap Analyzer::findRoutines(Executable &exe) {
     return ret;
 }
 
+static constexpr RoutineId VISITED_ID = 1;
 
 bool Analyzer::compareCode(const Executable &ref, const Executable &tgt, const RoutineMap &refMap, const RoutineMap &tgtMap) {
     verbose("Comparing code between reference (entrypoint "s + ref.entrypoint().toString() + ") and target (entrypoint " + tgt.entrypoint().toString() + ") executables");
     debug("Routine map of reference binary has " + to_string(refMap.size()) + " entries");
-    Context ctx{target, options, refMap.segmentCount(Segment::SEG_DATA), entrypoint()};
-    compareQ = {Destination(entrypoint, VISITED_ID, true, {})};
+    offMap = OffsetMap{refMap.segmentCount(Segment::SEG_DATA)};
+    compareQ = ScanQueue{Destination(ref.entrypoint(), VISITED_ID, true, {})};
     // map of equivalent addresses in the compared binaries, seed with the two entrypoints
-    ctx.offMap.setCode(entrypoint(), tgt.entrypoint());
+    offMap.setCode(ref.entrypoint(), tgt.entrypoint());
     // queue of locations (in reference binary) for comparison, likewise seeded with the entrypoint
     // TODO: use routine map to fill compareQ in advance
     // TODO: implement register value tracing
-    while (!ctx.compareQ.empty()) {
+    while (!compareQ.empty()) {
         // get next location for linear scan and comparison of instructions from the front of the queue,
         // to visit functions in the same order in which they were first encountered
-        const Destination compare = ctx.compareQ.nextPoint();
-        debug("Now at reference location "s + compare.address.toString() + ", queue size = " + to_string(ctx.compareQ.size()));
+        const Destination compare = compareQ.nextPoint();
+        debug("Now at reference location "s + compare.address.toString() + ", queue size = " + to_string(compareQ.size()));
         // when entering a routine, forget all the current stack offset mappings
         if (compare.isCall) {
-            ctx.offMap.resetStack();
+            offMap.resetStack();
         }
-        ctx.refCsip = compare.address;
-        if (options.stopAddr.isValid() && ctx.refCsip >= options.stopAddr) {
-            verbose("Reached stop address: " + ctx.refCsip.toString());
+        refCsip = compare.address;
+        if (options.stopAddr.isValid() && refCsip >= options.stopAddr) {
+            verbose("Reached stop address: " + refCsip.toString());
             goto success;
         }        
-        if (ctx.compareQ.getRoutineId(ctx.refCsip.toLinear()) != NULL_ROUTINE) {
+        if (compareQ.getRoutineId(refCsip.toLinear()) != NULL_ROUTINE) {
             debug("Location already compared, skipping");
             continue;
         }
         // get corresponding address in target binary
-        ctx.tgtCsip = ctx.offMap.getCode(ctx.refCsip);
-        if (!ctx.tgtCsip.isValid()) {
-            error("Could not find equivalent address for "s + ctx.refCsip.toString() + " in address map for target executable");
+        tgtCsip = offMap.getCode(refCsip);
+        if (!tgtCsip.isValid()) {
+            error("Could not find equivalent address for "s + refCsip.toString() + " in address map for target executable");
             return false;
         }
-        ctx.routine = {"unknown", {}};
+        routine = {"unknown", {}};
         Size routineCount = 0;
-        Block compareBlock;
         if (!refMap.empty()) { // comparing with a map
-            ctx.routine = refMap.getRoutine(ctx.refCsip);
+            routine = refMap.getRoutine(refCsip);
             // make sure we are inside a reachable block of a know routine from reference binary
-            if (!ctx.routine.isValid()) {
-                error("Could not find address "s + ctx.refCsip.toString() + " in routine map");
+            if (!routine.isValid()) {
+                error("Could not find address "s + refCsip.toString() + " in routine map");
                 return false;
             }
-            ctx.routineNames.insert(ctx.routine.name);
-            compareBlock = ctx.routine.blockContaining(compare.address);
-            if (ctx.routine.ignore || (ctx.routine.assembly && !ctx.options.checkAsm)) {
-                verbose("--- Skipping excluded routine " + ctx.routine.toString(false) + " @"s + ctx.refCsip.toString() + ", block " + compareBlock.toString(true) +  ", target @" + ctx.tgtCsip.toString());
-                ctx.excludedNames.insert(ctx.routine.name);
+            routineNames.insert(routine.name);
+            compareBlock = routine.blockContaining(compare.address);
+            if (routine.ignore || (routine.assembly && !options.checkAsm)) {
+                verbose("--- Skipping excluded routine " + routine.toString(false) + " @"s + refCsip.toString() + ", block " + compareBlock.toString(true) +  ", target @" + tgtCsip.toString());
+                excludedNames.insert(routine.name);
                 continue;
             }
-            verbose("--- Now @"s + ctx.refCsip.toString() + ", routine " + ctx.routine.toString(false) + ", block " + compareBlock.toString(true) +  ", target @" + ctx.tgtCsip.toString());
+            verbose("--- Now @"s + refCsip.toString() + ", routine " + routine.toString(false) + ", block " + compareBlock.toString(true) +  ", target @" + tgtCsip.toString());
         }
         // TODO: consider dropping this "feature"
         else { // comparing without a map
-            verbose("--- Comparing reference @ "s + ctx.refCsip.toString() + " to target @" + ctx.tgtCsip.toString());
+            verbose("--- Comparing reference @ "s + refCsip.toString() + " to target @" + tgtCsip.toString());
         }
 
         // keep comparing subsequent instructions from current search queue location between the reference and target binary
-        if (!comparisonLoop()) return false;
+        if (!comparisonLoop(ref, tgt, refMap, tgtMap)) return false;
 
     } // iterate over comparison location queue
 
 success:
     verbose(output_color(OUT_GREEN) + "Comparison result: match" + output_color(OUT_DEFAULT));
-    compareSummary(ctx, routineMap, true);
+    comparisonSummary(refMap, true);
     return true;    
 }
 
-bool Analyzer::comparisonLoop() {
+bool Analyzer::comparisonLoop(const Executable &ref, const Executable &tgt, const RoutineMap &refMap, const RoutineMap &tgtMap) {
     Size refSkipCount = 0, tgtSkipCount = 0;
     Address refSkipOrigin, tgtSkipOrigin;
     while (true) {
         // if we ran outside of the code extents, consider the comparison successful
-        if (!contains(ctx.refCsip) || !target.contains(ctx.tgtCsip)) {
-            debug("Advanced past code extents: csip = "s + ctx.refCsip.toString() + " / " + ctx.tgtCsip.toString() + " vs extents " + codeExtents.toString() 
-                + " / " + target.codeExtents.toString());
+        if (!ref.contains(refCsip) || !tgt.contains(tgtCsip)) {
+            debug("Advanced past code extents: csip = "s + refCsip.toString() + " / " + tgtCsip.toString() + " vs extents " + ref.extents().toString() 
+                + " / " + tgt.extents().toString());
             // make sure we are not skipping instructions
             // TODO: make this non-fatal, just make the skip fail
             if (refSkipCount || tgtSkipCount) return false;
@@ -551,20 +577,20 @@ bool Analyzer::comparisonLoop() {
 
         // decode instructions
         Instruction 
-            refInstr{ctx.refCsip, code.pointer(ctx.refCsip)}, 
-            tgtInstr{ctx.tgtCsip, target.code.pointer(ctx.tgtCsip)};
+            refInstr{refCsip, ref.codePointer(refCsip)}, 
+            tgtInstr{tgtCsip, tgt.codePointer(tgtCsip)};
         
         // mark this instruction as visited, unlike the routine finding algorithm, we do not differentiate between routine IDs
-        ctx.compareQ.setRoutineId(ctx.refCsip.toLinear(), refInstr.length, VISITED_ID);
+        compareQ.setRoutineId(refCsip.toLinear(), refInstr.length, VISITED_ID);
 
         // compare instructions
         SkipType skipType = SKIP_NONE;
-        const auto matchType = instructionsMatch(ctx, refInstr, tgtInstr);
+        const auto matchType = instructionsMatch(refInstr, tgtInstr);
         switch (matchType) {
         case CMP_MATCH:
             // display skipped instructions if there were any before this match
             if (refSkipCount || tgtSkipCount) {
-                skipContext(ctx, refSkipOrigin, tgtSkipOrigin, refSkipCount, tgtSkipCount);
+                skipContext(refSkipOrigin, tgtSkipOrigin, refSkipCount, tgtSkipCount);
                 refSkipCount = tgtSkipCount = 0;
                 refSkipOrigin = tgtSkipOrigin = Address();
             }
@@ -574,16 +600,16 @@ bool Analyzer::comparisonLoop() {
         case CMP_MISMATCH:
             // attempt to skip a mismatch, if permitted by the options
             // first try skipping in the reference executable, skipping returns is not allowed
-            if (refSkipCount + 1 <= ctx.options.refSkip && !refInstr.isReturn()) {
+            if (refSkipCount + 1 <= options.refSkip && !refInstr.isReturn()) {
                 // save original reference position for rewind
-                if (refSkipCount == 0) refSkipOrigin = ctx.refCsip;
+                if (refSkipCount == 0) refSkipOrigin = refCsip;
                 skipType = SKIP_REF;
                 refSkipCount++;
             }
             // no more skips allowed in reference, try skipping target executable
-            else if (tgtSkipCount + 1 <= ctx.options.tgtSkip && !tgtInstr.isReturn()) {
+            else if (tgtSkipCount + 1 <= options.tgtSkip && !tgtInstr.isReturn()) {
                 // save original target position for skip context display
-                if (tgtSkipCount == 0) tgtSkipOrigin = ctx.tgtCsip;
+                if (tgtSkipCount == 0) tgtSkipOrigin = tgtCsip;
                 skipType = SKIP_TGT;
                 // performing a skip in the target executable resets the allowed reference skip count
                 refSkipCount = 0;
@@ -593,12 +619,12 @@ bool Analyzer::comparisonLoop() {
             else {
                 // display skipped instructions if there were any before this mismatch
                 if (refSkipCount || tgtSkipCount) {
-                    skipContext(ctx, refSkipOrigin, tgtSkipOrigin, refSkipCount, tgtSkipCount);
+                    skipContext(refSkipOrigin, tgtSkipOrigin, refSkipCount, tgtSkipCount);
                 }
                 verbose(output_color(OUT_RED) + compareStatus(refInstr, tgtInstr, true) + output_color(OUT_DEFAULT));
-                error("Instruction mismatch in routine " + ctx.routine.name + " at " + compareStatus(refInstr, tgtInstr, false));
-                diffContext(ctx);
-                compareSummary(ctx.comparedSize, routineMap, ctx.routineNames, excludedNames, options, false);
+                error("Instruction mismatch in routine " + routine.name + " at " + compareStatus(refInstr, tgtInstr, false));
+                diffContext();
+                comparisonSummary(refMap, false);
                 return false;
             }
             break;
@@ -607,19 +633,19 @@ bool Analyzer::comparisonLoop() {
             break;
         case CMP_DIFFTGT:
             verbose(output_color(OUT_BRIGHTRED) + compareStatus(refInstr, tgtInstr, true) + output_color(OUT_DEFAULT));
-            break;                
+            break;
         }
         // comparison result okay (instructions match or skip permitted), interpret the instructions
 
         // instruction is a call, save destination to the comparison queue 
-        if (!ctx.options.noCall && refInstr.isCall() && tgtInstr.isCall()) {
+        if (!options.noCall && refInstr.isCall() && tgtInstr.isCall()) {
             const Branch 
                 refBranch = getBranch(refInstr, {}),
                 tgtBranch = getBranch(tgtInstr, {});
             // if the destination of the branch can be established, place it in the compare queue
-            if (saveBranch(refBranch, {}, codeExtents, compareQ)) {
+            if (compareQ.saveBranch(refBranch, {}, ref.extents())) {
                 // if the branch destination was accepted, save the address mapping of the branch destination between the reference and target
-                ctx.offMap.codeMatch(refBranch.destination, tgtBranch.destination);
+                offMap.codeMatch(refBranch.destination, tgtBranch.destination);
             }
         }
         // instruction is a jump, save the relationship between the reference and the target addresses into the offset map
@@ -629,7 +655,7 @@ bool Analyzer::comparisonLoop() {
                 refBranch = getBranch(refInstr, {}),
                 tgtBranch = getBranch(tgtInstr, {});
             if (refBranch.destination.isValid() && tgtBranch.destination.isValid()) {
-                ctx.offMap.codeMatch(refBranch.destination, tgtBranch.destination);
+                offMap.codeMatch(refBranch.destination, tgtBranch.destination);
             }
         }
 
@@ -640,18 +666,18 @@ bool Analyzer::comparisonLoop() {
             debug(compareStatus(refInstr, tgtInstr, false, INS_MATCH_MISMATCH));
             switch (skipType) {
             case SKIP_REF: 
-                ctx.comparedSize += refInstr.length;
-                ctx.refCsip += refInstr.length;
-                debug("Skipping over reference instruction mismatch, allowed " + to_string(refSkipCount) + " out of " + to_string(ctx.options.refSkip) + ", destination " + ctx.refCsip.toString());
+                comparedSize += refInstr.length;
+                refCsip += refInstr.length;
+                debug("Skipping over reference instruction mismatch, allowed " + to_string(refSkipCount) + " out of " + to_string(options.refSkip) + ", destination " + refCsip.toString());
                 break;
             case SKIP_TGT:
                 // rewind reference position if it was skipped before
                 if (refSkipOrigin.isValid()) {
-                    ctx.comparedSize -= ctx.refCsip.offset - refSkipOrigin.offset;
-                    ctx.refCsip = refSkipOrigin;
+                    comparedSize -= refCsip.offset - refSkipOrigin.offset;
+                    refCsip = refSkipOrigin;
                 }
-                ctx.tgtCsip += tgtInstr.length;
-                debug("Skipping over target instruction mismatch, allowed " + to_string(tgtSkipCount)  + " out of " + to_string(ctx.options.tgtSkip) + ", destination " + ctx.tgtCsip.toString());
+                tgtCsip += tgtInstr.length;
+                debug("Skipping over target instruction mismatch, allowed " + to_string(tgtSkipCount)  + " out of " + to_string(options.tgtSkip) + ", destination " + tgtCsip.toString());
                 break;
             default:
                 error("Unexpected: no skip despite mismatch");
@@ -659,48 +685,48 @@ bool Analyzer::comparisonLoop() {
             }
             break;
         case CMP_VARIANT:
-            ctx.comparedSize += refInstr.length;
-            ctx.refCsip += refInstr.length;
+            comparedSize += refInstr.length;
+            refCsip += refInstr.length;
             // in case of a variant match, the instruction pointer in the target binary will have already been advanced by instructionsMatch()
-            debug("Variant match detected, comparison will continue at " + ctx.tgtCsip.toString());
+            debug("Variant match detected, comparison will continue at " + tgtCsip.toString());
             break;
         default:
             // normal case, advance both reference and target positions
-            ctx.comparedSize += refInstr.length;
-            ctx.refCsip += refInstr.length;
-            ctx.tgtCsip += tgtInstr.length;
+            comparedSize += refInstr.length;
+            refCsip += refInstr.length;
+            tgtCsip += tgtInstr.length;
             break;
         }
         
         // an end of a routine block is a hard stop, we do not want to go into unreachable areas which may contain invalid opcodes (e.g. data mixed with code)
         // TODO: need to handle case where we are skipping right now
-        if (compareBlock.isValid() && ctx.refCsip > compareBlock.end) {
+        if (compareBlock.isValid() && refCsip > compareBlock.end) {
             verbose("Reached end of routine block @ "s + compareBlock.end.toString());
             // if the current routine still contains reachable blocks after the current location, add the start of the next one to the back of the queue,
             // so it gets picked up immediately on the next iteration of the outer loop
-            const Block rb = ctx.routine.nextReachable(ctx.refCsip);
+            const Block rb = routine.nextReachable(refCsip);
             if (rb.isValid()) {
                 verbose("Routine still contains reachable blocks, next @ " + rb.toString());
                 compareQ.saveJump(rb.begin, {});
-                if (!ctx.offMap.getCode(rb.begin).isValid()) {
+                if (!offMap.getCode(rb.begin).isValid()) {
                     // the offset map between the reference and the target does not have a matching entry for the next reachable block's destination,
                     // so the comparison would fail - last ditch attempt is to try and record a "guess" offset mapping before jumping there,
                     // based on the hope that the size of the unreachable block matches in the target
                     // TODO: make sure an instruction matches at the destination before actually recording the mapping
-                    const Address guess = ctx.tgtCsip + (rb.begin - ctx.refCsip);
+                    const Address guess = tgtCsip + (rb.begin - refCsip);
                     debug("Recording guess offset mapping based on unreachable block size: " + rb.begin.toString() + " -> " + guess.toString());
-                    ctx.offMap.setCode(rb.begin, guess);
+                    offMap.setCode(rb.begin, guess);
                 }
             }
             else {
-                verbose("Completed comparison of routine " + ctx.routine.name + ", no more reachable blocks");
+                verbose("Completed comparison of routine " + routine.name + ", no more reachable blocks");
             }
             break;
         }
 
         // reached predefined stop address
-        if (ctx.options.stopAddr.isValid() && ctx.refCsip >= ctx.options.stopAddr) {
-            verbose("Reached stop address: " + ctx.refCsip.toString());
+        if (options.stopAddr.isValid() && refCsip >= options.stopAddr) {
+            verbose("Reached stop address: " + refCsip.toString());
             break;
         }
     } // iterate over instructions at current comparison location    
@@ -771,7 +797,7 @@ Branch Analyzer::getBranch(const Instruction &i, const RegisterState &regs) cons
         else if (operandIsMemImmediate(i.op1.type) && regs.isKnown(REG_DS)) {
             // need to read call destination offset from memory
             Address memAddr{regs.getValue(REG_DS), i.op1.immval.u16};
-            if (codeExtents.contains(memAddr)) {
+            if (ref.contains(memAddr)) {
                 branch.destination = Address{i.addr.segment, code.readWord(memAddr)};
                 branch.isCall = true;
                 searchMessage(addr, "encountered near call through mem pointer to "s + branch.destination.toString());
@@ -802,7 +828,7 @@ Branch Analyzer::getBranch(const Instruction &i, const RegisterState &regs) cons
 }
 
 Analyzer::ComparisonResult Analyzer::instructionsMatch(const Instruction &ref, Instruction tgt) {
-    if (ctx.options.ignoreDiff) return CMP_MATCH;
+    if (options.ignoreDiff) return CMP_MATCH;
 
     auto insResult = ref.match(tgt);
     if (insResult == INS_MATCH_FULL) return CMP_MATCH;
@@ -815,7 +841,7 @@ Analyzer::ComparisonResult Analyzer::instructionsMatch(const Instruction &ref, I
                 refBranch = getBranch(ref), 
                 tgtObranch = getBranch(tgt);
             if (refBranch.destination.isValid() && tgtObranch.destination.isValid()) {
-                match = ctx.offMap.codeMatch(refBranch.destination, tgtObranch.destination);
+                match = offMap.codeMatch(refBranch.destination, tgtObranch.destination);
                 if (!match) debug("Instruction mismatch on branch destination");
                 // near jumps are usually used within a routine to handle looping and conditions,
                 // so a different value (relative jump amount) might mean a wrong flow
@@ -824,9 +850,9 @@ Analyzer::ComparisonResult Analyzer::instructionsMatch(const Instruction &ref, I
             }
             // special case of jmp vs jmp short - allow only if variants enabled
             if (match && ref.opcode != tgt.opcode && (ref.isUnconditionalJump() || tgt.isUnconditionalJump())) {
-                if (ctx.options.variant) {
+                if (options.variant) {
                     verbose(output_color(OUT_YELLOW) + compareStatus(ref, tgt, true, INS_MATCH_DIFF) + output_color(OUT_DEFAULT));
-                    ctx.tgtCsip += tgt.length;
+                    tgtCsip += tgt.length;
                     return CMP_VARIANT;
                 }
                 else return CMP_MISMATCH;
@@ -843,7 +869,7 @@ Analyzer::ComparisonResult Analyzer::instructionsMatch(const Instruction &ref, I
 
             if (operandIsMemWithOffset(op->type)) {
                 // in strict mode, the offsets are expected to be exactly matching, with no translation
-                if (ctx.options.strict) {
+                if (options.strict) {
                     debug("Mismatching due to offset difference in strict mode");
                     return CMP_MISMATCH;
                 }
@@ -852,17 +878,17 @@ Analyzer::ComparisonResult Analyzer::instructionsMatch(const Instruction &ref, I
                 Register segReg = ref.memSegmentId();
                 switch (segReg) {
                 case REG_CS:
-                    match = ctx.offMap.codeMatch(refOfs, tgtOfs);
+                    match = offMap.codeMatch(refOfs, tgtOfs);
                     if (!match) verbose("Instruction mismatch due to code segment offset mapping conflict");
                     break;
                 case REG_ES: /* TODO: come up with something better */
                 case REG_DS:
-                    match = ctx.offMap.dataMatch(refOfs, tgtOfs);
+                    match = offMap.dataMatch(refOfs, tgtOfs);
                     if (!match) verbose("Instruction mismatch due to data segment offset mapping conflict");
                     break;
                 case REG_SS:
-                    if (!ctx.options.strict) {
-                        match = ctx.offMap.stackMatch(refOfs, tgtOfs);
+                    if (!options.strict) {
+                        match = offMap.stackMatch(refOfs, tgtOfs);
                         if (!match) verbose("Instruction mismatch due to stack segment offset mapping conflict");
                     }
                     break;
@@ -872,7 +898,7 @@ Analyzer::ComparisonResult Analyzer::instructionsMatch(const Instruction &ref, I
                 }
                 return match ? CMP_DIFFVAL : CMP_MISMATCH;
             }
-            else if (operandIsImmediate(op->type) && !ctx.options.strict) {
+            else if (operandIsImmediate(op->type) && !options.strict) {
                 debug("Ignoring immediate value difference in loose mode");
                 return CMP_DIFFVAL;
             }
@@ -881,7 +907,7 @@ Analyzer::ComparisonResult Analyzer::instructionsMatch(const Instruction &ref, I
     
     if (match) return CMP_MATCH;
     // check for a variant match if allowed by options
-    else if (ctx.options.variant && INSTR_VARIANT.count(ref.toString())) {
+    else if (options.variant && INSTR_VARIANT.count(ref.toString())) {
         // get vector of allowed variants (themselves vectors of strings)
         const auto &variants = INSTR_VARIANT.at(ref.toString());
         debug("Found "s + to_string(variants.size()) + " variants for instruction '" + ref.toString() + "'");
@@ -893,7 +919,7 @@ Analyzer::ComparisonResult Analyzer::instructionsMatch(const Instruction &ref, I
             variantStr.clear();
             match = true;
             // temporary code pointer for the target binary while we scan its instructions ahead
-            Address tmpCsip = ctx.tgtCsip;
+            Address tmpCsip = tgtCsip;
             int idx = 0;
             // iterate over instructions inside this variant
             for (auto &istr: v) {
@@ -903,7 +929,7 @@ Analyzer::ComparisonResult Analyzer::instructionsMatch(const Instruction &ref, I
                 // if this is not the last instruction in the variant, read the next instruction from the target binary
                 tmpCsip += tgt.length;
                 if (++idx < v.size()) {
-                    tgt = Instruction{tmpCsip, ctx.target.code.pointer(tmpCsip)};
+                    tgt = Instruction{tmpCsip, tgt.code.pointer(tmpCsip)};
                     variantStr += "\n" + compareStatus(Instruction(), tgt, true);
                 }
             }
@@ -911,7 +937,7 @@ Analyzer::ComparisonResult Analyzer::instructionsMatch(const Instruction &ref, I
                 debug("Got variant match, advancing target binary to " + tmpCsip.toString());
                 verbose(output_color(OUT_YELLOW) + statusStr + variantStr + output_color(OUT_DEFAULT));
                 // in the case of a match, need to update the actual instruction pointer in the target binary to account for the instructions we skipped
-                ctx.tgtCsip = tmpCsip;
+                tgtCsip = tmpCsip;
                 return CMP_VARIANT;
             }
         }
@@ -921,11 +947,11 @@ Analyzer::ComparisonResult Analyzer::instructionsMatch(const Instruction &ref, I
 }
 
 void Analyzer::diffContext() const {
-    const int CONTEXT_COUNT = ctx.options.ctxCount;
-    Address a1 = ctx.refCsip; 
-    Address a2 = ctx.tgtCsip;
-    const Memory &code2 = ctx.target.code;
-    const Block &ext2 = ctx.target.codeExtents;
+    const int CONTEXT_COUNT = options.ctxCount;
+    Address a1 = refCsip; 
+    Address a2 = tgtCsip;
+    const Memory &code2 = tgt.code;
+    const Block &ext2 = tgt.codeExtents;
     verbose("--- Context information for up to " + to_string(CONTEXT_COUNT) + " additional instructions after mismatch location:");
     Instruction i1, i2;
     for (int i = 0; i <= CONTEXT_COUNT; ++i) {
@@ -950,7 +976,7 @@ void Analyzer::skipContext(Address refAddr, Address tgtAddr, Size refSkipped, Si
             refAddr += refInstr.length;
         }
         if (tgtSkipped > 0) {
-            tgtInstr = {tgtAddr, ctx.target.code.pointer(tgtAddr)};
+            tgtInstr = {tgtAddr, tgt.code.pointer(tgtAddr)};
             tgtSkipped--;
             tgtAddr += tgtInstr.length;
         }
@@ -959,7 +985,7 @@ void Analyzer::skipContext(Address refAddr, Address tgtAddr, Size refSkipped, Si
 }
 
 // display comparison statistics
-void Analyzer::compareSummary(const Context &ctx, const RoutineMap &routineMap, const bool showMissed) const {
+void Analyzer::compareSummary(const RoutineMap &routineMap, const bool showMissed) const {
     // TODO: display total size of code segments between load module and routine map size
     if (routineMap.empty()) return;
     const Size 
@@ -976,7 +1002,7 @@ void Analyzer::compareSummary(const Context &ctx, const RoutineMap &routineMap, 
         routineSumSize += r.size();
         reachableSize += r.reachableSize();
         unreachableSize += r.unreachableSize();
-        if (r.ignore || (r.assembly && !ctx.options.checkAsm)) {
+        if (r.ignore || (r.assembly && !options.checkAsm)) {
             excludedCount++;
             excludedSize += r.size();
             excludedReachableSize += r.reachableSize();
@@ -984,7 +1010,7 @@ void Analyzer::compareSummary(const Context &ctx, const RoutineMap &routineMap, 
         // check against routines which we actually visited at runtime
         // report routines in map which were not visited as missed, unless they were assembly 
         // and we are not in checkAsm mode
-        else if (visitedNames.count(r.name) == 0 && (!r.assembly || ctx.options.checkAsm)) {
+        else if (visitedNames.count(r.name) == 0 && (!r.assembly || options.checkAsm)) {
             missedSize += r.size();
             missedNames.push_back(r.toString(false));
         }

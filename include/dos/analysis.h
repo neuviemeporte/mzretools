@@ -151,6 +151,7 @@ private:
 
     Options options;
     Address refCsip, tgtCsip;
+    Block compareBlock;
     OffsetMap offMap;
     Size comparedSize;
     ScanQueue compareQ;
@@ -162,7 +163,7 @@ public:
     RoutineMap findRoutines(Executable &exe);
     bool compareCode(const Executable &ref, const Executable &tgt, const RoutineMap &refMap, const RoutineMap &tgtMap);
 private:
-    bool comparisonLoop();
+    bool comparisonLoop(const Executable &ref, const Executable &tgt, const RoutineMap &refMap, const RoutineMap &tgtMap);
     Branch getBranch(const Instruction &i, const RegisterState &regs) const;
     ComparisonResult instructionsMatch(const Instruction &ref, Instruction tgt);
     void diffContext() const;
