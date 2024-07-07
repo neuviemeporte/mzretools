@@ -276,10 +276,12 @@ public:
         Register regId() const;
         Word wordValue() const;
     } op1, op2;
+    const Byte* data;
 
     Instruction();
     Instruction(const Address &addr, const Byte *data);
     std::string toString(const bool extended = false) const;
+    ByteString encoding(const bool abstract = true) const;
     InstructionMatch match(const Instruction &other) const;
     void load(const Byte *data);
     Word absoluteOffset() const;

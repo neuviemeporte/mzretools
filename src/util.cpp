@@ -242,15 +242,26 @@ inline bool isHexDigit(const char d) {
     return (d >= '0' && d <= '9') || (d >= 'a' && d <= 'f') || (d >= 'A' && d <= 'F');
 }
 
-std::vector<SWord> hexaToNumeric(const std::string &hexa) {
+ByteString hexaToNumeric(const std::string &hexa) {
     if (hexa.size() & 1) throw ArgError("Hexa string must be of even size");
-    std::vector<SWord> ret;
+    ByteString ret;
     for (Size s = 0; s < hexa.size(); s+=2) {
         const string byteStr = hexa.substr(s, 2);
         if (byteStr == "??") { ret.push_back(-1); continue; }
         ret.push_back(stoi(byteStr, nullptr, 16));
     }
-    return ret;
+    return ret; 
+}
+
+std::string numericToHexa(const ByteString &pattern) {
+    ostringstream str;
+    str << setbase(16) << setfill('0');
+    for (const SWord byte : pattern) {
+        if (byte < 0) str << "??";
+        else if (byte > 0xff) throw ArgError("Invalid byte value in string: " + to_string(byte));
+        else str << setw(2) << byte;
+    }
+    return str.str();
 }
 
 std::vector<string> splitString(const std::string &str, char delim) {

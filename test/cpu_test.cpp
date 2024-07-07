@@ -392,22 +392,22 @@ TEST_F(CpuTest, DISABLED_CmpSub) {
 
 TEST_F(CpuTest, Instruction) {
     const Byte code[] = {
-    0x06, // push es
-    0x49, // dec cx
-    0xb9, 0x34, 0x12, // mov cx,0x1234
-    0xf3, 0xaa, // rep stosb
-    0x81, 0x78, 0x10, 0xcd, 0xab, // cmp word [bx+si+0x10],0xabcd
-    0x36, 0x21, 0x16, 0xac, 0x19, // and [ss:0x19ac],dx
-    0x74, 0xfd, // jz -0x3 (+0x11+0x2 = 0x10)
-    0xd0, 0xc0, // rol al,1
-    0x36, 0xA3, 0x52, 0x00, // mov [ss:0x52],ax
-    0xF6, 0xC2, 0x80, // test dl,0x80
-    0xff, 0x18, // call far [bx+si]
-    0xd0, 0x0a, // ror byte [bp+si],1
-    0x0B, 0xA4, 0x0B, 0x83, // or sp,[si-0x7cf5]
-    0xff, 0xe1, // jmp cx
-    0x26, 0x8e, 0x06, 0x2c, 0x00, // mov es, es:[0x2c]
-    0xa2, 0xce, 0x00, // mov [0xce],al
+        0x06, // push es
+        0x49, // dec cx
+        0xb9, 0x34, 0x12, // mov cx,0x1234
+        0xf3, 0xaa, // rep stosb
+        0x81, 0x78, 0x10, 0xcd, 0xab, // cmp word [bx+si+0x10],0xabcd
+        0x36, 0x21, 0x16, 0xac, 0x19, // and [ss:0x19ac],dx
+        0x74, 0xfd, // jz -0x3 (+0x11+0x2 = 0x10)
+        0xd0, 0xc0, // rol al,1
+        0x36, 0xA3, 0x52, 0x00, // mov [ss:0x52],ax
+        0xF6, 0xC2, 0x80, // test dl,0x80
+        0xff, 0x18, // call far [bx+si]
+        0xd0, 0x0a, // ror byte [bp+si],1
+        0x0B, 0xA4, 0x0B, 0x83, // or sp,[si-0x7cf5]
+        0xff, 0xe1, // jmp cx
+        0x26, 0x8e, 0x06, 0x2c, 0x00, // mov es, es:[0x2c]
+        0xa2, 0xce, 0x00, // mov [0xce],al
     };
     const std::string instructions[] = {
         "push es",
@@ -427,6 +427,24 @@ TEST_F(CpuTest, Instruction) {
         "mov es, es:[0x2c]",
         "mov [0xce], al",
     };
+    const std::string encodings[] = {
+        "06", // push es
+        "49", // dec cx
+        "b9????", // mov cx,0x1234
+        "f3aa" // rep stosb
+        "8178??????", // cmp word [bx+si+0x10],0xabcd
+        "362116????", // and [ss:0x19ac],dx
+        "74??", // jz -0x3 (+0x11+0x2 = 0x10)
+        "d0c0", // rol al,1
+        "36a3????", // mov [ss:0x52],ax
+        "f6c2??", // test dl,0x80
+        "ff18", // call far [bx+si]
+        "d00a", // ror byte [bp+si],1
+        "0ba4????", // or sp,[si-0x7cf5]
+        "ffe1", // jmp cx
+        "268e06????", // mov es, es:[0x2c]
+        "a2????", // mov [0xce],al
+    };
     const Size lengths[] = {
         1, 1, 3, 2, 5, 5, 2, 2, 4, 3, 2, 2, 4, 2, 5, 3,
     };
@@ -438,6 +456,7 @@ TEST_F(CpuTest, Instruction) {
         TRACELN("--- " << hexVal(ins.addr.toLinear()) << ": instruction " << i + 1 << ": '" << ins.toString() 
             << "' (length = " << static_cast<int>(ins.length) << ")" << ", memOfs = " << ins.memOffset() << "/" << hexVal(ins.memOffset()));
         ASSERT_EQ(ins.toString(), instructions[i]);
+        // ASSERT_EQ(numericToHexa(ins.encoding()), encodings[i]);
         ASSERT_EQ(ins.length, lengths[i]);
         codeofs += ins.length;
     }

@@ -3,7 +3,7 @@
 
 #include <cstdint>
 #include <cstdlib>
-
+#include <vector>
 #include <unistd.h> // for ssize_t
 
 using Byte   = uint8_t;
@@ -15,6 +15,7 @@ using Size   = size_t;
 // for representing linear addresses from the memory base, required because DOS addresses don't fit in a 16-bit word
 using Offset = size_t;
 using SOffset = ssize_t;
+using ByteString = std::vector<SWord>;
 
 // TODO: assumes LE
 inline Byte lowByte(const Word word) { return static_cast<Byte>(word & 0xff); }

@@ -172,7 +172,6 @@ int main(int argc, char *argv[]) {
         }
     }
     try {
-
         Executable exeBase = loadExe(baseSpec, loadSeg, opt);
         Executable exeCompare = loadExe(compareSpec, loadSeg, opt);
         RoutineMap map;

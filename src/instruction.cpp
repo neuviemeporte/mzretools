@@ -227,7 +227,7 @@ Register defaultMemSegment(const OperandType ot) {
     return ret;
 }
 
-Instruction::Instruction() : addr{}, prefix(PRF_NONE), opcode(OP_INVALID), iclass(INS_ERR), length(0) {
+Instruction::Instruction() : addr{}, prefix(PRF_NONE), opcode(OP_INVALID), iclass(INS_ERR), length(0), data(nullptr) {
 }
 
 Instruction::Instruction(const Address &addr, const Byte *data) : addr{addr}, prefix(PRF_NONE), opcode(OP_INVALID), iclass(INS_ERR), length(0) {
@@ -235,6 +235,7 @@ Instruction::Instruction(const Address &addr, const Byte *data) : addr{addr}, pr
 }
 
 void Instruction::load(const Byte *data)  {
+    this->data = data;
     opcode = *data++;
     length++;
     // in case of a chain opcode, use it to set an appropriate prefix value and replace the opcode with the subsequent instruction
@@ -617,6 +618,19 @@ std::string Instruction::toString(const bool extended) const {
     }
 
     return str.str();
+}
+
+// this is dumb, should implement a proper assembler some day
+ByteString Instruction::encoding(const bool abstract) const {
+    ByteString ret;
+    SOffset off;
+    for (int i = 0; i < length; ++i) {
+        ret.push_back(static_cast<SWord>(*(data + i)));
+    }
+    if (abstract && (off = memOffset()) != 0) {
+        // TODO: implement replacing of offsets/immediates with negative values in abstract encoding
+    }
+    return ret;
 }
 
 InstructionMatch Instruction::match(const Instruction &other) const {

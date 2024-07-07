@@ -174,7 +174,7 @@ std::string byteBufString(const std::vector<Byte> &bytes) {
     return str.str();
 }
 
-Address MzImage::find(const std::vector<SWord> &pattern) const {
+Address MzImage::find(const ByteString &pattern) const {
     // too lazy to implement Boyer-Moore
     const Size patSize = pattern.size();
     Address found;

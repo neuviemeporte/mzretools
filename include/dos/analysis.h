@@ -5,6 +5,7 @@
 #include <vector>
 #include <list>
 #include <map>
+#include <set>
 
 #include "dos/types.h"
 #include "dos/address.h"
@@ -13,6 +14,8 @@
 #include "dos/routine.h"
 
 static constexpr RoutineId NULL_ROUTINE = 0;
+
+class Executable;
 
 // TODO: 
 // - implement calculation of memory offsets based on register values from instruction operand type enum, allow for unknown values, see jump @ 0xab3 in hello.exe
@@ -31,6 +34,11 @@ struct Destination {
     std::string toString() const;
 };
 
+struct Branch {
+    Address source, destination;
+    bool isCall, isUnconditional, isNear;
+};
+
 // utility class for keeping track of the queue of potentially interesting Destinations, and which bytes in the executable have been visited already
 class ScanQueue {
     friend class AnalysisTest;
@@ -43,6 +51,7 @@ class ScanQueue {
 
 public:
     ScanQueue(const Destination &seed);
+    ScanQueue() {}
     // search point queue operations
     Size size() const { return queue.size(); }
     bool empty() const { return queue.empty(); }
@@ -51,6 +60,7 @@ public:
     bool hasPoint(const Address &dest, const bool call) const;
     bool saveCall(const Address &dest, const RegisterState &regs, const bool near);
     bool saveJump(const Address &dest, const RegisterState &regs);
+    bool saveBranch(const Branch &branch, const RegisterState &regs, const Block &codeExtents);
     // discovered locations operations
     Size routineCount() const { return entrypoints.size(); }
     std::string statusString() const;
@@ -60,8 +70,6 @@ public:
     std::vector<Routine> getRoutines() const;
     void dumpVisited(const std::string &path, const Offset start = 0, Size size = 0) const;
 
-private:
-    ScanQueue() {}
 };
 
 class OffsetMap {
@@ -86,19 +94,6 @@ public:
 
 private:
     std::string dataStr(const MapSet &ms) const;
-};
-
-struct Branch {
-    Address source, destination;
-    bool isCall, isUnconditional, isNear;
-};
-
-// TODO: introduce true strict (now it's "not loose"), compare by opcode
-struct AnalysisOptions {
-    bool strict, ignoreDiff, noCall, variant, checkAsm;
-    Size refSkip, tgtSkip, ctxCount;
-    Address stopAddr;
-    AnalysisOptions() : strict(true), ignoreDiff(false), noCall(false), variant(false), refSkip(0), tgtSkip(0), ctxCount(10) {}
 };
 
 // TODO: compare instructions, not string representations, allow wildcards in place of arguments, e.g. "mov ax, *"
@@ -128,6 +123,51 @@ public:
 private:
     int find(const Variant &search, int bucket) const;
     void loadFromStream(std::istream &str);
+};
+
+class Analyzer {
+public:
+    // TODO: introduce true strict (now it's "not loose"), compare by opcode
+    struct Options {
+        bool strict, ignoreDiff, noCall, variant, checkAsm;
+        Size refSkip, tgtSkip, ctxCount;
+        Address stopAddr;
+        Options() : strict(true), ignoreDiff(false), noCall(false), variant(false), refSkip(0), tgtSkip(0), ctxCount(10) {}
+    };
+private:
+    enum ComparisonResult { 
+        CMP_MISMATCH,
+        CMP_MATCH,    // full literal or logical match
+        CMP_DIFFVAL,  // match with different immediate/offset value, might be allowed depending on options
+        CMP_DIFFTGT,  // match with different branch (near jump) target, might be allowed depending on options
+        CMP_VARIANT,  // match with a variant of an instruction or a sequence of instructions
+    };
+
+    enum SkipType {
+        SKIP_NONE,
+        SKIP_REF,
+        SKIP_TGT,
+    };
+
+    Options options;
+    Address refCsip, tgtCsip;
+    OffsetMap offMap;
+    Size comparedSize;
+    ScanQueue compareQ;
+    Routine routine;
+    std::set<std::string> routineNames, excludedNames;
+public:
+    Analyzer(const Options &options, const Size maxData) : options(options), offMap(maxData), comparedSize(0) {}
+
+    RoutineMap findRoutines(Executable &exe);
+    bool compareCode(const Executable &ref, const Executable &tgt, const RoutineMap &refMap, const RoutineMap &tgtMap);
+private:
+    bool comparisonLoop();
+    Branch getBranch(const Instruction &i, const RegisterState &regs) const;
+    ComparisonResult instructionsMatch(const Instruction &ref, Instruction tgt);
+    void diffContext() const;
+    void skipContext(Address refAddr, Address tgtAddr, Size refSkipped, Size tgtSkipped) const;
+    void comparisonSummary(const RoutineMap &routineMap, const bool showMissed) const;
 };
 
 #endif // ANALYSIS_H

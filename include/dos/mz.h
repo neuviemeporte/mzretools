@@ -68,7 +68,7 @@ public:
     // TODO: should be relocated (i.e. apply loadSegment_)? 
     Address entrypoint() const { return Address(header_.cs, header_.ip); }
     Address stackPointer() const { return Address(header_.ss, header_.sp); }
-    Address find(const std::vector<SWord> &pattern) const;
+    Address find(const ByteString &pattern) const;
     void load(const Word loadSegment);
 };
 
