@@ -157,6 +157,8 @@ private:
     ScanQueue compareQ;
     Routine routine;
     std::set<std::string> routineNames, excludedNames;
+    Size refSkipCount, tgtSkipCount;
+    Address refSkipOrigin, tgtSkipOrigin;
 public:
     Analyzer(const Options &options, const Size maxData) : options(options), offMap(maxData), comparedSize(0) {}
 
@@ -164,11 +166,11 @@ public:
     bool compareCode(const Executable &ref, const Executable &tgt, const RoutineMap &refMap, const RoutineMap &tgtMap);
 private:
     bool comparisonLoop(const Executable &ref, const Executable &tgt, const RoutineMap &refMap, const RoutineMap &tgtMap);
-    Branch getBranch(const Instruction &i, const RegisterState &regs) const;
-    ComparisonResult instructionsMatch(const Instruction &ref, Instruction tgt);
-    void diffContext() const;
-    void skipContext(Address refAddr, Address tgtAddr, Size refSkipped, Size tgtSkipped) const;
-    void comparisonSummary(const RoutineMap &routineMap, const bool showMissed) const;
+    Branch getBranch(const Executable &exe, const Instruction &i, const RegisterState &regs) const;
+    ComparisonResult instructionsMatch(const Executable &ref, const Executable &tgt, const Instruction &refInstr, Instruction tgtInstr);
+    void diffContext(const Executable &ref, const Executable &tgt) const;
+    void skipContext(const Executable &ref, const Executable &tgt) const;
+    void comparisonSummary(const Executable &ref, const RoutineMap &routineMap, const bool showMissed) const;
 };
 
 #endif // ANALYSIS_H

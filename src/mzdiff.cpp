@@ -3,6 +3,7 @@
 #include "dos/error.h"
 #include "dos/output.h"
 #include "dos/executable.h"
+#include "dos/analysis.h"
 
 #include <iostream>
 #include <string>
@@ -67,7 +68,7 @@ string mzInfo(const MzImage &mz) {
     return str.str();
 }
 
-Executable loadExe(const string &spec, const Word segment, AnalysisOptions &opt) {
+Executable loadExe(const string &spec, const Word segment, Analyzer::Options &opt) {
     // TODO: support providing segment for entrypoint
     string path, entry;
     // split spec string into the path and the entrypoint specification, if present
@@ -134,7 +135,7 @@ int main(int argc, char *argv[]) {
     if (argc < 3) {
         usage();
     }
-    AnalysisOptions opt;
+    Analyzer::Options opt;
     string baseSpec, pathMap, compareSpec;
     int posarg = 0;
     for (int aidx = 1; aidx < argc; ++aidx) {
@@ -180,7 +181,8 @@ int main(int argc, char *argv[]) {
             map = {pathMap, loadSeg};
             mapSize = map.size();
         } 
-        bool compareResult = exeBase.compareCode(map, exeCompare, opt);
+        Analyzer a{opt};
+        bool compareResult = a.compareCode(exeBase, exeCompare, map, {});
         return compareResult ? 0 : 1;
     }
     catch (Error &e) {

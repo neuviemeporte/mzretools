@@ -13,27 +13,6 @@ using namespace std;
 
 OUTPUT_CONF(LOG_ANALYSIS)
 
-// dictionary of equivalent instruction sequences for variant-enabled comparison
-// TODO: support user-supplied equivalence dictionary 
-// TODO: do not hardcode, place in text file
-// TODO: automatic reverse match generation
-// TODO: replace strings with Instruction-s, support more flexible matching?
-static const map<string, vector<vector<string>>> INSTR_VARIANT = {
-    { "add sp, 0x2", { 
-            { "pop cx" }, 
-            { "inc sp", "inc sp" },
-        },
-    },
-    { "add sp, 0x4", { 
-            { "pop cx", "pop cx" }, 
-        },
-    },
-    { "sub ax, ax", { 
-            { "xor ax, ax" }, 
-        },
-    },    
-};
-
 Executable::Executable(const MzImage &mz) : 
     code(mz.loadSegment(), mz.loadModuleData(), mz.loadModuleSize()),
     loadSegment(mz.loadSegment()),

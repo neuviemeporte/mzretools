@@ -3,6 +3,7 @@
 #include "dos/error.h"
 #include "dos/output.h"
 #include "dos/executable.h"
+#include "dos/analysis.h"
 
 #include <iostream>
 #include <string>
@@ -20,7 +21,7 @@ void usage() {
            "Options:\n"
            "--verbose:      show more detailed information, including compared instructions\n"
            "--debug:        show additional debug information\n"
-           "--brief:         only show uncompleted and unclaimed areas in map summary\n"
+           "--brief:        only show uncompleted and unclaimed areas in map summary\n"
            "--format:       format printed routines in a way that's directly writable back to the map file\n"
            "--nocpu:        omit CPU-related information like instruction decoding\n"
            "--noanal:       omit analysis-related information\n"
@@ -120,7 +121,8 @@ int main(int argc, char *argv[]) {
         }
         else { // regular operation, scan executable for routines
             Executable exe = loadExe(file1, loadSegment);
-            RoutineMap map = exe.findRoutines();
+            Analyzer a = Analyzer(Analyzer::Options());
+            RoutineMap map = a.findRoutines(exe)
             if (map.empty()) {
                 fatal("Unable to find any routines");
                 return 1;
