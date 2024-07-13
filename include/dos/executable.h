@@ -11,7 +11,6 @@
 #include "dos/mz.h"
 
 class Executable {
-    friend class AnalysisTest;
     const Memory code;
     Word loadSegment;
     Size codeSize;

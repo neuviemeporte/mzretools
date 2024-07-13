@@ -126,6 +126,7 @@ private:
 };
 
 class Analyzer {
+    friend class AnalysisTest;
 public:
     // TODO: introduce true strict (now it's "not loose"), compare by opcode
     struct Options {
@@ -160,7 +161,7 @@ private:
     Size refSkipCount, tgtSkipCount;
     Address refSkipOrigin, tgtSkipOrigin;
 public:
-    Analyzer(const Options &options, const Size maxData) : options(options), offMap(maxData), comparedSize(0) {}
+    Analyzer(const Options &options, const Size maxData = 0) : options(options), offMap(maxData), comparedSize(0) {}
 
     RoutineMap findRoutines(Executable &exe);
     bool compareCode(const Executable &ref, const Executable &tgt, const RoutineMap &refMap, const RoutineMap &tgtMap);

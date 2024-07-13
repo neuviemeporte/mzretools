@@ -122,7 +122,7 @@ int main(int argc, char *argv[]) {
         else { // regular operation, scan executable for routines
             Executable exe = loadExe(file1, loadSegment);
             Analyzer a = Analyzer(Analyzer::Options());
-            RoutineMap map = a.findRoutines(exe)
+            RoutineMap map = a.findRoutines(exe);
             if (map.empty()) {
                 fatal("Unable to find any routines");
                 return 1;
