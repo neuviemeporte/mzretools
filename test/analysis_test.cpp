@@ -296,7 +296,7 @@ TEST_F(AnalysisTest, CodeCompareSkip) {
     opt.refSkip = 3;
     opt.tgtSkip = 2;
     Analyzer a2(opt);
-    ASSERT_TRUE(a2.compareCode(e2, e1, {}, {}));
+    ASSERT_TRUE(a2.compareCode(e1, e2, {}, {}));
     
     const vector<Byte> ref2Code = {
         0x41, // inc cx
