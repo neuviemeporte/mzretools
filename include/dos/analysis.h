@@ -142,13 +142,13 @@ private:
         CMP_DIFFVAL,  // match with different immediate/offset value, might be allowed depending on options
         CMP_DIFFTGT,  // match with different branch (near jump) target, might be allowed depending on options
         CMP_VARIANT,  // match with a variant of an instruction or a sequence of instructions
-    };
+    } matchType;
 
     enum SkipType {
         SKIP_NONE,
         SKIP_REF,
         SKIP_TGT,
-    };
+    } skipType;
 
     Options options;
     Address refCsip, tgtCsip;
@@ -166,6 +166,10 @@ public:
     RoutineMap findRoutines(Executable &exe);
     bool compareCode(const Executable &ref, const Executable &tgt, const RoutineMap &refMap, const RoutineMap &tgtMap);
 private:
+    bool skipAllowed(const Instruction &refInstr, Instruction tgtInstr);
+    bool compareInstructions(const Executable &ref, const Executable &tgt, const Instruction &refInstr, Instruction tgtInstr);
+    void advanceComparison(const Instruction &refInstr, Instruction tgtInstr);
+    bool checkComparisonStop();
     bool comparisonLoop(const Executable &ref, const Executable &tgt, const RoutineMap &refMap, const RoutineMap &tgtMap);
     Branch getBranch(const Executable &exe, const Instruction &i, const RegisterState &regs) const;
     ComparisonResult instructionsMatch(const Executable &ref, const Executable &tgt, const Instruction &refInstr, Instruction tgtInstr);

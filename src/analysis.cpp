@@ -485,7 +485,7 @@ RoutineMap Analyzer::findRoutines(Executable &exe) {
     searchQ.dumpVisited("routines.visited", SEG_TO_OFFSET(loadSegment), codeSize);
 #endif
 
-    // iterate over discovered memory map and create routine map
+    // create routine map from contents of search queue
     auto ret = RoutineMap{searchQ, exe.getSegments(), exe.getLoadSegment(), exe.size()};
     // TODO: stats like for compare
     return ret;
@@ -561,6 +561,140 @@ success:
     return true;    
 }
 
+bool Analyzer::skipAllowed(const Instruction &refInstr, Instruction tgtInstr) {
+    // first try skipping in the reference executable, skipping returns is not allowed
+    if (refSkipCount + 1 <= options.refSkip && !refInstr.isReturn()) {
+        // save original reference position for rewind
+        if (refSkipCount == 0) refSkipOrigin = refCsip;
+        skipType = SKIP_REF;
+        refSkipCount++;
+        return true;
+    }
+    // no more skips allowed in reference, try skipping target executable
+    else if (tgtSkipCount + 1 <= options.tgtSkip && !tgtInstr.isReturn()) {
+        // save original target position for skip context display
+        if (tgtSkipCount == 0) tgtSkipOrigin = tgtCsip;
+        skipType = SKIP_TGT;
+        // performing a skip in the target executable resets the allowed reference skip count
+        refSkipCount = 0;
+        tgtSkipCount++;
+        return true;
+    }
+    // ran out of allowed skips in both executables
+    return false;
+}
+
+bool Analyzer::compareInstructions(const Executable &ref, const Executable &tgt, const Instruction &refInstr, Instruction tgtInstr) {
+    skipType = SKIP_NONE;
+    matchType = instructionsMatch(ref, tgt, refInstr, tgtInstr);
+    switch (matchType) {
+    case CMP_MATCH:
+        // display skipped instructions if there were any before this match
+        if (refSkipCount || tgtSkipCount) {
+            skipContext(ref, tgt);
+            // an instruction match resets the allowed skip counters
+            refSkipCount = tgtSkipCount = 0;
+            refSkipOrigin = tgtSkipOrigin = Address();
+        }
+        verbose(compareStatus(refInstr, tgtInstr, true));
+        break;
+    case CMP_MISMATCH:
+        // attempt to skip a mismatch, if permitted by the options
+        if (!skipAllowed(refInstr, tgtInstr)) {
+            // display skipped instructions if there were any before this mismatch
+            if (refSkipCount || tgtSkipCount) {
+                skipContext(ref, tgt);
+            }
+            verbose(output_color(OUT_RED) + compareStatus(refInstr, tgtInstr, true) + output_color(OUT_DEFAULT));
+            error("Instruction mismatch in routine " + routine.name + " at " + compareStatus(refInstr, tgtInstr, false));
+            diffContext(ref, tgt);
+            return false;
+        }
+        break;
+    case CMP_DIFFVAL:
+        verbose(output_color(OUT_YELLOW) + compareStatus(refInstr, tgtInstr, true) + output_color(OUT_DEFAULT));
+        break;
+    case CMP_DIFFTGT:
+        verbose(output_color(OUT_BRIGHTRED) + compareStatus(refInstr, tgtInstr, true) + output_color(OUT_DEFAULT));
+        break;
+    }
+    return true;
+}
+
+void Analyzer::advanceComparison(const Instruction &refInstr, Instruction tgtInstr) {
+    switch (matchType) {
+    case CMP_MISMATCH:
+        // if the instructions did not match and we still got here, that means we are in difference skipping mode, 
+        debug(compareStatus(refInstr, tgtInstr, false, INS_MATCH_MISMATCH));
+        switch (skipType) {
+        case SKIP_REF: 
+            comparedSize += refInstr.length;
+            refCsip += refInstr.length;
+            debug("Skipping over reference instruction mismatch, allowed " + to_string(refSkipCount) + " out of " + to_string(options.refSkip) + ", destination " + refCsip.toString());
+            break;
+        case SKIP_TGT:
+            // rewind reference position if it was skipped before
+            if (refSkipOrigin.isValid()) {
+                comparedSize -= refCsip.offset - refSkipOrigin.offset;
+                refCsip = refSkipOrigin;
+            }
+            tgtCsip += tgtInstr.length;
+            debug("Skipping over target instruction mismatch, allowed " + to_string(tgtSkipCount)  + " out of " + to_string(options.tgtSkip) + ", destination " + tgtCsip.toString());
+            break;
+        default:
+            throw LogicError("Unexpected: no skip despite mismatch");
+        }
+        break;
+    case CMP_VARIANT:
+        comparedSize += refInstr.length;
+        refCsip += refInstr.length;
+        // in case of a variant match, the instruction pointer in the target binary will have already been advanced by instructionsMatch()
+        debug("Variant match detected, comparison will continue at " + tgtCsip.toString());
+        break;
+    default:
+        // normal case, advance both reference and target positions
+        comparedSize += refInstr.length;
+        refCsip += refInstr.length;
+        tgtCsip += tgtInstr.length;
+        break;
+    }
+}
+
+bool Analyzer::checkComparisonStop() {
+    // an end of a routine block is a hard stop, we do not want to go into unreachable areas which may contain invalid opcodes (e.g. data mixed with code)
+    // TODO: need to handle case where we are skipping right now
+    if (compareBlock.isValid() && refCsip > compareBlock.end) {
+        verbose("Reached end of routine block @ "s + compareBlock.end.toString());
+        // if the current routine still contains reachable blocks after the current location, add the start of the next one to the back of the queue,
+        // so it gets picked up immediately on the next iteration of the outer loop
+        const Block rb = routine.nextReachable(refCsip);
+        if (rb.isValid()) {
+            verbose("Routine still contains reachable blocks, next @ " + rb.toString());
+            compareQ.saveJump(rb.begin, {});
+            if (!offMap.getCode(rb.begin).isValid()) {
+                // the offset map between the reference and the target does not have a matching entry for the next reachable block's destination,
+                // so the comparison would fail - last ditch attempt is to try and record a "guess" offset mapping before jumping there,
+                // based on the hope that the size of the unreachable block matches in the target
+                // TODO: make sure an instruction matches at the destination before actually recording the mapping
+                const Address guess = tgtCsip + (rb.begin - refCsip);
+                debug("Recording guess offset mapping based on unreachable block size: " + rb.begin.toString() + " -> " + guess.toString());
+                offMap.setCode(rb.begin, guess);
+            }
+        }
+        else {
+            verbose("Completed comparison of routine " + routine.name + ", no more reachable blocks");
+        }
+        return true;
+    }
+
+    // reached predefined stop address
+    if (options.stopAddr.isValid() && refCsip >= options.stopAddr) {
+        verbose("Reached stop address: " + refCsip.toString());
+        return true;
+    }
+    return false;
+}
+
 bool Analyzer::comparisonLoop(const Executable &ref, const Executable &tgt, const RoutineMap &refMap, const RoutineMap &tgtMap) {
     refSkipCount = tgtSkipCount = 0;
     while (true) {
@@ -583,59 +717,12 @@ bool Analyzer::comparisonLoop(const Executable &ref, const Executable &tgt, cons
         compareQ.setRoutineId(refCsip.toLinear(), refInstr.length, VISITED_ID);
 
         // compare instructions
-        SkipType skipType = SKIP_NONE;
-        const auto matchType = instructionsMatch(ref, tgt, refInstr, tgtInstr);
-        switch (matchType) {
-        case CMP_MATCH:
-            // display skipped instructions if there were any before this match
-            if (refSkipCount || tgtSkipCount) {
-                skipContext(ref, tgt);
-                refSkipCount = tgtSkipCount = 0;
-                refSkipOrigin = tgtSkipOrigin = Address();
-            }
-            verbose(compareStatus(refInstr, tgtInstr, true));
-            // an instruction match resets the allowed skip counters
-            break;
-        case CMP_MISMATCH:
-            // attempt to skip a mismatch, if permitted by the options
-            // first try skipping in the reference executable, skipping returns is not allowed
-            if (refSkipCount + 1 <= options.refSkip && !refInstr.isReturn()) {
-                // save original reference position for rewind
-                if (refSkipCount == 0) refSkipOrigin = refCsip;
-                skipType = SKIP_REF;
-                refSkipCount++;
-            }
-            // no more skips allowed in reference, try skipping target executable
-            else if (tgtSkipCount + 1 <= options.tgtSkip && !tgtInstr.isReturn()) {
-                // save original target position for skip context display
-                if (tgtSkipCount == 0) tgtSkipOrigin = tgtCsip;
-                skipType = SKIP_TGT;
-                // performing a skip in the target executable resets the allowed reference skip count
-                refSkipCount = 0;
-                tgtSkipCount++;
-            }
-            // ran out of allowed skips in both executables
-            else {
-                // display skipped instructions if there were any before this mismatch
-                if (refSkipCount || tgtSkipCount) {
-                    skipContext(ref, tgt);
-                }
-                verbose(output_color(OUT_RED) + compareStatus(refInstr, tgtInstr, true) + output_color(OUT_DEFAULT));
-                error("Instruction mismatch in routine " + routine.name + " at " + compareStatus(refInstr, tgtInstr, false));
-                diffContext(ref, tgt);
-                comparisonSummary(ref, refMap, false);
-                return false;
-            }
-            break;
-        case CMP_DIFFVAL:
-            verbose(output_color(OUT_YELLOW) + compareStatus(refInstr, tgtInstr, true) + output_color(OUT_DEFAULT));
-            break;
-        case CMP_DIFFTGT:
-            verbose(output_color(OUT_BRIGHTRED) + compareStatus(refInstr, tgtInstr, true) + output_color(OUT_DEFAULT));
-            break;
+        if (!compareInstructions(ref, tgt, refInstr, tgtInstr)) {
+            comparisonSummary(ref, refMap, false);
+            return false;
         }
-        // comparison result okay (instructions match or skip permitted), interpret the instructions
 
+        // comparison result okay (instructions match or skip permitted), interpret the instructions
         // instruction is a call, save destination to the comparison queue 
         if (!options.noCall && refInstr.isCall() && tgtInstr.isCall()) {
             const Branch 
@@ -659,76 +746,12 @@ bool Analyzer::comparisonLoop(const Executable &ref, const Executable &tgt, cons
         }
 
         // adjust position in compared executables for next iteration
-        switch (matchType) {
-        case CMP_MISMATCH:
-            // if the instructions did not match and we still got here, that means we are in difference skipping mode, 
-            debug(compareStatus(refInstr, tgtInstr, false, INS_MATCH_MISMATCH));
-            switch (skipType) {
-            case SKIP_REF: 
-                comparedSize += refInstr.length;
-                refCsip += refInstr.length;
-                debug("Skipping over reference instruction mismatch, allowed " + to_string(refSkipCount) + " out of " + to_string(options.refSkip) + ", destination " + refCsip.toString());
-                break;
-            case SKIP_TGT:
-                // rewind reference position if it was skipped before
-                if (refSkipOrigin.isValid()) {
-                    comparedSize -= refCsip.offset - refSkipOrigin.offset;
-                    refCsip = refSkipOrigin;
-                }
-                tgtCsip += tgtInstr.length;
-                debug("Skipping over target instruction mismatch, allowed " + to_string(tgtSkipCount)  + " out of " + to_string(options.tgtSkip) + ", destination " + tgtCsip.toString());
-                break;
-            default:
-                error("Unexpected: no skip despite mismatch");
-                return false;
-            }
-            break;
-        case CMP_VARIANT:
-            comparedSize += refInstr.length;
-            refCsip += refInstr.length;
-            // in case of a variant match, the instruction pointer in the target binary will have already been advanced by instructionsMatch()
-            debug("Variant match detected, comparison will continue at " + tgtCsip.toString());
-            break;
-        default:
-            // normal case, advance both reference and target positions
-            comparedSize += refInstr.length;
-            refCsip += refInstr.length;
-            tgtCsip += tgtInstr.length;
-            break;
-        }
-        
-        // an end of a routine block is a hard stop, we do not want to go into unreachable areas which may contain invalid opcodes (e.g. data mixed with code)
-        // TODO: need to handle case where we are skipping right now
-        if (compareBlock.isValid() && refCsip > compareBlock.end) {
-            verbose("Reached end of routine block @ "s + compareBlock.end.toString());
-            // if the current routine still contains reachable blocks after the current location, add the start of the next one to the back of the queue,
-            // so it gets picked up immediately on the next iteration of the outer loop
-            const Block rb = routine.nextReachable(refCsip);
-            if (rb.isValid()) {
-                verbose("Routine still contains reachable blocks, next @ " + rb.toString());
-                compareQ.saveJump(rb.begin, {});
-                if (!offMap.getCode(rb.begin).isValid()) {
-                    // the offset map between the reference and the target does not have a matching entry for the next reachable block's destination,
-                    // so the comparison would fail - last ditch attempt is to try and record a "guess" offset mapping before jumping there,
-                    // based on the hope that the size of the unreachable block matches in the target
-                    // TODO: make sure an instruction matches at the destination before actually recording the mapping
-                    const Address guess = tgtCsip + (rb.begin - refCsip);
-                    debug("Recording guess offset mapping based on unreachable block size: " + rb.begin.toString() + " -> " + guess.toString());
-                    offMap.setCode(rb.begin, guess);
-                }
-            }
-            else {
-                verbose("Completed comparison of routine " + routine.name + ", no more reachable blocks");
-            }
-            break;
-        }
+        advanceComparison(refInstr, tgtInstr);
 
-        // reached predefined stop address
-        if (options.stopAddr.isValid() && refCsip >= options.stopAddr) {
-            verbose("Reached stop address: " + refCsip.toString());
-            break;
-        }
-    } // iterate over instructions at current comparison location    
+        // check loop termination conditions
+        if (checkComparisonStop()) break;
+    } // iterate over instructions at current comparison location
+
     return true;
 }
 
