@@ -66,7 +66,7 @@ obj: {
 }
 UASM: { class: tool }
 asmobj: game.obj { class: binary }
-rcexe: game_rc.exe { class: binary }
+rcexe: game_reconstructed.exe { class: binary }
 dosbox: DOSBox\n(headless)\nthrough dosbuild.sh {
     style: { 
         font-color: fuchsia
@@ -93,7 +93,7 @@ conf -> lst2asm { class: cxn }
 inc -> lst2ch { class: cxn }
 inc -> lst2asm { class: cxn }
 map -> mzdiff { class: cxn }
-game -> mzdiff: reference { class: cxn }
+game -> mzdiff: comparison reference { class: cxn }
 ixp -> map: rename routines,\ntweak routine\nblock boundaries { class: cxn }
 ixp -> conf: create config\n(tells tools how to slice the IDA listing) { class: cxn }
 ixp -> ida: analyze/annotate { class: cxn }
@@ -108,5 +108,5 @@ UASM -> asmobj { class: cxn }
 obj -> dosbox.lnk { class: cxn }
 asmobj -> dosbox.lnk { class: cxn }
 dosbox.lnk -> rcexe { class: cxn }
-rcexe -> mzdiff: target { class: cxn }
+rcexe -> mzdiff: comparison target { class: cxn }
 mzdiff -> ixp: executable\ncomparison\nreport { class: cxn }

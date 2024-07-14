@@ -2,7 +2,7 @@
 
 This is a collection of utilities to help with reverse engineering MS-DOS games. These can analyze MZ executables containing 8086 opcodes and provide information that is useful in reverse engineering. For now, .com files and newer Intel CPUs are not supported.
 
-In general, these tools are meant to support an iterative workflow to create an instruction-level-identical reconstruction, while allowing for internal executable layout differences (the routine/data offsets don't need to match). Here is how all the tools might be used together:
+In general, these tools were written to be used in tandem with IDA, but could also potentially be adopted into alternate workflows. The idea is to support an iterative approach to creating an instruction-level-identical reconstruction, while allowing for internal executable layout differences (the routine/data offsets don't need to match). Here is an example of how all the tools might be used together:
 
 ![process diagram](diagrams/process-stable.svg)
 

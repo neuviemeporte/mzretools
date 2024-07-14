@@ -13,3 +13,4 @@ bin/*.map
 bin/*.exe
 .vscode/
 tools/__pycache__
+diagrams/*.png
