@@ -1,8 +1,10 @@
 # mzretools
 
-This is a collection of utilities to help with reverse engineering MS-DOS games. 
+This is a collection of utilities to help with reverse engineering MS-DOS games. These can analyze MZ executables containing 8086 opcodes and provide information that is useful in reverse engineering. For now, .com files and newer Intel CPUs are not supported.
 
-It can analyze MZ executables containing 8086 opcodes and provide information that is useful in reverse engineering. For now, .com files and newer Intel CPUs are not supported.
+In general, these tools are meant to support an iterative workflow to create an instruction-level-identical reconstruction, while allowing for internal executable layout differences (the routine/data offsets don't need to match). Here is how all the tools might be used together:
+
+![process diagram](diagrams/process-stable.svg)
 
 The project contains a unit test suite written with GTest that runs by default on every build. The build system is CMake.
 

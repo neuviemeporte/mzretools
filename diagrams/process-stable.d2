@@ -1,0 +1,112 @@
+# vars: {
+#     d2-config: {
+#         layout-engine: elk
+#     }
+# }
+
+direction: down
+
+style: { fill: transparent }
+
+classes: {
+    tool: {
+        shape: step
+        style: { fill: greenyellow }
+    }
+    text: {
+        shape: page
+        style: { fill: lightskyblue }
+    }
+    binary: {
+        shape: stored_data
+        style: { fill: gold }
+    }
+    cxn: {
+        style: { 
+            font-color: red 
+            bold: true
+            stroke: gray
+        }
+    }
+}
+
+ixp: "" { 
+    shape: person 
+    style: { 
+        fill: fuchsia
+        font-color: fuchsia
+    }
+}
+game: game.exe\n(binary to reconstruct) { class: binary }
+ida: IDA { class: tool }
+mzmap: { class: tool }
+mzdiff:  { class: tool }
+map: game.map { class: text }
+conf: config.json { class: text }
+lst: game.lst { 
+    class: text 
+}
+inc: game.inc { 
+    class: text 
+}
+lst2ch: lst2ch.py { class: tool }
+lst2asm: lst2asm.py  { class: tool }
+header: game.h { class: text }
+asm: game.asm { class: text }
+source: game.c { class: text }
+rc: {
+    class: text
+    style.multiple: true
+    label: game1.c\ngame2.c\ngame3.c\n...
+}
+obj: {
+    class: binary
+    style.multiple: true
+    label: game1.obj\ngame2.obj\ngame3.obj\n...
+}
+UASM: { class: tool }
+asmobj: game.obj { class: binary }
+rcexe: game_rc.exe { class: binary }
+dosbox: DOSBox\n(headless)\nthrough dosbuild.sh {
+    style: { 
+        font-color: fuchsia
+        fill: black
+        stroke: gray
+    }
+    msc: compiler { class: tool }
+    masm: assembler { class: tool }
+    lnk: LINK { class: tool }
+}
+
+game -> ida { class: cxn }
+game -> mzmap { class: cxn }
+ida -> lst: annotated game code\nand data { class: cxn }
+ida -> inc: structures,\nconstants { class: cxn }
+mzmap -> map: walk through opcodes,\nfind segments\nand routines { class: cxn }
+lst -> lst2ch { class: cxn }
+lst -> lst2asm { class: cxn }
+lst2ch -> header: extern declarations\nfor routines and data { class: cxn }
+lst2ch -> source: data definitions\nconverted to C\n(prototype) { class: cxn }
+lst2asm -> asm: not yet reconstructed\nroutine code (stubs),\ngame data, other leftovers { class: cxn }
+conf -> lst2ch { class: cxn }
+conf -> lst2asm { class: cxn }
+inc -> lst2ch { class: cxn }
+inc -> lst2asm { class: cxn }
+map -> mzdiff { class: cxn }
+game -> mzdiff: reference { class: cxn }
+ixp -> map: rename routines,\ntweak routine\nblock boundaries { class: cxn }
+ixp -> conf: create config\n(tells tools how to slice the IDA listing) { class: cxn }
+ixp -> ida: analyze/annotate { class: cxn }
+ixp -> rc: write\nreconstructed\ncode { class: cxn }
+rc -> dosbox.msc { class: cxn }
+header -> dosbox.msc { class: cxn }
+asm -> UASM: option 1,\nmight be easier { class: cxn }
+dosbox.msc -> obj { class: cxn }
+asm -> dosbox.masm: option2,\ninside DOS { class: cxn }
+dosbox.masm -> asmobj { class :cxn }
+UASM -> asmobj { class: cxn }
+obj -> dosbox.lnk { class: cxn }
+asmobj -> dosbox.lnk { class: cxn }
+dosbox.lnk -> rcexe { class: cxn }
+rcexe -> mzdiff: target { class: cxn }
+mzdiff -> ixp: executable\ncomparison\nreport { class: cxn }
