@@ -25,6 +25,7 @@ public:
     const Address& stackAddr() const { return stack; }
     void setEntrypoint(const Address &addr);
 
+    // actually the load module size
     Size size() const { return codeSize; }
     Block extents() const { return codeExtents; }
     bool contains(const Address &addr) const { return codeExtents.contains(addr); }

@@ -184,8 +184,11 @@ RoutineMap::RoutineMap(const ScanQueue &sq, const std::vector<Segment> &segs, co
 
 // recreate list of unclaimed blocks (lost after map is saved to file) from holes in the map coverage after loading the map back from a file
 void RoutineMap::buildUnclaimed(const Word loadSegment) {
-    if (mapSize == 0) return;
-    Block b(loadSegment, 0);
+    if (mapSize == 0) {
+        warn("Unknown map size, unable to calculate unclaimed blocks");
+        return;
+    }
+    Block b(Address(loadSegment, 0));
     debug("Building unclaimed blocks, mapSize = " + sizeStr(mapSize) + ", load segment: " + hexVal(loadSegment));
     // need routines to be sorted
     sort();
@@ -252,8 +255,7 @@ RoutineMap::RoutineMap(const std::string &path, const Word reloc) : RoutineMap()
     if (regex_match(path, match, LSTFILE_RE)) loadFromIdaFile(path, reloc);
     else loadFromMapFile(path, reloc);
     debug("Done, found "s + to_string(routines.size()) + " routines");
-    // TODO: overridable value
-    buildUnclaimed(0);
+    buildUnclaimed(reloc);
 }
 
 Routine RoutineMap::getRoutine(const Address &addr) const {
@@ -412,6 +414,7 @@ void RoutineMap::save(const std::string &path, const Word reloc, const bool over
     if (checkFile(path).exists && !overwrite) throw AnalysisError("Map file already exists: " + path);
     info("Saving routine map (size = " + to_string(size()) + ") to "s + path + ", reversing relocation by " + hexVal(reloc));
     ofstream file{path};
+    file << "Size " << hexVal(mapSize, false) << endl;
     for (auto s: segments) {
         s.address -= reloc;
         file << s.toString() << endl;
@@ -561,13 +564,14 @@ void RoutineMap::loadFromMapFile(const std::string &path, const Word reloc) {
         // try to interpret as code size
         else if (regex_match(line, match, SIZE_RE)) {
             mapSize = std::stoi(match.str(1), nullptr, 16);
+            debug("Parsed map size = " + sizeStr(mapSize));
             continue;
         }
         // try to interpret as a segment
         else if (!(match = Segment::stringMatch(line)).empty()) {
             Segment s(match);
             s.address += reloc;
-            debug("Loaded segment: " + s.toString());
+            debug("Parsed segment: " + s.toString());
             segments.push_back(s);
             continue;
         }
@@ -643,6 +647,8 @@ void RoutineMap::loadFromMapFile(const std::string &path, const Word reloc) {
         }
         else throw ParseError("Line " + to_string(lineno) + ": invalid routine extents " + r.extents.toString());
     } // iterate over mapfile lines
+
+    if (mapSize == 0) throw ParseError("Invalid or undefined map size");
 }
 
 // create routine map from IDA .lst file

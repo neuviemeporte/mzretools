@@ -15,6 +15,7 @@ class AnalysisTest : public ::testing::Test {
 protected:
     // wrappers for access to private members, no this is not a black box test, why you ask?
     auto& getRoutines(RoutineMap &rm) { return rm.routines; }
+    void setMapSize(RoutineMap &rm, const Size size) { rm.mapSize = size; }
     auto emptyRoutineMap() { return RoutineMap(); }
     auto emptyScanQueue() { return ScanQueue(); }
     auto& sqVisited(ScanQueue &sq) { return sq.visited; }
@@ -183,7 +184,7 @@ TEST_F(AnalysisTest, FindRoutines) {
     // compare our map against IDA map
     Size matchCount = idaMap.match(discoveredMap);
     TRACELN("Discovered vs IDA, found matching " << matchCount << " routines out of " << idaMap.size());
-    ASSERT_GE(matchCount, idaMatchCount);
+    ASSERT_EQ(matchCount, idaMatchCount);
     
     // save to file and reload
     discoveredMap.save("hello.map", loadSegment, true);
@@ -193,7 +194,7 @@ TEST_F(AnalysisTest, FindRoutines) {
     // check matching in the opposite direction, should be the same
     matchCount = reloadMap.match(idaMap);
     TRACELN("Reload vs IDA, found matching " << matchCount << " routines out of " << reloadMap.size());
-    ASSERT_GE(matchCount, idaMatchCount);
+    ASSERT_EQ(matchCount, idaMatchCount);
 
     matchCount = discoveredMap.match(reloadMap);
     TRACELN("Discovered vs reload, found matching " << matchCount << " routines out of " << discoveredMap.size());
@@ -231,6 +232,7 @@ TEST_F(AnalysisTest, RoutineMapCollision) {
     Block b1{100, 200}, b2{150, 250}, b3{300, 400};
     Routine r1{"r1", b1},  r2{"r2", b2}, r3{"r3", b3};
     auto &rv = getRoutines(rm);
+    setMapSize(rm, b3.end.offset);
 
     TRACELN("--- testing coliding routine extents");
     rv = { r1, r2 };
