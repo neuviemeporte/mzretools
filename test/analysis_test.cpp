@@ -103,6 +103,17 @@ TEST_F(AnalysisTest, RoutineMap) {
     const Size matchCount = idaMap.match(matchMap);
     ASSERT_EQ(matchCount, routineCount);
 
+    const string findName{"main"};
+    const Address findAddr{0, 0x10};
+    const Routine r1 = idaMap.getRoutine(findName);
+    ASSERT_TRUE(r1.isValid());
+    ASSERT_EQ(r1.name, findName);
+    ASSERT_EQ(r1.entrypoint(), findAddr);
+
+    const Routine r2 = idaMap.getRoutine(findAddr);
+    ASSERT_TRUE(r2.isValid());
+    ASSERT_EQ(r1.name, r2.name);
+    ASSERT_EQ(r1.entrypoint(), r2.entrypoint());
 }
 
 TEST_F(AnalysisTest, RoutineMapFromQueue) {

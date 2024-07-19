@@ -491,8 +491,25 @@ RoutineMap Analyzer::findRoutines(Executable &exe) {
     return ret;
 }
 
+void Analyzer::checkMissedRoutines(const RoutineMap &refMap) {
+    // update set of missed routines
+    calculateStats(refMap);
+    if (missedNames.size() == 0) {
+        debug("No missed routines detected");
+        return;
+    }
+    // go over missed routines, manually insert entrypoints into comparison location queue
+    for (const auto &rn : missedNames) {
+        const Routine mr = refMap.getRoutine(rn);
+        if (!mr.isValid()) throw LogicError("Unable to find missed routine " + rn + " in routine map");
+        debug("Inserting routine " + mr.name + " into queue, entrypoint: " + mr.entrypoint().toString());
+        compareQ.saveCall(mr.entrypoint(), {}, mr.near);
+    }
+}
+
 static constexpr RoutineId VISITED_ID = 1;
 
+// TODO: implement register value tracing like in findRoutines
 bool Analyzer::compareCode(const Executable &ref, const Executable &tgt, const RoutineMap &refMap, const RoutineMap &tgtMap) {
     verbose("Comparing code between reference (entrypoint "s + ref.entrypoint().toString() + ") and target (entrypoint " + tgt.entrypoint().toString() + ") executables");
     debug("Routine map of reference binary has " + to_string(refMap.size()) + " entries");
@@ -500,9 +517,9 @@ bool Analyzer::compareCode(const Executable &ref, const Executable &tgt, const R
     compareQ = ScanQueue{Destination(ref.entrypoint(), VISITED_ID, true, {})};
     // map of equivalent addresses in the compared binaries, seed with the two entrypoints
     offMap.setCode(ref.entrypoint(), tgt.entrypoint());
-    // queue of locations (in reference binary) for comparison, likewise seeded with the entrypoint
-    // TODO: use routine map to fill compareQ in advance
-    // TODO: implement register value tracing
+    routineNames.clear();
+    excludedNames.clear();
+    // iterate over queue of comparison locations
     while (!compareQ.empty()) {
         // get next location for linear scan and comparison of instructions from the front of the queue,
         // to visit functions in the same order in which they were first encountered
@@ -553,6 +570,8 @@ bool Analyzer::compareCode(const Executable &ref, const Executable &tgt, const R
         // keep comparing subsequent instructions from current search queue location between the reference and target binary
         if (!comparisonLoop(ref, tgt, refMap, tgtMap)) return false;
 
+        // before terminating, check for any routines missed from the reference map
+        if (compareQ.empty()) checkMissedRoutines(refMap);
     } // iterate over comparison location queue
 
 success:
@@ -713,7 +732,8 @@ bool Analyzer::comparisonLoop(const Executable &ref, const Executable &tgt, cons
             refInstr{refCsip, ref.codePointer(refCsip)}, 
             tgtInstr{tgtCsip, tgt.codePointer(tgtCsip)};
         
-        // mark this instruction as visited, unlike the routine finding algorithm, we do not differentiate between routine IDs
+        // mark this instruction as visited
+        // unlike the routine finding algorithm, we do not differentiate between routine IDs, it's 0/1
         compareQ.setRoutineId(refCsip.toLinear(), refInstr.length, VISITED_ID);
 
         // compare instructions
@@ -1032,19 +1052,11 @@ void Analyzer::skipContext(const Executable &ref, const Executable &tgt) const {
     }
 }
 
-// display comparison statistics
-void Analyzer::comparisonSummary(const Executable &ref, const RoutineMap &routineMap, const bool showMissed) const {
-    // TODO: display total size of code segments between load module and routine map size
+void Analyzer::calculateStats(const RoutineMap &routineMap) {
     if (routineMap.empty()) return;
-    const Size 
-        visitedCount = routineNames.size(),
-        ignoredCount = excludedNames.size(),
-        routineMapSize = routineMap.size(),
-        loadModuleSize = ref.size();
-    Size routineSumSize = 0, reachableSize = 0, unreachableSize = 0, 
-        excludedSize = 0, excludedCount = 0, excludedReachableSize = 0, missedSize = 0, ignoredSize = 0;
-    vector<std::string> missedNames;
-    for (Size i = 0; i < routineMapSize; i++) {
+    routineSumSize = reachableSize = unreachableSize = excludedSize = excludedCount = excludedReachableSize = missedSize = ignoredSize = 0;
+    missedNames.clear();
+    for (Size i = 0; i < routineMap.size(); i++) {
         // gather static routine map stats
         const Routine r = routineMap.getRoutine(i);
         routineSumSize += r.size();
@@ -1060,13 +1072,27 @@ void Analyzer::comparisonSummary(const Executable &ref, const RoutineMap &routin
         // and we are not in checkAsm mode
         else if (routineNames.count(r.name) == 0 && (!r.assembly || options.checkAsm)) {
             missedSize += r.size();
-            missedNames.push_back(r.toString(false));
+            missedNames.insert(r.name);
         }
         // sum up actual encountered but ignored area during comparison
         if (excludedNames.count(r.name)) {
             ignoredSize += r.size();
         }
-    }
+    }    
+}
+
+// display comparison statistics
+void Analyzer::comparisonSummary(const Executable &ref, const RoutineMap &routineMap, const bool showMissed) {
+    // TODO: display total size of code segments between load module and routine map size
+    if (routineMap.empty()) return;
+    const Size 
+        visitedCount = routineNames.size(),
+        ignoredCount = excludedNames.size(),
+        routineMapSize = routineMap.size(),
+        loadModuleSize = ref.size();
+
+    calculateStats(routineMap);
+
     ostringstream msg;
     msg << "Load module of executable is " << sizeStr(loadModuleSize) << " bytes"
         << endl << "--- Routine map stats (static):" << endl
@@ -1098,7 +1124,11 @@ void Analyzer::comparisonSummary(const Executable &ref, const RoutineMap &routin
             << "Missed (not seen and not excluded) " << missedNames.size() 
             << " routines totaling " << sizeStr(missedSize) 
             << " bytes (" << output_color(OUT_RED) << ratioStr(missedSize, routineSumSize) << output_color(OUT_DEFAULT) << " of the covered area)";
-        if (showMissed) for (const auto &n : missedNames) msg << endl << n;
+        if (showMissed) for (const auto &n : missedNames) {
+            const Routine r = routineMap.getRoutine(n);
+            if (!r.isValid()) throw LogicError("Unable to find missed routine " + n + " in routine map");
+            msg << endl << r.toString(false);
+        }
     }
     msg << endl 
         << "(*) Any routines called only by ignored routines have not been seen and will lower the practical score," << endl 

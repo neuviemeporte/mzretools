@@ -620,16 +620,17 @@ std::string Instruction::toString(const bool extended) const {
     return str.str();
 }
 
-// this is dumb, should implement a proper assembler some day
-ByteString Instruction::encoding(const bool abstract) const {
+// create a search pattern from the instruction's encoding bytes; this is the binary data of the instruction with any offsets and immediates replaced with placeholder values
+ByteString Instruction::pattern() const {
     ByteString ret;
     SOffset off;
     for (int i = 0; i < length; ++i) {
         ret.push_back(static_cast<SWord>(*(data + i)));
     }
-    if (abstract && (off = memOffset()) != 0) {
-        // TODO: implement replacing of offsets/immediates with negative values in abstract encoding
+    if (operandIsMem(op1.type) || operandIsImmediate(op1.type)) {
+        
     }
+
     return ret;
 }
 

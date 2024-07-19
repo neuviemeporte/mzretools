@@ -154,10 +154,10 @@ private:
     Address refCsip, tgtCsip;
     Block compareBlock;
     OffsetMap offMap;
-    Size comparedSize;
+    Size comparedSize, routineSumSize, reachableSize, unreachableSize, excludedSize, excludedCount, excludedReachableSize, missedSize, ignoredSize;
     ScanQueue compareQ;
     Routine routine;
-    std::set<std::string> routineNames, excludedNames;
+    std::set<std::string> routineNames, excludedNames, missedNames;
     Size refSkipCount, tgtSkipCount;
     Address refSkipOrigin, tgtSkipOrigin;
 public:
@@ -170,12 +170,14 @@ private:
     bool compareInstructions(const Executable &ref, const Executable &tgt, const Instruction &refInstr, Instruction tgtInstr);
     void advanceComparison(const Instruction &refInstr, Instruction tgtInstr);
     bool checkComparisonStop();
+    void checkMissedRoutines(const RoutineMap &refMap);
     bool comparisonLoop(const Executable &ref, const Executable &tgt, const RoutineMap &refMap, const RoutineMap &tgtMap);
     Branch getBranch(const Executable &exe, const Instruction &i, const RegisterState &regs) const;
     ComparisonResult instructionsMatch(const Executable &ref, const Executable &tgt, const Instruction &refInstr, Instruction tgtInstr);
     void diffContext(const Executable &ref, const Executable &tgt) const;
     void skipContext(const Executable &ref, const Executable &tgt) const;
-    void comparisonSummary(const Executable &ref, const RoutineMap &routineMap, const bool showMissed) const;
+    void calculateStats(const RoutineMap &routineMap);
+    void comparisonSummary(const Executable &ref, const RoutineMap &routineMap, const bool showMissed);
 };
 
 #endif // ANALYSIS_H

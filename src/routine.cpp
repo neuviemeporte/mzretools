@@ -259,11 +259,19 @@ RoutineMap::RoutineMap(const std::string &path, const Word reloc) : RoutineMap()
 }
 
 Routine RoutineMap::getRoutine(const Address &addr) const {
-    for (const Routine &r : routines)
-        for (const Block &b : r.reachable)
+    for (const Routine &r : routines) {
+        if (r.extents.contains(addr)) return r;
+        for (const Block &b : r.reachable) 
             if (b.contains(addr)) return r;
+    }
     
     return {};
+}
+
+Routine RoutineMap::getRoutine(const std::string &name) const {
+    for (const Routine &r : routines)
+        if (r.name == name) return r;
+    return {};    
 }
 
 Routine RoutineMap::findByEntrypoint(const Address &ep) const {

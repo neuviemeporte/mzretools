@@ -64,6 +64,7 @@ public:
     Size size() const { return routines.size(); }
     Routine getRoutine(const Size idx) const { return routines.at(idx); }
     Routine getRoutine(const Address &addr) const;
+    Routine getRoutine(const std::string &name) const;
     Routine findByEntrypoint(const Address &ep) const;
     bool empty() const { return routines.empty(); }
     Size match(const RoutineMap &other) const;

@@ -281,7 +281,7 @@ public:
     Instruction();
     Instruction(const Address &addr, const Byte *data);
     std::string toString(const bool extended = false) const;
-    ByteString encoding(const bool abstract = true) const;
+    ByteString pattern() const;
     InstructionMatch match(const Instruction &other) const;
     void load(const Byte *data);
     Word absoluteOffset() const;

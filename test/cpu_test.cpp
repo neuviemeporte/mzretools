@@ -427,7 +427,7 @@ TEST_F(CpuTest, Instruction) {
         "mov es, es:[0x2c]",
         "mov [0xce], al",
     };
-    const std::string encodings[] = {
+    const std::string patterns[] = {
         "06", // push es
         "49", // dec cx
         "b9????", // mov cx,0x1234
@@ -456,7 +456,7 @@ TEST_F(CpuTest, Instruction) {
         TRACELN("--- " << hexVal(ins.addr.toLinear()) << ": instruction " << i + 1 << ": '" << ins.toString() 
             << "' (length = " << static_cast<int>(ins.length) << ")" << ", memOfs = " << ins.memOffset() << "/" << hexVal(ins.memOffset()));
         ASSERT_EQ(ins.toString(), instructions[i]);
-        // ASSERT_EQ(numericToHexa(ins.encoding()), encodings[i]);
+        ASSERT_EQ(numericToHexa(ins.pattern()), patterns[i]);
         ASSERT_EQ(ins.length, lengths[i]);
         codeofs += ins.length;
     }
