@@ -2,6 +2,7 @@
 #include <fstream>
 #include <sstream>
 #include <iomanip>
+#include <algorithm>
 #include <bitset>
 #include <unistd.h>
 #include <sys/stat.h>
@@ -273,4 +274,13 @@ std::vector<string> splitString(const std::string &str, char delim) {
     }
     ret.push_back(str.substr(start, str.size() - start));
     return ret;
+}
+
+void erasePattern(ByteString &str, const ByteString &pat) {
+    if (pat.empty()) throw ArgError("Empty pattern for erasure");
+    auto patFound = std::search(str.begin(), str.end(), pat.begin(), pat.end());
+    if (patFound == str.end()) throw LogicError("Unable to find pattern in string for erasure");
+    for (auto it = patFound; std::distance(patFound, it) < pat.size(); ++it) {
+        *it = -1;
+    }
 }

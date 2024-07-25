@@ -431,7 +431,7 @@ TEST_F(CpuTest, Instruction) {
         "06", // push es
         "49", // dec cx
         "b9????", // mov cx,0x1234
-        "f3aa" // rep stosb
+        "f3aa", // rep stosb
         "8178??????", // cmp word [bx+si+0x10],0xabcd
         "362116????", // and [ss:0x19ac],dx
         "74??", // jz -0x3 (+0x11+0x2 = 0x10)
@@ -456,8 +456,10 @@ TEST_F(CpuTest, Instruction) {
         TRACELN("--- " << hexVal(ins.addr.toLinear()) << ": instruction " << i + 1 << ": '" << ins.toString() 
             << "' (length = " << static_cast<int>(ins.length) << ")" << ", memOfs = " << ins.memOffset() << "/" << hexVal(ins.memOffset()));
         ASSERT_EQ(ins.toString(), instructions[i]);
-        ASSERT_EQ(numericToHexa(ins.pattern()), patterns[i]);
         ASSERT_EQ(ins.length, lengths[i]);
+        const string patStr = numericToHexa(ins.pattern());
+        TRACELN("pattern: " << patStr << ", expected: " << patterns[i]);
+        ASSERT_EQ(patStr, patterns[i]);
         codeofs += ins.length;
     }
 }

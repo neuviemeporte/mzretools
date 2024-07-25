@@ -175,7 +175,7 @@ std::string byteBufString(const std::vector<Byte> &bytes) {
 }
 
 Address MzImage::find(const ByteString &pattern) const {
-    // too lazy to implement Boyer-Moore
+    // TODO: use std::search with custom predicate to cover -1 case
     const Size patSize = pattern.size();
     Address found;
     vector<Byte> buffer(patSize);

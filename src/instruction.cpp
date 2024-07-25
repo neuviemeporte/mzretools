@@ -11,8 +11,7 @@ using namespace std;
 
 // TODO: handle invalid opcodes gracefully, don't throw/assert
 
-#define DEBUG(msg) output(msg, LOG_CPU, LOG_DEBUG)
-#define ARRAY_SIZE(arr) (sizeof(arr) / sizeof(arr[0]))
+OUTPUT_CONF(LOG_CPU)
 
 #define X(x) #x,
 static const char* INS_CLASS_ID[] = {
@@ -111,7 +110,7 @@ OPR_IMM8,   OPR_IMM8,   OPR_IMM8,      OPR_IMM8,      OPR_REG_AL, OPR_REG_AX, OP
 OPR_NONE,   OPR_NONE,   OPR_NONE,      OPR_NONE,      OPR_NONE,   OPR_NONE,   OPR_ERR,    OPR_ERR,    OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_NONE,   OPR_ERR,    OPR_ERR,    // F
 };
 
-// maps non-modrm opcodes into their first operand's type
+// maps non-modrm opcodes into their second operand's type
 static const OperandType OP2_TYPE[] = {
 //   0            1              2           3           4           5           6           7           8          9          A          B          C           D           E           F
 OPR_ERR,       OPR_ERR,       OPR_ERR,    OPR_ERR,    OPR_IMM8,   OPR_IMM16,  OPR_NONE,   OPR_NONE,   OPR_ERR,   OPR_ERR,   OPR_ERR,   OPR_ERR,   OPR_IMM8,   OPR_IMM16,  OPR_NONE,   OPR_ERR,    // 0
@@ -245,14 +244,14 @@ void Instruction::load(const Byte *data)  {
         // TODO: guard against memory overflow
         opcode = *data++;
         length++;
-        DEBUG("Found chain prefix "s + INS_PRF_ID[prefix] + ", length = " + to_string(length));
+        debug("Found chain prefix "s + INS_PRF_ID[prefix] + ", length = " + to_string(length));
     }
     // likewise in case of a segment ovverride prefix, set instruction prefix value and get next opcode
     else if (opcodeIsSegmentPrefix(opcode)) {
         prefix = static_cast<InstructionPrefix>(((opcode - OP_PREFIX_ES) / 8) + PRF_SEG_ES); // convert opcode to instruction prefix enum, the segment prefix opcode values differ by 8
         opcode = *data++;
         length++;
-        DEBUG("Found segment prefix "s + INS_PRF_ID[prefix] + ", length = " + to_string(length));
+        debug("Found segment prefix "s + INS_PRF_ID[prefix] + ", length = " + to_string(length));
     }
 
     // regular instruction opcode
@@ -261,7 +260,7 @@ void Instruction::load(const Byte *data)  {
         // get type of operands
         op1.type = OP1_TYPE[opcode];
         op2.type = OP2_TYPE[opcode];
-        DEBUG("regular opcode "s + opcodeName(opcode) + ", operand types: op1 = "s + OPR_TYPE_ID[op1.type] + ", op2 = " + OPR_TYPE_ID[op2.type] 
+        debug("regular opcode "s + opcodeName(opcode) + ", operand types: op1 = "s + OPR_TYPE_ID[op1.type] + ", op2 = " + OPR_TYPE_ID[op2.type] 
             + ", class " + INS_CLASS_ID[iclass]);        
         // TODO: do not derive size from operand type, but from opcode, same for modrm and group
         op1.size = OPR_SIZE[op1.type];
@@ -275,7 +274,7 @@ void Instruction::load(const Byte *data)  {
             modop1 = modrm_op1(opcode),
             modop2 = modrm_op2(opcode);
         iclass = instr_class(opcode);
-        DEBUG("modrm opcode "s + opcodeName(opcode) + ", modrm = " + hexVal(modrm) + ", operand types: op1 = "s + MODRM_OPR_ID[modop1] + ", op2 = " + MODRM_OPR_ID[modop2] 
+        debug("modrm opcode "s + opcodeName(opcode) + ", modrm = " + hexVal(modrm) + ", operand types: op1 = "s + MODRM_OPR_ID[modop1] + ", op2 = " + MODRM_OPR_ID[modop2] 
             + ", class " + INS_CLASS_ID[iclass]);
         // convert from messy modrm operand designation to our nice type
         op1.type = getModrmOperand(modrm, modop1);
@@ -291,7 +290,7 @@ void Instruction::load(const Byte *data)  {
         // obtain index of group for instruction class lookup
         const InstructionGroupIndex grpIdx = GRP_IDX[opcode];
         const Byte grpInstrIdx = modrm_grp(modrm) >> MODRM_GRP_SHIFT;
-        DEBUG("group opcode "s + opcodeName(opcode) + ", modrm = " + hexVal(modrm) + ", group index " + GRP_IDX_ID[grpIdx] + ", instruction " + hexVal(grpInstrIdx));
+        debug("group opcode "s + opcodeName(opcode) + ", modrm = " + hexVal(modrm) + ", group index " + GRP_IDX_ID[grpIdx] + ", instruction " + hexVal(grpInstrIdx));
         assert(grpIdx >= IGRP_1 && grpIdx <= IGRP_5);
         assert(grpInstrIdx < 8); // groups have up to 8 instructions (index 0-based)
         // determine instruction class
@@ -315,7 +314,7 @@ void Instruction::load(const Byte *data)  {
             assert(grpIdx == IGRP_5);
             modop1 = MODRM_Mp;
         }
-        DEBUG("modrm operand types: op1 = "s + MODRM_OPR_ID[modop1] + ", op2 = " + MODRM_OPR_ID[modop2] + ", class " + INS_CLASS_ID[iclass]);            
+        debug("modrm operand types: op1 = "s + MODRM_OPR_ID[modop1] + ", op2 = " + MODRM_OPR_ID[modop2] + ", class " + INS_CLASS_ID[iclass]);            
         // convert from messy modrm operand designation to our nice type
         op1.type = getModrmOperand(modrm, modop1);
         op2.type = getModrmOperand(modrm, modop2);
@@ -325,7 +324,7 @@ void Instruction::load(const Byte *data)  {
 
     // TODO: handle gracefully, throw
     assert(op1.type != OPR_ERR && op2.type != OPR_ERR);
-    DEBUG("generalized operands, op1: type = "s + OPR_TYPE_ID[op1.type] + ", size = " + OPR_SIZE_ID[op1.size] + ", op2: type = " + OPR_TYPE_ID[op2.type] + ", size = " + OPR_SIZE_ID[op2.size]);
+    debug("generalized operands, op1: type = "s + OPR_TYPE_ID[op1.type] + ", size = " + OPR_SIZE_ID[op1.size] + ", op2: type = " + OPR_TYPE_ID[op2.type] + ", size = " + OPR_SIZE_ID[op2.size]);
     // load immediate values if present
     Size immSize = loadImmediate(op1, data);
     data += immSize;
@@ -333,7 +332,7 @@ void Instruction::load(const Byte *data)  {
     immSize = loadImmediate(op2, data);
     data += immSize;
     length += immSize;
-    DEBUG("Instruction @" + addr.toString() + ": " + toString() + ", length = " + to_string(length));
+    debug("Instruction @" + addr.toString() + ": " + toString() + ", length = " + to_string(length));
 }
 
 // calculate an absolute offset from an offset that is relative to this instruction's end, based on the immediate operand 
@@ -620,17 +619,23 @@ std::string Instruction::toString(const bool extended) const {
     return str.str();
 }
 
-// create a search pattern from the instruction's encoding bytes; this is the binary data of the instruction with any offsets and immediates replaced with placeholder values
+// create a search pattern from the instruction's encoding bytes; i.e. the binary data of the instruction with any offsets and immediates replaced with placeholder values
 ByteString Instruction::pattern() const {
     ByteString ret;
-    SOffset off;
+    // put instruction bytes into vector
     for (int i = 0; i < length; ++i) {
         ret.push_back(static_cast<SWord>(*(data + i)));
     }
-    if (operandIsMem(op1.type) || operandIsImmediate(op1.type)) {
-        
+    debug("Instruction bytes for pattern: " + hexJoin(ret));
+    // if present, extract bytes of an immediate value from both instruction operands and erase them from the pattern
+    if (operandIsMemWithOffset(op1.type) || operandIsExplicitImmediate(op1.type)) {
+        auto value = op1.immediateValue();
+        erasePattern(ret, value);
     }
-
+    if (operandIsMemWithOffset(op2.type) || operandIsExplicitImmediate(op2.type)) {
+        auto value = op2.immediateValue();
+        erasePattern(ret, value);
+    }
     return ret;
 }
 
@@ -738,7 +743,8 @@ Size Instruction::loadImmediate(Operand &op, const Byte *data) {
         size = sizeof(Byte);
         memcpy(&byteVal, data, size);
         op.immval.u8 = byteVal;
-        DEBUG("8bit operand, value = "s + hexVal(op.immval.u8) + ", instruction length = " + to_string(length + size));
+        op.immsize = OPRSZ_BYTE;
+        debug("8bit operand, value = "s + hexVal(op.immval.u8) + ", instruction length = " + to_string(length + size));
         break;
     case OPR_MEM_OFF16:
     case OPR_MEM_BX_SI_OFF16:
@@ -753,26 +759,31 @@ Size Instruction::loadImmediate(Operand &op, const Byte *data) {
         size = sizeof(Word);
         memcpy(&wordVal, data, size);
         op.immval.u16 = wordVal;
-        DEBUG("16bit operand, value = "s + hexVal(op.immval.u16) + ", instruction length = " + to_string(length + size));
+        op.immsize = OPRSZ_WORD;
+        debug("16bit operand, value = "s + hexVal(op.immval.u16) + ", instruction length = " + to_string(length + size));
         break;    
     case OPR_IMM0:
         op.immval.u32 = 0;
-        DEBUG("imm0 operand");
+        op.immsize = OPRSZ_NONE;
+        debug("imm0 operand");
         break;
     case OPR_IMM1:
         op.immval.u32 = 1;
-        DEBUG("imm1 operand");
+        op.immsize = OPRSZ_NONE;
+        debug("imm1 operand");
         break;    
     case OPR_IMM32:
         size = sizeof(DWord);
         memcpy(&dwordVal, data, size);
         op.immval.u32 = dwordVal;
-        DEBUG("32bit immediate = "s + hexVal(op.immval.u32) + ", instruction length = " + to_string(length + size));
+        op.immsize = OPRSZ_DWORD;
+        debug("32bit immediate = "s + hexVal(op.immval.u32) + ", instruction length = " + to_string(length + size));
         break;
     default:
-        // register and memory operands with no displacement 
-        DEBUG("direct or no operand, immval = 0");
+        // register and memory operands with no displacement
+        debug("direct or no operand, immval = 0");
         op.immval.u32 = 0; 
+        op.immsize = OPRSZ_NONE;
         break;
     }
     return size;
@@ -800,9 +811,45 @@ Word Instruction::Operand::wordValue() const {
     return ret;
 }
 
+ByteString Instruction::Operand::immediateValue() const {
+    ByteString value;
+    // TODO: assumes little-endian
+    // also, could probably put this in the immval union and skip the memcpy, but unions are quirky in c++
+    Byte data[sizeof(DWord)];
+    Size dataSize;
+    switch(immsize) {
+    case OPRSZ_BYTE: 
+        dataSize = sizeof(Byte);
+        memcpy(data, &immval.u8, dataSize); 
+        break;
+    case OPRSZ_WORD: 
+        dataSize = sizeof(Word);
+        memcpy(data, &immval.u16, dataSize); 
+        break;
+    case OPRSZ_DWORD:
+        dataSize = sizeof(DWord);
+        memcpy(data, &immval.u32, dataSize); 
+        break;
+    default: // no immediate, return empty
+        return value;
+    }
+    auto dataBegin = std::begin(data);
+    auto dataEnd = dataBegin + dataSize;
+    value = ByteString(dataBegin, dataEnd);
+    debug("Found immediate value, bytes: " + hexJoin(value));
+    return value;
+}
+
 Register prefixRegId(const InstructionPrefix p) {
-                                // PRF_NONE   PRF_ES  PRF_CS  PRF_SS  PRF_DS  PRF_REPNZ PRF_REPZ
-    static const Register segs[] = { REG_DS,  REG_ES, REG_CS, REG_SS, REG_DS, REG_NONE, REG_NONE };
+    static const Register segs[] = { 
+        REG_DS,   // PRF_NONE
+        REG_ES,   // PRF_ES
+        REG_CS,   // PRF_CS
+        REG_SS,   // PRF_SS
+        REG_DS,   // PRF_DS
+        REG_NONE, // PRF_REPNZ
+        REG_NONE  // PRF_REP
+    };
     return segs[p];
 }
 

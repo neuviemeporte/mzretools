@@ -9,6 +9,8 @@
 
 #include "dos/types.h"
 
+#define ARRAY_SIZE(arr) (sizeof(arr) / sizeof(arr[0]))
+
 void hexDump(const Byte *buf, const Size size, const Size off = 0, const bool header = true);
 template<typename T, Size size = sizeof(T)> std::string hexString(const T &obj) {
     const Byte *buf = reinterpret_cast<const Byte*>(&obj);
@@ -16,7 +18,17 @@ template<typename T, Size size = sizeof(T)> std::string hexString(const T &obj) 
     str << std::hex << std::setw(2);
     for (Size i = 0; i < size; ++i)
         str << static_cast<int>(buf[i]);
-    return str.str();    
+    return str.str();
+}
+
+template<typename T> std::string hexJoin(const std::vector<T> &items) {
+    std::ostringstream str;
+    str << "[ ";
+    auto it = items.begin();
+    for (; it < items.end() - 1; ++it) 
+        str << "0x" << std::hex << *it << ", ";
+    str << "0x" << std::hex << *(it) << " ]";
+    return str.str();
 }
 
 std::string signedHexVal(const SByte val, bool plus = true);
@@ -47,5 +59,6 @@ std::string binString(const Word &value);
 std::vector<SWord> hexaToNumeric(const std::string &hexa);
 std::string numericToHexa(const ByteString &pattern);
 std::vector<std::string> splitString(const std::string &str, char delim);
+void erasePattern(ByteString &str, const ByteString &pat);
 
 #endif // UTIL_H

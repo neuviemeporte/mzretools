@@ -212,6 +212,11 @@ inline bool operandIsImmediate(const OperandType ot) {
     return ot >= OPR_IMM0 && ot <= OPR_IMM32;
 }
 
+// not an implicit immediate, i.e. not OPR_IMM0 or OPR_IMM1
+inline bool operandIsExplicitImmediate(const OperandType ot) {
+    return ot >= OPR_IMM8 && ot <= OPR_IMM32;
+}
+
 OperandType operandTypeToWord(const OperandType ot);
 
 Register defaultMemSegment(const OperandType ot);
@@ -264,7 +269,9 @@ public:
     Byte length;
     struct Operand {
         OperandType type;
-        OperandSize size;
+        // the size of the operand is unrelated to the length of the optional immediate value
+        // TODO: the enum OperandSize is used not only for the operand's size here, find a better name
+        OperandSize size, immsize;
         union {
             DWord u32;
             Word u16;
@@ -275,6 +282,7 @@ public:
         InstructionMatch match(const Operand &other) const;
         Register regId() const;
         Word wordValue() const;
+        ByteString immediateValue() const;
     } op1, op2;
     const Byte* data;
 
