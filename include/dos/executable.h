@@ -11,8 +11,10 @@
 #include "dos/mz.h"
 
 class Executable {
+    // TODO: just keep the load module data, not the entire memory space
     const Memory code;
     Word loadSegment;
+    // actually the load module size
     Size codeSize;
     Address ep, stack;
     Block codeExtents;
@@ -25,7 +27,6 @@ public:
     const Address& stackAddr() const { return stack; }
     void setEntrypoint(const Address &addr);
 
-    // actually the load module size
     Size size() const { return codeSize; }
     Block extents() const { return codeExtents; }
     bool contains(const Address &addr) const { return codeExtents.contains(addr); }

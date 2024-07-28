@@ -43,19 +43,20 @@ struct Branch {
 class ScanQueue {
     friend class AnalysisTest;
     // memory map for marking which locations belong to which routines, value of 0 is undiscovered
-    std::vector<RoutineId> visited; // TODO: store addresses from loaded exe in map, otherwise they don't match after analysis done if exe loaded at segment other than 0 
-    Address start;
+    // TODO: store addresses from loaded exe in map, otherwise they don't match after analysis done if exe loaded at segment other than 0
+    std::vector<RoutineId> visited;
+    Address origin;
     Destination curSearch;
     std::list<Destination> queue;
     std::vector<RoutineEntrypoint> entrypoints;
 
 public:
-    ScanQueue(const Destination &seed);
-    ScanQueue() {}
+    ScanQueue(const Destination &seed, const Size codeSize);
+    ScanQueue() : origin(0, 0) {}
     // search point queue operations
     Size size() const { return queue.size(); }
     bool empty() const { return queue.empty(); }
-    Address startAddress() const { return start; }
+    Address originAddress() const { return origin; }
     Destination nextPoint();
     bool hasPoint(const Address &dest, const bool call) const;
     bool saveCall(const Address &dest, const RegisterState &regs, const bool near);
@@ -68,8 +69,8 @@ public:
     void setRoutineId(Offset off, const Size length, RoutineId id = NULL_ROUTINE);
     RoutineId isEntrypoint(const Address &addr) const;
     std::vector<Routine> getRoutines() const;
+    std::vector<Block> getUnvisited() const;
     void dumpVisited(const std::string &path, const Offset start = 0, Size size = 0) const;
-
 };
 
 class OffsetMap {
@@ -171,6 +172,7 @@ private:
     void advanceComparison(const Instruction &refInstr, Instruction tgtInstr);
     bool checkComparisonStop();
     void checkMissedRoutines(const RoutineMap &refMap);
+    Address findTargetLocation();
     bool comparisonLoop(const Executable &ref, const Executable &tgt, const RoutineMap &refMap, const RoutineMap &tgtMap);
     Branch getBranch(const Executable &exe, const Instruction &i, const RegisterState &regs) const;
     ComparisonResult instructionsMatch(const Executable &ref, const Executable &tgt, const Instruction &refInstr, Instruction tgtInstr);

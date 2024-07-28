@@ -18,6 +18,7 @@ protected:
     void setMapSize(RoutineMap &rm, const Size size) { rm.mapSize = size; }
     auto emptyRoutineMap() { return RoutineMap(); }
     auto emptyScanQueue() { return ScanQueue(); }
+    auto& sqOrigin(ScanQueue &sq) { return sq.origin; }
     auto& sqVisited(ScanQueue &sq) { return sq.visited; }
     auto& sqEntrypoints(ScanQueue &sq) { return sq.entrypoints; }
     void mapSetSegments(RoutineMap &rm, const vector<Segment> &segments) { rm.setSegments(segments); }
@@ -119,7 +120,7 @@ TEST_F(AnalysisTest, RoutineMap) {
 TEST_F(AnalysisTest, RoutineMapFromQueue) {
     // test routine map generation from contents of a search queue
     ScanQueue sq = emptyScanQueue();
-    vector<int> &visited = sqVisited(sq);
+    vector<RoutineId> &visited = sqVisited(sq);
     vector<RoutineEntrypoint> &entrypoints = sqEntrypoints(sq);
     const Word loadSegment = 0;
     vector<Segment> segments = {

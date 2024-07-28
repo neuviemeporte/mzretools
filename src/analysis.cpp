@@ -27,25 +27,29 @@ string Destination::toString() const {
     return str.str();
 }
 
-ScanQueue::ScanQueue(const Destination &seed) : 
-    visited(MEM_TOTAL, NULL_ROUTINE),
-    start(seed.address)
+ScanQueue::ScanQueue(const Destination &seed, const Size codeSize) : 
+    visited(codeSize, NULL_ROUTINE),
+    origin(seed.address)
 {
     queue.push_front(seed);
-    entrypoints.emplace_back(RoutineEntrypoint(start, seed.routineId, true));
+    entrypoints.emplace_back(RoutineEntrypoint(origin, seed.routineId, true));
 }
 
 string ScanQueue::statusString() const { 
     return "[r"s + to_string(curSearch.routineId) + "/q" + to_string(size()) + "]"; 
 } 
 
-RoutineId ScanQueue::getRoutineId(Offset off) const { 
+RoutineId ScanQueue::getRoutineId(Offset off) const {
+    assert(off >= origin.toLinear());
+    off -= origin.toLinear();
     assert(off < visited.size());
     return visited.at(off); 
 }
 
 void ScanQueue::setRoutineId(Offset off, const Size length, RoutineId id) {
     if (id == NULL_ROUTINE) id = curSearch.routineId;
+    assert(off >= origin.toLinear());
+    off -= origin.toLinear();
     assert(off < visited.size());
     fill(visited.begin() + off, visited.begin() + off + length, id);
 }
@@ -81,10 +85,15 @@ vector<Routine> ScanQueue::getRoutines() const {
         r.extents = Block(ep.addr);
         r.near = ep.near;
         // assign automatic names to routines
-        if (ep.addr == startAddress()) r.name = "start";
+        if (ep.addr == originAddress()) r.name = "start";
         else r.name = "routine_"s + to_string(ep.id);
     }
     return routines;
+}
+
+vector<Block> ScanQueue::getUnvisited() const {
+    vector<Block> ret;
+    return ret;
 }
 
 // function call, create new routine at destination if either not visited, 
@@ -417,7 +426,7 @@ RoutineMap Analyzer::findRoutines(Executable &exe) {
     
     debug("initial register values:\n"s + initRegs.toString());
     // queue for BFS search
-    ScanQueue searchQ{Destination(exe.entrypoint(), 1, true, initRegs)};
+    ScanQueue searchQ{Destination(exe.entrypoint(), 1, true, initRegs), exe.size()};
     info("Analyzing code within extents: "s + exe.extents());
  
     // iterate over entries in the search queue
@@ -507,6 +516,11 @@ void Analyzer::checkMissedRoutines(const RoutineMap &refMap) {
     }
 }
 
+Address Analyzer::findTargetLocation() {
+    Address ret;
+    return ret;
+}
+
 static constexpr RoutineId VISITED_ID = 1;
 
 // TODO: implement register value tracing like in findRoutines
@@ -514,7 +528,7 @@ bool Analyzer::compareCode(const Executable &ref, const Executable &tgt, const R
     verbose("Comparing code between reference (entrypoint "s + ref.entrypoint().toString() + ") and target (entrypoint " + tgt.entrypoint().toString() + ") executables");
     debug("Routine map of reference binary has " + to_string(refMap.size()) + " entries");
     offMap = OffsetMap{refMap.segmentCount(Segment::SEG_DATA)};
-    compareQ = ScanQueue{Destination(ref.entrypoint(), VISITED_ID, true, {})};
+    compareQ = ScanQueue{Destination(ref.entrypoint(), VISITED_ID, true, {}), ref.size()};
     // map of equivalent addresses in the compared binaries, seed with the two entrypoints
     offMap.setCode(ref.entrypoint(), tgt.entrypoint());
     routineNames.clear();
@@ -538,9 +552,9 @@ bool Analyzer::compareCode(const Executable &ref, const Executable &tgt, const R
             debug("Location already compared, skipping");
             continue;
         }
-        // get corresponding address in target binary
+        // get corresponding address in target binary, try to search by opcodes if not present in offset map
         tgtCsip = offMap.getCode(refCsip);
-        if (!tgtCsip.isValid()) {
+        if (!tgtCsip.isValid() && !(tgtCsip = findTargetLocation()).isValid()) {
             error("Could not find equivalent address for "s + refCsip.toString() + " in address map for target executable");
             return false;
         }
