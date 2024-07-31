@@ -52,6 +52,8 @@ struct FileStatus {
 };
 
 FileStatus checkFile(const std::string &path);
+std::string getDirname(const std::string &path);
+std::string replaceExtension(const std::string &path, const std::string &ext);
 bool deleteFile(const std::string &path);
 bool readBinaryFile(const std::string &path, Byte *buf, const Size size = 0);
 void writeBinaryFile(const std::string &path, const Byte *buf, const Size size);

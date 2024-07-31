@@ -24,7 +24,7 @@ void usage() {
     output("usage: mzdiff [options] base.exe[:entrypoint] compare.exe[:entrypoint]\n"
            "Compares two DOS MZ executables instruction by instruction, accounting for differences in code layout\n"
            "Options:\n"
-           "--map basemap  map file of base executable to use, if present\n"
+           "--map basemap  map file of reference executable (recommended, otherwise functionality limited)\n"
            "--verbose      show more detailed information, including compared instructions\n"
            "--debug        show additional debug information\n"
            "--dbgcpu       include CPU-related debug information like instruction decoding\n"
@@ -161,6 +161,7 @@ int main(int argc, char *argv[]) {
         else if (arg == "--map") {
             if (aidx + 1 >= argc) fatal("Option requires an argument: --map");
             pathMap = argv[++aidx];
+            opt.mapPath = pathMap;
         }
         else if (arg == "--loose") opt.strict = false;
         else if (arg == "--variant") opt.variant = true;
@@ -176,10 +177,8 @@ int main(int argc, char *argv[]) {
         Executable exeBase = loadExe(baseSpec, loadSeg, opt);
         Executable exeCompare = loadExe(compareSpec, loadSeg, opt);
         RoutineMap map;
-        Size mapSize = 0;
         if (!pathMap.empty()) {
             map = {pathMap, loadSeg};
-            mapSize = map.size();
         } 
         Analyzer a{opt};
         bool compareResult = a.compareCode(exeBase, exeCompare, map);

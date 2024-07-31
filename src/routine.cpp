@@ -122,8 +122,11 @@ void Routine::recalculateExtents() {
     auto mainBlock = std::find_if(reachable.begin(), reachable.end(), [ep](const Block &b){
         return b.begin == ep;
     });
-    if (mainBlock == reachable.end())
-        throw AnalysisError("Unable to find main block for routine "s + toString(false));
+    if (mainBlock == reachable.end()) {
+        debug("Unable to find main block for routine "s + toString(false));
+        extents.end = extents.begin;
+        return;
+    }
     extents = *mainBlock;
     // coalesce remaining blocks with the extents if possible
     for (const auto &b : sortedBlocks()) {
@@ -175,12 +178,7 @@ RoutineMap::RoutineMap(const ScanQueue &sq, const std::vector<Segment> &segs, co
     }
     // close last block finishing on the last byte of the memory map
     closeBlock(b, endOffset, sq);
-
-    // TODO: coalesce adjacent blocks, see routine_35 of hello.exe: 1415-14f7 R1412-1414 R1415-14f7
-    // calculate routine extents
-    for (auto &r : routines) r.recalculateExtents();
-    
-    sort();
+    order();
 }
 
 // recreate list of unclaimed blocks (lost after map is saved to file) from holes in the map coverage after loading the map back from a file
@@ -193,7 +191,7 @@ void RoutineMap::buildUnclaimed(const Word loadSegment) {
     debug("Building unclaimed blocks, mapSize = " + sizeStr(mapSize) + ", load segment: " + hexVal(loadSegment));
     // need routines to be sorted
     sort();
-    for (Size ri = 0; ri < size(); ++ri) {
+    for (Size ri = 0; ri < routineCount(); ++ri) {
         const Routine &r = getRoutine(ri);
         debug("Processing routine " + r.name + ": " + r.extents.toString());
         // the current routine starts after the last claimed position
@@ -393,6 +391,8 @@ void RoutineMap::sort() {
 std::string RoutineMap::routineString(const Routine &r, const Word reloc) const {
     ostringstream str;
     Block rextent{r.extents};
+    if (!rextent.isValid())
+        throw AnalysisError("Invalid routine extents for routine " + r.name + ": " + rextent.toString());
     rextent.rebase(reloc);
     if (rextent.begin.segment != rextent.end.segment) 
         throw AnalysisError("Beginning and end of extents of routine " + r.name + " lie in different segments: " + rextent.toString());
@@ -424,10 +424,17 @@ std::string RoutineMap::routineString(const Routine &r, const Word reloc) const 
     return str.str();
 }
 
+void RoutineMap::order() {
+    // TODO: coalesce adjacent blocks, see routine_35 of hello.exe: 1415-14f7 R1412-1414 R1415-14f7
+    for (auto &r : routines) 
+        r.recalculateExtents();
+    sort();
+}
+
 void RoutineMap::save(const std::string &path, const Word reloc, const bool overwrite) const {
     if (empty()) return;
     if (checkFile(path).exists && !overwrite) throw AnalysisError("Map file already exists: " + path);
-    info("Saving routine map (size = " + to_string(size()) + ") to "s + path + ", reversing relocation by " + hexVal(reloc));
+    info("Saving routine map (routines = " + to_string(routineCount()) + ") to "s + path + ", reversing relocation by " + hexVal(reloc));
     ofstream file{path};
     file << "Size " << hexVal(mapSize, false) << endl;
     for (auto s: segments) {
@@ -456,7 +463,7 @@ string RoutineMap::dump(const bool verbose, const bool brief, const bool format)
         printRoutines.emplace_back(r);
     }
     std::sort(printRoutines.begin(), printRoutines.end());
-    Size mapCount = size();
+    Size mapCount = routineCount();
     str << "--- Routine map containing " << mapCount << " routines" << endl
         << "Size " << sizeStr(mapSize) << endl;
     for (const auto &s : segments) {

@@ -27,6 +27,25 @@ protected:
         return a.instructionsMatch(ref, tgt, refInstr, tgtInstr); 
     }
     auto analyzerDiffVal() { return Analyzer::CMP_DIFFVAL; }
+    bool crossCheck(const RoutineMap &map1, const RoutineMap &map2, const Size maxMiss) {
+        TRACELN("Cross-checking map 1 (" + to_string(map1.routineCount()) + " routines) with map 2 (" + to_string(map2.routineCount()) + " routines)");
+        Size missCount = 0;
+        for (Size idx = 0; idx < map1.routineCount(); ++idx) {
+            const Routine r1 = map1.getRoutine(idx);
+            TRACELN("Routine " + to_string(idx + 1) + ": " + r1.toString(false));
+            const Routine r2 = map2.getRoutine(r1.name);
+            if (!r2.isValid()) {
+                TRACELN("\tUnable to find in other map (" + to_string(++missCount) + ")");
+                if (missCount > maxMiss) return false;
+                continue;
+            }
+            TRACELN("\tFound equivalent: " + r2.toString(false));
+            if (r1.size() != r2.size()) {
+                TRACELN("\tRoutine sizes differ");
+            }
+        }
+        return true;
+    }
 };
 
 // TODO: divest tests of analysis.cpp as distinct test suite
@@ -100,7 +119,7 @@ TEST_F(AnalysisTest, RoutineMap) {
     // test comparing of routine maps for both the success and failure case
     RoutineMap matchMap{idaMap};
     ASSERT_TRUE(idaMap.match(matchMap));
-    const Size routineCount = matchMap.size();
+    const Size routineCount = matchMap.routineCount();
     const Size matchCount = idaMap.match(matchMap);
     ASSERT_EQ(matchCount, routineCount);
 
@@ -139,7 +158,7 @@ TEST_F(AnalysisTest, RoutineMapFromQueue) {
     entrypoints = { {0x8, 1}, {0xc, 2}, {0x12, 3} };
     RoutineMap queueMap{sq, segments, loadSegment, visited.size()};
     queueMap.dump();
-    ASSERT_EQ(queueMap.size(), 3);
+    ASSERT_EQ(queueMap.routineCount(), 3);
 
     Routine r1 = queueMap.getRoutine(0);
     ASSERT_FALSE(r1.name.empty());
@@ -195,22 +214,22 @@ TEST_F(AnalysisTest, FindRoutines) {
     const Size idaMatchCount = 37; // not all 54 routines that ida finds can be identified for now    
     // compare our map against IDA map
     Size matchCount = idaMap.match(discoveredMap);
-    TRACELN("Discovered vs IDA, found matching " << matchCount << " routines out of " << idaMap.size());
+    TRACELN("Discovered vs IDA, found matching " << matchCount << " routines out of " << idaMap.routineCount());
     ASSERT_EQ(matchCount, idaMatchCount);
     
     // save to file and reload
     discoveredMap.save("hello.map", loadSegment, true);
     RoutineMap reloadMap("hello.map", loadSegment);
-    ASSERT_EQ(reloadMap.size(), discoveredMap.size());
+    ASSERT_EQ(reloadMap.routineCount(), discoveredMap.routineCount());
 
     // check matching in the opposite direction, should be the same
     matchCount = reloadMap.match(idaMap);
-    TRACELN("Reload vs IDA, found matching " << matchCount << " routines out of " << reloadMap.size());
+    TRACELN("Reload vs IDA, found matching " << matchCount << " routines out of " << reloadMap.routineCount());
     ASSERT_EQ(matchCount, idaMatchCount);
 
     matchCount = discoveredMap.match(reloadMap);
-    TRACELN("Discovered vs reload, found matching " << matchCount << " routines out of " << discoveredMap.size());
-    ASSERT_EQ(matchCount, discoveredMap.size());
+    TRACELN("Discovered vs reload, found matching " << matchCount << " routines out of " << discoveredMap.routineCount());
+    ASSERT_EQ(matchCount, discoveredMap.routineCount());
 }
 
 TEST_F(AnalysisTest, FindFarRoutines) {
@@ -264,20 +283,28 @@ TEST_F(AnalysisTest, RoutineMapCollision) {
     TRACE(rm.dump());
     rm.save(path, 0, true);
     rm = RoutineMap{path};
-    ASSERT_EQ(rm.size(), 2);
+    ASSERT_EQ(rm.routineCount(), 2);
 }
 
 TEST_F(AnalysisTest, CodeCompare) {
     MzImage mz{"../bin/hello.exe"};
     mz.load(0);
     Executable e1{mz}, e2{mz};
-    auto map = RoutineMap{"hello.map"};
-    Analyzer a{Analyzer::Options()};
+    const string mapPath = "hello.map";
+    auto map = RoutineMap{mapPath};
+    Analyzer::Options opt;
+    opt.mapPath = mapPath;
+    Analyzer a{opt};
 
     // compare identical 
+    TRACELN("Test #1, comparison match");
     ASSERT_TRUE(a.compareCode(e1, e2, map));
+    // cross-check target map
+    RoutineMap tgtMap("hello.tgt");
+    ASSERT_TRUE(crossCheck(map, tgtMap, 4));
 
     // compare different
+    TRACELN("Test #2, comparison mismatch");
     e1.setEntrypoint(Address(0x115e)); // getnum
     e2.setEntrypoint(Address(0x8d0)); // _fflush
     ASSERT_FALSE(a.compareCode(e1, e2, map));

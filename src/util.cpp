@@ -3,6 +3,7 @@
 #include <sstream>
 #include <iomanip>
 #include <algorithm>
+#include <filesystem>
 #include <bitset>
 #include <unistd.h>
 #include <sys/stat.h>
@@ -12,6 +13,7 @@
 #include "dos/error.h"
 
 using namespace std;
+namespace fs = std::filesystem;
 
 static void debug(const string &msg) {
     output(msg, LOG_OTHER, LOG_DEBUG);
@@ -191,6 +193,20 @@ FileStatus checkFile(const std::string &path) {
     ret.exists = error == 0;
     ret.size = static_cast<Size>(statbuf.st_size);
     return ret;
+}
+
+std::string getDirname(const std::string &path) {
+    if (path.empty()) return path;
+    fs::path p{path};
+    p.remove_filename();
+    return p.string();
+}
+
+std::string replaceExtension(const std::string &path, const std::string &ext) {
+    if (path.empty()) return path;
+    fs::path p{path};
+    p.replace_extension(ext);
+    return p.string();
 }
 
 bool deleteFile(const std::string &path) {

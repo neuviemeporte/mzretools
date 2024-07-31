@@ -117,6 +117,7 @@ vector<Block> ScanQueue::getUnvisited() const {
 // function call, create new routine at destination if either not visited, 
 // or visited but destination was not yet discovered as a routine entrypoint and this call now takes precedence and will replace it
 bool ScanQueue::saveCall(const Address &dest, const RegisterState &regs, const bool near) {
+    if (!dest.isValid()) return false;
     const RoutineId destId = getRoutineId(dest.toLinear());
     if (isEntrypoint(dest)) 
         debug("Address "s + dest.toString() + " already registered as entrypoint for routine " + to_string(destId));
@@ -543,12 +544,13 @@ Address Analyzer::findTargetLocation() {
 static constexpr RoutineId VISITED_ID = 1;
 
 // TODO: implement register value tracing like in findRoutines
-bool Analyzer::compareCode(const Executable &ref, const Executable &tgt, const RoutineMap &refMap) {
+bool Analyzer::compareCode(const Executable &ref, Executable &tgt, const RoutineMap &refMap) {
     verbose("Comparing code between reference (entrypoint "s + ref.entrypoint().toString() + ") and target (entrypoint " + tgt.entrypoint().toString() + ") executables");
-    debug("Routine map of reference binary has " + to_string(refMap.size()) + " entries");
-    RoutineMap tgtMap;
+    debug("Routine map of reference binary has " + to_string(refMap.routineCount()) + " entries");
+    RoutineMap tgtMap{tgt.size()};
     offMap = OffsetMap{refMap.segmentCount(Segment::SEG_DATA)};
     scanQueue = ScanQueue{ref.loadAddr(), ref.size(), Destination(ref.entrypoint(), VISITED_ID, true, {})};
+    tgtQueue = ScanQueue{tgt.loadAddr(), tgt.size(), Destination(tgt.entrypoint(), VISITED_ID, true, {})};
     // map of equivalent addresses in the compared binaries, seed with the two entrypoints
     offMap.setCode(ref.entrypoint(), tgt.entrypoint());
     routineNames.clear();
@@ -580,6 +582,7 @@ bool Analyzer::compareCode(const Executable &ref, const Executable &tgt, const R
             success = false;
             break;
         }
+        tgt.storeSegment(Segment::SEG_CODE, tgtCsip.segment);
         routine = {"unknown", {}};
         Size routineCount = 0;
         if (!refMap.empty()) { // comparing with a map
@@ -597,18 +600,19 @@ bool Analyzer::compareCode(const Executable &ref, const Executable &tgt, const R
                 excludedNames.insert(routine.name);
                 continue;
             }
-            // try to get get equivalent routine from target map, create one if it doesn't exist yet
-            Routine &tgtRoutine = tgtMap.getMutableRoutine(routine.name);
-            targetBlock = tgtRoutine.blockContaining(tgtCsip);
-            if (!targetBlock.isValid()) {
-                targetBlock = Block(tgtCsip);
-                // we are at the entrypoint, so mark it as such in the target routine also
-                if (refCsip == routine.entrypoint()) {
-                    tgtRoutine.extents.begin = targetBlock.begin;
-                }
-                debug("Opened target block at " + tgtCsip.toString() + " for routine " + tgtRoutine.name);
-            }
             verbose("--- Now @"s + refCsip.toString() + ", routine " + routine.toString(false) + ", block " + compareBlock.toString(true) +  ", target @" + tgtCsip.toString());
+            // // try to get get equivalent routine from target map, create one if it doesn't exist yet
+            // Routine &tgtRoutine = tgtMap.getMutableRoutine(routine.name);
+            // targetBlock = tgtRoutine.blockContaining(tgtCsip);
+            // if (!targetBlock.isValid()) {
+            //     targetBlock = Block(tgtCsip);
+            //     debug("Opened target block at " + tgtCsip.toString() + " for routine " + tgtRoutine.name);
+            //     // we are at the entrypoint, so mark it as such in the target routine also
+            //     if (refCsip == routine.entrypoint()) {
+            //         debug("Marking as target routine entrypoint");
+            //         tgtRoutine.extents.begin = targetBlock.begin;
+            //     }
+            // }
         }
         // TODO: consider dropping this "feature"
         else { // comparing without a map
@@ -629,7 +633,15 @@ bool Analyzer::compareCode(const Executable &ref, const Executable &tgt, const R
         verbose(output_color(OUT_GREEN) + "Comparison result: match" + output_color(OUT_DEFAULT));
         comparisonSummary(ref, refMap, true);
     }
-    //tgtMap.save();
+    // save target map file regardless of comparison result (can be incomplete)
+    const string tgtMapPath = replaceExtension(options.mapPath, "tgt");
+    if (!tgtMapPath.empty()) {
+        tgtMap = RoutineMap{tgtQueue, tgt.getSegments(), tgt.getLoadSegment(), tgt.size()};
+        //tgtMap.setSegments(tgt.getSegments());
+        //tgtMap.order();
+        info("Saving target map to " + tgtMapPath);
+        tgtMap.save(tgtMapPath, 0, true);
+    }
     return success;
 }
 
@@ -789,6 +801,7 @@ bool Analyzer::comparisonLoop(const Executable &ref, const Executable &tgt, cons
         // mark this instruction as visited
         // unlike the routine finding algorithm, we do not differentiate between routine IDs, it's 0/1
         scanQueue.setRoutineId(refCsip.toLinear(), refInstr.length, VISITED_ID);
+        tgtQueue.setRoutineId(tgtCsip.toLinear(), tgtInstr.length);
 
         // compare instructions
         if (!compareInstructions(ref, tgt, refInstr, tgtInstr)) {
@@ -807,6 +820,7 @@ bool Analyzer::comparisonLoop(const Executable &ref, const Executable &tgt, cons
                 // if the branch destination was accepted, save the address mapping of the branch destination between the reference and target
                 offMap.codeMatch(refBranch.destination, tgtBranch.destination);
             }
+            tgtQueue.saveCall(tgtBranch.destination, {}, tgtInstr.isNearBranch());
         }
         // instruction is a jump, save the relationship between the reference and the target addresses into the offset map
         // TODO: isn't this already handled in instructionsMatch()?
@@ -824,11 +838,11 @@ bool Analyzer::comparisonLoop(const Executable &ref, const Executable &tgt, cons
 
         // check loop termination conditions
         if (checkComparisonStop()) {
-            // close block in target executable and add to its routine map
-            Routine &tgtRoutine = tgtMap.getMutableRoutine(routine.name);
-            targetBlock.end = tgtCsip;
-            tgtRoutine.reachable.push_back(targetBlock);
-            debug("Closed target block " + targetBlock.toString() + " for routine " + tgtRoutine.name + " and placed in map");
+            // // close block in target executable and add to its routine map
+            // Routine &tgtRoutine = tgtMap.getMutableRoutine(routine.name);
+            // targetBlock.end = tgtCsip - 1;
+            // tgtRoutine.reachable.push_back(targetBlock);
+            // debug("Closed target block " + targetBlock.toString() + " for routine " + tgtRoutine.name + " and placed in map");
             break;
         }
     } // iterate over instructions at current comparison location
@@ -1117,7 +1131,7 @@ void Analyzer::calculateStats(const RoutineMap &routineMap) {
     if (routineMap.empty()) return;
     routineSumSize = reachableSize = unreachableSize = excludedSize = excludedCount = excludedReachableSize = missedSize = ignoredSize = 0;
     missedNames.clear();
-    for (Size i = 0; i < routineMap.size(); i++) {
+    for (Size i = 0; i < routineMap.routineCount(); i++) {
         // gather static routine map stats
         const Routine r = routineMap.getRoutine(i);
         routineSumSize += r.size();
@@ -1149,7 +1163,7 @@ void Analyzer::comparisonSummary(const Executable &ref, const RoutineMap &routin
     const Size 
         visitedCount = routineNames.size(),
         ignoredCount = excludedNames.size(),
-        routineMapSize = routineMap.size(),
+        routineMapSize = routineMap.routineCount(),
         loadModuleSize = ref.size();
 
     calculateStats(routineMap);
