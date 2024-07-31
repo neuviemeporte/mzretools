@@ -275,12 +275,12 @@ TEST_F(AnalysisTest, CodeCompare) {
     Analyzer a{Analyzer::Options()};
 
     // compare identical 
-    ASSERT_TRUE(a.compareCode(e1, e2, map, {}));
+    ASSERT_TRUE(a.compareCode(e1, e2, map));
 
     // compare different
     e1.setEntrypoint(Address(0x115e)); // getnum
     e2.setEntrypoint(Address(0x8d0)); // _fflush
-    ASSERT_FALSE(a.compareCode(e1, e2, map, {}));
+    ASSERT_FALSE(a.compareCode(e1, e2, map));
 }
 
 TEST_F(AnalysisTest, CodeCompareSkip) {
@@ -304,13 +304,13 @@ TEST_F(AnalysisTest, CodeCompareSkip) {
     opt.refSkip = 2;
     opt.tgtSkip = 2;
     Analyzer a1(opt);
-    ASSERT_FALSE(a1.compareCode(e1, e2, {}, {}));
+    ASSERT_FALSE(a1.compareCode(e1, e2, {}));
 
     // test success case
     opt.refSkip = 3;
     opt.tgtSkip = 2;
     Analyzer a2(opt);
-    ASSERT_TRUE(a2.compareCode(e1, e2, {}, {}));
+    ASSERT_TRUE(a2.compareCode(e1, e2, {}));
     
     const vector<Byte> ref2Code = {
         0x41, // inc cx
@@ -324,13 +324,13 @@ TEST_F(AnalysisTest, CodeCompareSkip) {
     opt.refSkip = 3;
     opt.tgtSkip = 0;
     Analyzer a3(opt);
-    ASSERT_TRUE(a3.compareCode(e1, e4, {}, {}));
+    ASSERT_TRUE(a3.compareCode(e1, e4, {}));
 
     // test only tgt skip
     opt.refSkip = 0;
     opt.tgtSkip = 2;
     Analyzer a4(opt);
-    ASSERT_TRUE(a4.compareCode(e3, e2, {}, {}));
+    ASSERT_TRUE(a4.compareCode(e3, e2, {}));
 }
 
 TEST_F(AnalysisTest, CodeCompareUnreachable) {
@@ -351,7 +351,7 @@ TEST_F(AnalysisTest, CodeCompareUnreachable) {
     auto &rv1 = getRoutines(map1);
     rv1.push_back(r1);
     Analyzer a1(opt);
-    ASSERT_TRUE(a1.compareCode(e1, e2, map1, {}));
+    ASSERT_TRUE(a1.compareCode(e1, e2, map1));
     
     // different size of unreachable region, but make it possible to derive the offset mapping from a jump destination
     TRACELN("=== case 2");
@@ -366,7 +366,7 @@ TEST_F(AnalysisTest, CodeCompareUnreachable) {
     RoutineMap map2;
     auto &rv2 = getRoutines(map2);
     rv2.push_back(r2);
-    ASSERT_TRUE(a1.compareCode(e3, e4, map2, {}));
+    ASSERT_TRUE(a1.compareCode(e3, e4, map2));
 
     // impossible to derive the offset mapping from a jump destination and instructions don't match
     TRACELN("=== case 3");
@@ -381,7 +381,7 @@ TEST_F(AnalysisTest, CodeCompareUnreachable) {
     RoutineMap map3;
     auto &rv3 = getRoutines(map3);
     rv3.push_back(r3);
-    ASSERT_FALSE(a1.compareCode(e5, e6, map3, {}));
+    ASSERT_FALSE(a1.compareCode(e5, e6, map3));
 
     // TODO: implement test for different sized region and no jump after lookahead impemented, currently throws 
 }

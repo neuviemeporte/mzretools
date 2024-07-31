@@ -8,6 +8,7 @@
 #include "dos/address.h"
 
 using RoutineId = int;
+static constexpr RoutineId NULL_ROUTINE = 0;
 
 class ScanQueue;
 
@@ -44,6 +45,7 @@ struct Routine {
     bool colides(const Block &block, const bool checkExtents = true) const;
     std::string toString(const bool showChunks = true) const;
     std::vector<Block> sortedBlocks() const;
+    void recalculateExtents();
 };
 
 // A map of an executable, records which areas have been claimed by routines, and which have not, serializable to a file
@@ -65,6 +67,7 @@ public:
     Routine getRoutine(const Size idx) const { return routines.at(idx); }
     Routine getRoutine(const Address &addr) const;
     Routine getRoutine(const std::string &name) const;
+    Routine& getMutableRoutine(const std::string &name);
     Routine findByEntrypoint(const Address &ep) const;
     bool empty() const { return routines.empty(); }
     Size match(const RoutineMap &other) const;

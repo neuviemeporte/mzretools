@@ -13,8 +13,6 @@
 #include "dos/instruction.h"
 #include "dos/routine.h"
 
-static constexpr RoutineId NULL_ROUTINE = 0;
-
 class Executable;
 
 // TODO: 
@@ -51,7 +49,7 @@ class ScanQueue {
     std::vector<RoutineEntrypoint> entrypoints;
 
 public:
-    ScanQueue(const Destination &seed, const Size codeSize);
+    ScanQueue(const Address &origin, const Size codeSize, const Destination &seed);
     ScanQueue() : origin(0, 0) {}
     // search point queue operations
     Size size() const { return queue.size(); }
@@ -153,10 +151,10 @@ private:
 
     Options options;
     Address refCsip, tgtCsip;
-    Block compareBlock;
+    Block compareBlock, targetBlock;
     OffsetMap offMap;
     Size comparedSize, routineSumSize, reachableSize, unreachableSize, excludedSize, excludedCount, excludedReachableSize, missedSize, ignoredSize;
-    ScanQueue compareQ;
+    ScanQueue scanQueue;
     Routine routine;
     std::set<std::string> routineNames, excludedNames, missedNames;
     Size refSkipCount, tgtSkipCount;
@@ -165,7 +163,7 @@ public:
     Analyzer(const Options &options, const Size maxData = 0) : options(options), offMap(maxData), comparedSize(0) {}
 
     RoutineMap findRoutines(Executable &exe);
-    bool compareCode(const Executable &ref, const Executable &tgt, const RoutineMap &refMap, const RoutineMap &tgtMap);
+    bool compareCode(const Executable &ref, const Executable &tgt, const RoutineMap &refMap);
 private:
     bool skipAllowed(const Instruction &refInstr, Instruction tgtInstr);
     bool compareInstructions(const Executable &ref, const Executable &tgt, const Instruction &refInstr, Instruction tgtInstr);
@@ -173,7 +171,7 @@ private:
     bool checkComparisonStop();
     void checkMissedRoutines(const RoutineMap &refMap);
     Address findTargetLocation();
-    bool comparisonLoop(const Executable &ref, const Executable &tgt, const RoutineMap &refMap, const RoutineMap &tgtMap);
+    bool comparisonLoop(const Executable &ref, const Executable &tgt, const RoutineMap &refMap, RoutineMap &tgtMap);
     Branch getBranch(const Executable &exe, const Instruction &i, const RegisterState &regs) const;
     ComparisonResult instructionsMatch(const Executable &ref, const Executable &tgt, const Instruction &refInstr, Instruction tgtInstr);
     void diffContext(const Executable &ref, const Executable &tgt) const;

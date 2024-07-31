@@ -182,7 +182,7 @@ int main(int argc, char *argv[]) {
             mapSize = map.size();
         } 
         Analyzer a{opt};
-        bool compareResult = a.compareCode(exeBase, exeCompare, map, {});
+        bool compareResult = a.compareCode(exeBase, exeCompare, map);
         return compareResult ? 0 : 1;
     }
     catch (Error &e) {

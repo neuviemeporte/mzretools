@@ -115,6 +115,24 @@ std::vector<Block> Routine::sortedBlocks() const {
     return blocks;
 }
 
+void Routine::recalculateExtents() {
+    Address ep = entrypoint();
+    assert(ep.isValid());
+    // locate main block (the one starting on the entrypoint) and set it as the extents' initial value
+    auto mainBlock = std::find_if(reachable.begin(), reachable.end(), [ep](const Block &b){
+        return b.begin == ep;
+    });
+    if (mainBlock == reachable.end())
+        throw AnalysisError("Unable to find main block for routine "s + toString(false));
+    extents = *mainBlock;
+    // coalesce remaining blocks with the extents if possible
+    for (const auto &b : sortedBlocks()) {
+        if (b.begin < extents.begin) continue; // ignore blocks that begin before the routine entrypoint
+        extents.coalesce(b);
+    }
+    debug("Calculated routine extents: "s + toString(false));
+}
+
 RoutineMap::RoutineMap(const ScanQueue &sq, const std::vector<Segment> &segs, const Word loadSegment, const Size mapSize) : mapSize(mapSize) {
     const Size routineCount = sq.routineCount();
     if (routineCount == 0)
@@ -141,7 +159,7 @@ RoutineMap::RoutineMap(const ScanQueue &sq, const std::vector<Segment> &segs, co
         }
         // convert map offset to segmented address
         Address curAddr{mapOffset};
-        curAddr.move(curSeg.address);   
+        curAddr.move(curSeg.address);
         curId = sq.getRoutineId(mapOffset);
         // do nothing as long as the value doesn't change, unless we encounter a routine entrypoint in the middle of a block, in which case we force a block close
         if (curId == prevId && !sq.isEntrypoint(curAddr)) continue;
@@ -159,25 +177,8 @@ RoutineMap::RoutineMap(const ScanQueue &sq, const std::vector<Segment> &segs, co
     closeBlock(b, endOffset, sq);
 
     // TODO: coalesce adjacent blocks, see routine_35 of hello.exe: 1415-14f7 R1412-1414 R1415-14f7
-
     // calculate routine extents
-    for (auto &r : routines) {
-        Address entrypoint = r.entrypoint();
-        assert(entrypoint.isValid());
-        // locate main block (the one starting on the entrypoint) and set it as the extents' initial value
-        auto mainBlock = std::find_if(r.reachable.begin(), r.reachable.end(), [entrypoint](const Block &b){
-            return b.begin == entrypoint;
-        });
-        if (mainBlock == r.reachable.end())
-            throw AnalysisError("Unable to find main block for routine "s + r.toString(false));
-        r.extents = *mainBlock;
-        // coalesce remaining blocks with the extents if possible
-        for (const auto &b : r.sortedBlocks()) {
-            if (b.begin < r.extents.begin) continue; // ignore blocks that begin before the routine entrypoint
-            r.extents.coalesce(b);
-        }
-        debug("Calculated routine extents: "s + r.toString(false));
-    }
+    for (auto &r : routines) r.recalculateExtents();
     
     sort();
 }
@@ -271,7 +272,13 @@ Routine RoutineMap::getRoutine(const Address &addr) const {
 Routine RoutineMap::getRoutine(const std::string &name) const {
     for (const Routine &r : routines)
         if (r.name == name) return r;
-    return {};    
+    return {};
+}
+
+Routine& RoutineMap::getMutableRoutine(const std::string &name) {
+    for (Routine &r : routines)
+        if (r.name == name) return r;
+    return routines.emplace_back(Routine(name, {}));
 }
 
 Routine RoutineMap::findByEntrypoint(const Address &ep) const {

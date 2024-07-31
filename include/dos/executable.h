@@ -23,6 +23,7 @@ class Executable {
 public:
     explicit Executable(const MzImage &mz);
     Executable(const Word loadSegment, const std::vector<Byte> &data);
+    Address loadAddr() const { return { loadSegment, 0 }; }
     const Address& entrypoint() const { return ep; }
     const Address& stackAddr() const { return stack; }
     void setEntrypoint(const Address &addr);

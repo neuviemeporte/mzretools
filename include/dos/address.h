@@ -79,7 +79,7 @@ struct Block {
     Block(const Offset begin) : Block(Address(begin)) {}
     Block(const std::string &blockStr);
     Block(const std::string &from, const std::string &to);
-    Block() : Block(MEM_TOTAL - 1, 0) {} // invalid block
+    Block() {} // invalid block
 
     bool operator==(const Block &arg) const { return begin == arg.begin && end == arg.end; }
     bool operator<(const Block &arg) const { return begin < arg.begin; }
