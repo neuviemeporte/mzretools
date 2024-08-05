@@ -49,7 +49,7 @@ class ScanQueue {
     std::vector<RoutineEntrypoint> entrypoints;
 
 public:
-    ScanQueue(const Address &origin, const Size codeSize, const Destination &seed);
+    ScanQueue(const Address &origin, const Size codeSize, const Destination &seed, const std::string name = {});
     ScanQueue() : origin(0, 0) {}
     // search point queue operations
     Size size() const { return queue.size(); }
@@ -57,7 +57,7 @@ public:
     Address originAddress() const { return origin; }
     Destination nextPoint();
     bool hasPoint(const Address &dest, const bool call) const;
-    bool saveCall(const Address &dest, const RegisterState &regs, const bool near);
+    bool saveCall(const Address &dest, const RegisterState &regs, const bool near, const std::string name = {});
     bool saveJump(const Address &dest, const RegisterState &regs);
     bool saveBranch(const Branch &branch, const RegisterState &regs, const Block &codeExtents);
     // discovered locations operations
@@ -66,9 +66,11 @@ public:
     RoutineId getRoutineId(Offset off) const;
     void setRoutineId(Offset off, const Size length, RoutineId id = NULL_ROUTINE);
     RoutineId isEntrypoint(const Address &addr) const;
+    RoutineEntrypoint getEntrypoint(const std::string &name);
     std::vector<Routine> getRoutines() const;
     std::vector<Block> getUnvisited() const;
     void dumpVisited(const std::string &path, const Offset start = 0, Size size = 0) const;
+    void dumpEntrypoints() const;
 };
 
 class OffsetMap {

@@ -15,6 +15,14 @@ using namespace std;
 
 OUTPUT_CONF(LOG_ANALYSIS)
 
+std::string RoutineEntrypoint::toString() const {
+    ostringstream str;
+    str << "id " << id << ": " << addr.toString();
+    if (near) str << " [near]";
+    if (!name.empty()) str << " " << name;
+    return str.str();
+}
+
 bool Routine::isReachable(const Block &b) const {
     return std::find(reachable.begin(), reachable.end(), b) != reachable.end();
 }
@@ -665,6 +673,7 @@ void RoutineMap::loadFromMapFile(const std::string &path, const Word reloc) {
         } // iterate over tokens in a routine definition
         if (r.extents.isValid()) {
             debug("routine: "s + r.toString());
+            r.id = routines.size() + 1;
             routines.push_back(r);
         }
         else throw ParseError("Line " + to_string(lineno) + ": invalid routine extents " + r.extents.toString());
@@ -709,8 +718,9 @@ void RoutineMap::loadFromIdaFile(const std::string &path, const Word reloc) {
         }
         // start new routine
         if (token[2] == "proc") { 
-            routines.emplace_back(Routine{token[1], curAddr});
-            const auto &r = routines.back();
+            Routine r{token[1], curAddr};
+            r.id = routines.size() + 1;
+            routines.emplace_back(r);
             debug("Found start of routine "s + r.name + " @ " + r.extents.begin.toString());
         }
         // routine end, but IDA places endp at the offset of the beginning of the last instruction, 

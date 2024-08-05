@@ -16,17 +16,22 @@ struct RoutineEntrypoint {
     Address addr;
     RoutineId id;
     bool near;
+    std::string name;
+
     RoutineEntrypoint(const Address &addr, const RoutineId id, const bool near = true) : addr(addr), id(id), near(near) {}
+    RoutineEntrypoint() : RoutineEntrypoint({}, NULL_ROUTINE, false) {}
     bool operator==(const Address &arg) const { return addr == arg; }
+    std::string toString() const;
 };
 
 struct Routine {
     std::string name;
     Block extents; // largest contiguous block starting at routine entrypoint, may contain unreachable regions
     std::vector<Block> reachable, unreachable;
+    RoutineId id;
     bool near, ignore, complete, unclaimed, external, detached, assembly;
 
-    Routine(const std::string &name, const Block &extents) : name(name), extents(extents), 
+    Routine(const std::string &name, const Block &extents) : name(name), extents(extents), id(NULL_ROUTINE),
         near(true), ignore(false), complete(false), unclaimed(false), external(false), detached(false), assembly(false) {}
     Routine() : Routine("", {}) {}
     Address entrypoint() const { return extents.begin; }

@@ -27,12 +27,15 @@ string Destination::toString() const {
     return str.str();
 }
 
-ScanQueue::ScanQueue(const Address &origin, const Size codeSize, const Destination &seed) :
+ScanQueue::ScanQueue(const Address &origin, const Size codeSize, const Destination &seed, const std::string name) :
     visited(codeSize, NULL_ROUTINE),
     origin(origin)
 {
+    debug("Initializing queue, origin: " + origin.toString() + ", size = " + to_string(codeSize) + ", seed: " + seed.toString() + ", name: '" + name + "'");
     queue.push_front(seed);
-    entrypoints.emplace_back(RoutineEntrypoint(seed.address, seed.routineId, true));
+    RoutineEntrypoint ep{seed.address, seed.routineId, true};
+    if (!name.empty()) ep.name = name;
+    entrypoints.push_back(ep);
 }
 
 string ScanQueue::statusString() const { 
@@ -76,6 +79,14 @@ RoutineId ScanQueue::isEntrypoint(const Address &addr) const {
     else return NULL_ROUTINE;
 }
 
+RoutineEntrypoint ScanQueue::getEntrypoint(const std::string &name) {
+    const auto &found = std::find_if(entrypoints.begin(), entrypoints.end(), [&](const RoutineEntrypoint &ep){
+        return ep.name == name;
+    });
+    if (found != entrypoints.end()) return *found;
+    return {};
+}
+
 // return the set of routines found by the queue, these will only have the entrypoint set and an automatic name generated
 vector<Routine> ScanQueue::getRoutines() const {
     auto routines = vector<Routine>{routineCount()};
@@ -84,8 +95,9 @@ vector<Routine> ScanQueue::getRoutines() const {
         // initialize routine extents with entrypoint address
         r.extents = Block(ep.addr);
         r.near = ep.near;
+        if (!ep.name.empty()) r.name = ep.name;
         // assign automatic names to routines
-        if (ep.addr == originAddress()) r.name = "start";
+        else if (ep.addr == originAddress()) r.name = "start";
         else r.name = "routine_"s + to_string(ep.id);
     }
     return routines;
@@ -116,21 +128,24 @@ vector<Block> ScanQueue::getUnvisited() const {
 
 // function call, create new routine at destination if either not visited, 
 // or visited but destination was not yet discovered as a routine entrypoint and this call now takes precedence and will replace it
-bool ScanQueue::saveCall(const Address &dest, const RegisterState &regs, const bool near) {
+bool ScanQueue::saveCall(const Address &dest, const RegisterState &regs, const bool near, const std::string name) {
     if (!dest.isValid()) return false;
-    const RoutineId destId = getRoutineId(dest.toLinear());
-    if (isEntrypoint(dest)) 
+    RoutineId destId = isEntrypoint(dest);
+    if (destId != NULL_ROUTINE) 
         debug("Address "s + dest.toString() + " already registered as entrypoint for routine " + to_string(destId));
     else if (hasPoint(dest, true)) 
         debug("Search queue already contains call to address "s + dest.toString());
     else { // not a known entrypoint and not yet in queue
-        Size newRoutineId = routineCount() + 1;
+        destId = getRoutineId(dest.toLinear());
+        RoutineId newRoutineId = routineCount() + 1;
         if (destId == NULL_ROUTINE)
-            debug("call destination not belonging to any routine, claiming as entrypoint for new routine " + to_string(newRoutineId));
+            debug("call destination not belonging to any routine, claiming as entrypoint for new routine, id " + to_string(newRoutineId));
         else 
-            debug("call destination belonging to routine " + to_string(destId) + ", reclaiming as entrypoint for new routine " + to_string(newRoutineId));
+            debug("call destination belonging to routine " + to_string(destId) + ", reclaiming as entrypoint for new routine, id " + to_string(newRoutineId));
         queue.emplace_back(Destination(dest, newRoutineId, true, regs));
-        entrypoints.emplace_back(RoutineEntrypoint(dest, newRoutineId, near));
+        RoutineEntrypoint ep{dest, newRoutineId, near};
+        if (!name.empty()) ep.name = name;
+        entrypoints.push_back(ep);
         return true;
     }
     return false;
@@ -188,6 +203,13 @@ void ScanQueue::dumpVisited(const string &path, const Offset start, Size size) c
             mapFile << hex << setw(5) << setfill('0') << printOffset << " ";
         }
         mapFile << dec << setw(5) << setfill(' ') << id << " ";
+    }
+}
+
+void ScanQueue::dumpEntrypoints() const {
+    debug("Scan queue contains " + to_string(entrypoints.size()) + " entrypoints");
+    for (const auto &ep : entrypoints) {
+        debug(ep.toString());
     }
 }
 
@@ -550,7 +572,14 @@ bool Analyzer::compareCode(const Executable &ref, Executable &tgt, const Routine
     RoutineMap tgtMap{tgt.size()};
     offMap = OffsetMap{refMap.segmentCount(Segment::SEG_DATA)};
     scanQueue = ScanQueue{ref.loadAddr(), ref.size(), Destination(ref.entrypoint(), VISITED_ID, true, {})};
-    tgtQueue = ScanQueue{tgt.loadAddr(), tgt.size(), Destination(tgt.entrypoint(), VISITED_ID, true, {})};
+    // find name of entrypoint routine for seeding the target queue
+    const Routine epr = refMap.getRoutine(ref.entrypoint());
+    string eprName;
+    if (epr.isValid()) {
+        eprName = epr.name;
+        debug("Found entrypoint routine: " + eprName);
+    }
+    tgtQueue = ScanQueue{tgt.loadAddr(), tgt.size(), Destination(tgt.entrypoint(), VISITED_ID, true, {}), eprName};
     // map of equivalent addresses in the compared binaries, seed with the two entrypoints
     offMap.setCode(ref.entrypoint(), tgt.entrypoint());
     routineNames.clear();
@@ -636,6 +665,7 @@ bool Analyzer::compareCode(const Executable &ref, Executable &tgt, const Routine
     // save target map file regardless of comparison result (can be incomplete)
     const string tgtMapPath = replaceExtension(options.mapPath, "tgt");
     if (!tgtMapPath.empty()) {
+        tgtQueue.dumpVisited("queue.visited");
         tgtMap = RoutineMap{tgtQueue, tgt.getSegments(), tgt.getLoadSegment(), tgt.size()};
         //tgtMap.setSegments(tgt.getSegments());
         //tgtMap.order();
@@ -782,6 +812,11 @@ bool Analyzer::checkComparisonStop() {
 // compare instructions between two executables over a contiguous block
 bool Analyzer::comparisonLoop(const Executable &ref, const Executable &tgt, const RoutineMap &refMap, RoutineMap &tgtMap) {
     refSkipCount = tgtSkipCount = 0;
+    const RoutineEntrypoint tgtEp = tgtQueue.getEntrypoint(routine.name);
+    if (!tgtEp.addr.isValid()) {
+        tgtQueue.dumpEntrypoints();
+        debug("Unable to find target entrypoint for routine " + routine.name);
+    }
     while (true) {
         // if we ran outside of the code extents, consider the comparison successful
         if (!ref.contains(refCsip) || !tgt.contains(tgtCsip)) {
@@ -799,9 +834,8 @@ bool Analyzer::comparisonLoop(const Executable &ref, const Executable &tgt, cons
             tgtInstr{tgtCsip, tgt.codePointer(tgtCsip)};
         
         // mark this instruction as visited
-        // unlike the routine finding algorithm, we do not differentiate between routine IDs, it's 0/1
         scanQueue.setRoutineId(refCsip.toLinear(), refInstr.length, VISITED_ID);
-        tgtQueue.setRoutineId(tgtCsip.toLinear(), tgtInstr.length);
+        tgtQueue.setRoutineId(tgtCsip.toLinear(), tgtInstr.length, tgtEp.id);
 
         // compare instructions
         if (!compareInstructions(ref, tgt, refInstr, tgtInstr)) {
@@ -820,7 +854,11 @@ bool Analyzer::comparisonLoop(const Executable &ref, const Executable &tgt, cons
                 // if the branch destination was accepted, save the address mapping of the branch destination between the reference and target
                 offMap.codeMatch(refBranch.destination, tgtBranch.destination);
             }
-            tgtQueue.saveCall(tgtBranch.destination, {}, tgtInstr.isNearBranch());
+            const Routine refRoutine = refMap.getRoutine(refBranch.destination);
+            if (refRoutine.isValid()) {
+                debug("Registering target entrypoint for routine " + refRoutine.name);
+                tgtQueue.saveCall(tgtBranch.destination, {}, tgtInstr.isNearBranch(), refRoutine.name);
+            }
         }
         // instruction is a jump, save the relationship between the reference and the target addresses into the offset map
         // TODO: isn't this already handled in instructionsMatch()?
