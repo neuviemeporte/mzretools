@@ -191,8 +191,8 @@ void ScanQueue::dumpVisited(const string &path) const {
     mapFile << "      ";
     for (int i = 0; i < 16; ++i) mapFile << hex << setw(5) << setfill(' ') << i << " ";
     mapFile << endl;
-    Offset start = origin.toLinear();
-    Size size = visited.size();
+    const Offset start = origin.toLinear();
+    const Size size = visited.size();
     info("Dumping visited map of size "s + hexVal(size) + " starting at " + hexVal(start) + " to " + path);
     for (Offset mapOffset = start; mapOffset < start + size; ++mapOffset) {
         const auto id = getRoutineId(mapOffset);
@@ -548,7 +548,7 @@ void Analyzer::checkMissedRoutines(const RoutineMap &refMap) {
         debug("No missed routines detected");
         return;
     }
-    verbose("Discovered " + to_string(missedCount) + " missed routines, pushing to search queue");
+    debug("Adding " + to_string(missedCount) + " missed routines to queue");
     // go over missed routines, manually insert entrypoints into comparison location queue
     for (const auto &rn : missedNames) {
         const Routine mr = refMap.getRoutine(rn);
@@ -558,8 +558,14 @@ void Analyzer::checkMissedRoutines(const RoutineMap &refMap) {
     }
 }
 
-Address Analyzer::findTargetLocation() {
+Address Analyzer::findTargetLocation(const Executable &ref, const Executable &tgt) {
     Address ret;
+    ByteString searchString;
+    Address seqEnd = refCsip;
+    Instruction curInstr{seqEnd, ref.codePointer(seqEnd)};
+    curInstr.pattern()
+    refCsip
+
 
     return ret;
 }
@@ -632,17 +638,17 @@ bool Analyzer::compareCode(const Executable &ref, Executable &tgt, const Routine
             }
             verbose("--- Now @"s + refCsip.toString() + ", routine " + routine.toString(false) + ", block " + compareBlock.toString(true) +  ", target @" + tgtCsip.toString());
             // // try to get get equivalent routine from target map, create one if it doesn't exist yet
-            // Routine &tgtRoutine = tgtMap.getMutableRoutine(routine.name);
-            // targetBlock = tgtRoutine.blockContaining(tgtCsip);
-            // if (!targetBlock.isValid()) {
-            //     targetBlock = Block(tgtCsip);
-            //     debug("Opened target block at " + tgtCsip.toString() + " for routine " + tgtRoutine.name);
-            //     // we are at the entrypoint, so mark it as such in the target routine also
-            //     if (refCsip == routine.entrypoint()) {
-            //         debug("Marking as target routine entrypoint");
-            //         tgtRoutine.extents.begin = targetBlock.begin;
-            //     }
-            // }
+            Routine &tgtRoutine = tgtMap.getMutableRoutine(routine.name);
+            targetBlock = tgtRoutine.blockContaining(tgtCsip);
+            if (!targetBlock.isValid()) {
+                targetBlock = Block(tgtCsip);
+                debug("Opened target block at " + tgtCsip.toString() + " for routine " + tgtRoutine.name);
+                // we are at the entrypoint, so mark it as such in the target routine also
+                if (refCsip == routine.entrypoint()) {
+                    debug("Marking as target routine entrypoint");
+                    tgtRoutine.extents.begin = targetBlock.begin;
+                }
+            }
         }
         // TODO: consider dropping this "feature"
         else { // comparing without a map
