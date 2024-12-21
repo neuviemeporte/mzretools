@@ -69,7 +69,7 @@ public:
     RoutineEntrypoint getEntrypoint(const std::string &name);
     std::vector<Routine> getRoutines() const;
     std::vector<Block> getUnvisited() const;
-    void dumpVisited(const std::string &path, const Offset start = 0, Size size = 0) const;
+    void dumpVisited(const std::string &path) const;
     void dumpEntrypoints() const;
 };
 

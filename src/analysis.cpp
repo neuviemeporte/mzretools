@@ -184,15 +184,15 @@ bool ScanQueue::saveBranch(const Branch &branch, const RegisterState &regs, cons
     return false; 
 }
 
-
 // This is very slow!
-void ScanQueue::dumpVisited(const string &path, const Offset start, Size size) const {
+void ScanQueue::dumpVisited(const string &path) const {
     // dump map to file for debugging
     ofstream mapFile(path);
     mapFile << "      ";
     for (int i = 0; i < 16; ++i) mapFile << hex << setw(5) << setfill(' ') << i << " ";
     mapFile << endl;
-    if (size == 0) size = visited.size();
+    Offset start = origin.toLinear();
+    Size size = visited.size();
     info("Dumping visited map of size "s + hexVal(size) + " starting at " + hexVal(start) + " to " + path);
     for (Offset mapOffset = start; mapOffset < start + size; ++mapOffset) {
         const auto id = getRoutineId(mapOffset);
@@ -457,7 +457,6 @@ static string compareStatus(const Instruction &i1, const Instruction &i2, const 
     return status;
 }
 
-
 // explore the code without actually executing instructions, discover routine boundaries
 // TODO: identify routines through signatures generated from OMF libraries
 // TODO: trace usage of bp register (sub/add) to determine stack frame size of routines
@@ -544,15 +543,17 @@ RoutineMap Analyzer::findRoutines(Executable &exe) {
 void Analyzer::checkMissedRoutines(const RoutineMap &refMap) {
     // update set of missed routines
     calculateStats(refMap);
-    if (missedNames.size() == 0) {
+    const Size missedCount = missedNames.size();
+    if (missedCount == 0) {
         debug("No missed routines detected");
         return;
     }
+    verbose("Discovered " + to_string(missedCount) + " missed routines, pushing to search queue");
     // go over missed routines, manually insert entrypoints into comparison location queue
     for (const auto &rn : missedNames) {
         const Routine mr = refMap.getRoutine(rn);
         if (!mr.isValid()) throw LogicError("Unable to find missed routine " + rn + " in routine map");
-        debug("Inserting routine " + mr.name + " into queue, entrypoint: " + mr.entrypoint().toString());
+        verbose("Inserting routine " + mr.name + " into queue, entrypoint: " + mr.entrypoint().toString());
         scanQueue.saveCall(mr.entrypoint(), {}, mr.near);
     }
 }
@@ -590,7 +591,7 @@ bool Analyzer::compareCode(const Executable &ref, Executable &tgt, const Routine
         // get next location for linear scan and comparison of instructions from the front of the queue,
         // to visit functions in the same order in which they were first encountered
         const Destination compare = scanQueue.nextPoint();
-        debug("Now at reference location "s + compare.address.toString() + ", queue size = " + to_string(scanQueue.size()));
+        verbose("New search location "s + compare.address.toString() + ", queue size = " + to_string(scanQueue.size()));
         // when entering a routine, forget all the current stack offset mappings
         if (compare.isCall) {
             offMap.resetStack();
@@ -655,7 +656,7 @@ bool Analyzer::compareCode(const Executable &ref, Executable &tgt, const Routine
         }
 
         // before terminating, check for any routines missed from the reference map
-        //if (scanQueue.empty()) checkMissedRoutines(refMap);
+        if (scanQueue.empty()) checkMissedRoutines(refMap);
     } // iterate over comparison location queue
 
     if (success) {
