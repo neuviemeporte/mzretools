@@ -558,14 +558,58 @@ void Analyzer::checkMissedRoutines(const RoutineMap &refMap) {
     }
 }
 
-Address Analyzer::findTargetLocation(const Executable &ref, const Executable &tgt) {
+Address Analyzer::findTargetLocation(const Executable &ref, const Executable &tgt, RoutineMap &tgtMap) {
     Address ret;
-    ByteString searchString;
     Address seqEnd = refCsip;
-    Instruction curInstr{seqEnd, ref.codePointer(seqEnd)};
-    curInstr.pattern()
-    refCsip
+    // TODO: figure out a way to create this incrementally instead of rebuilding every time
+    tgtMap.buildUnclaimed();
+    std::vector<Address> matchLocations;
+    ByteString searchString;
+    const auto unclaimed = tgtMap.getUnclaimed();
+    if (unclaimed.empty()) {
+        error("Target executable contains no unclaimed blocks");
+        return ret;
+    }
 
+    debug("Trying to find equivalent target location of reference address " + refCsip.toString() + " across " + to_string(unclaimed.size()) + " unclaimed target blocks");
+    while (true) {
+        // get next instruction, extract its pattern
+        Instruction curInstr{seqEnd, ref.codePointer(seqEnd)};
+        if (!compareBlock.contains(seqEnd + static_cast<Offset>(curInstr.length))) {
+            warn("Exceeded bounds of reference routine block " + compareBlock.toString() + " at " + seqEnd.toString());
+            // TODO: return multi
+            if (!matchLocations.empty()) ret = matchLocations.front();
+            break;
+        }        
+        const auto curPattern = curInstr.pattern();
+        // append current instruction's pattern to the search string
+        std::move(curPattern.begin(), curPattern.end(), std::back_inserter(searchString));
+        debug("Current instruction: " + curInstr.toString() + ", search pattern now: " + numericToHexa(searchString));
+        // try to find the search string across all unclaimed blocks of target executable
+        for (const auto &u : unclaimed) {
+            debug("Searching in block " + u.toString());
+            const auto found = tgt.find(searchString, u);
+            if (found.isValid()) {
+                debug("Found pattern at " + found.toString());
+                matchLocations.push_back(found);
+            }
+        }
+        const auto matchCount = matchLocations.size();
+        if (matchCount == 0) {
+            // TODO: if there are addresses from the previous iteration, return multiple, but would need support for multiple destinations in Analyzer
+            error("Unable to find a match for location " + refCsip.toString() + " in target executable");
+            break;
+        }
+        else if (matchCount == 1) {
+            ret = matchLocations.front();
+            debug("Found single match: " + ret.toString());
+            break;
+        }
+        // more than one match found, need to disambiguate by expanding the search string in the next iteration
+        // advance address of search sequence end
+        seqEnd += curInstr.length;
+        debug("Found " + to_string(matchCount) + " matches, extending search string by next instruction at " + seqEnd.toString());
+    }
 
     return ret;
 }
@@ -576,7 +620,7 @@ static constexpr RoutineId VISITED_ID = 1;
 bool Analyzer::compareCode(const Executable &ref, Executable &tgt, const RoutineMap &refMap) {
     verbose("Comparing code between reference (entrypoint "s + ref.entrypoint().toString() + ") and target (entrypoint " + tgt.entrypoint().toString() + ") executables");
     debug("Routine map of reference binary has " + to_string(refMap.routineCount()) + " entries");
-    RoutineMap tgtMap{tgt.size()};
+    RoutineMap tgtMap{tgt.loadAddr().segment, tgt.size()};
     offMap = OffsetMap{refMap.segmentCount(Segment::SEG_DATA)};
     scanQueue = ScanQueue{ref.loadAddr(), ref.size(), Destination(ref.entrypoint(), VISITED_ID, true, {})};
     // find name of entrypoint routine for seeding the target queue
@@ -611,19 +655,12 @@ bool Analyzer::compareCode(const Executable &ref, Executable &tgt, const Routine
             debug("Location already compared, skipping");
             continue;
         }
-        // get corresponding address in target binary, try to search by opcodes if not present in offset map
-        tgtCsip = offMap.getCode(refCsip);
-        if (!tgtCsip.isValid() && !(tgtCsip = findTargetLocation()).isValid()) {
-            error("Could not find equivalent address for "s + refCsip.toString() + " in address map for target executable");
-            success = false;
-            break;
-        }
-        tgt.storeSegment(Segment::SEG_CODE, tgtCsip.segment);
+        // determine the reference executable routine that we are currently in
         routine = {"unknown", {}};
         Size routineCount = 0;
         if (!refMap.empty()) { // comparing with a map
             routine = refMap.getRoutine(refCsip);
-            // make sure we are inside a reachable block of a know routine from reference binary
+            // make sure we are inside a reachable block of a known routine from reference binary
             if (!routine.isValid()) {
                 error("Could not find address "s + refCsip.toString() + " in routine map");
                 success = false;
@@ -636,6 +673,14 @@ bool Analyzer::compareCode(const Executable &ref, Executable &tgt, const Routine
                 excludedNames.insert(routine.name);
                 continue;
             }
+            // get corresponding address in target binary, try to search by opcodes if not present in offset map from observing call destinations
+            tgtCsip = offMap.getCode(refCsip);
+            if (!tgtCsip.isValid() && !(tgtCsip = findTargetLocation(ref, tgt, tgtMap)).isValid()) {
+                error("Could not find equivalent address for "s + refCsip.toString() + " in address map for target executable");
+                success = false;
+                break;
+            }
+            tgt.storeSegment(Segment::SEG_CODE, tgtCsip.segment);
             verbose("--- Now @"s + refCsip.toString() + ", routine " + routine.toString(false) + ", block " + compareBlock.toString(true) +  ", target @" + tgtCsip.toString());
             // // try to get get equivalent routine from target map, create one if it doesn't exist yet
             Routine &tgtRoutine = tgtMap.getMutableRoutine(routine.name);

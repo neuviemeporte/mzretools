@@ -173,7 +173,7 @@ private:
     void advanceComparison(const Instruction &refInstr, Instruction tgtInstr);
     bool checkComparisonStop();
     void checkMissedRoutines(const RoutineMap &refMap);
-    Address findTargetLocation(const Executable &ref, const Executable &tgt);
+    Address findTargetLocation(const Executable &ref, const Executable &tgt, RoutineMap &tgtMap);
     bool comparisonLoop(const Executable &ref, const Executable &tgt, const RoutineMap &refMap, RoutineMap &tgtMap);
     Branch getBranch(const Executable &exe, const Instruction &i, const RegisterState &regs) const;
     ComparisonResult instructionsMatch(const Executable &ref, const Executable &tgt, const Instruction &refInstr, Instruction tgtInstr);

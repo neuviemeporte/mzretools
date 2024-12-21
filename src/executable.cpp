@@ -85,6 +85,12 @@ void Executable::storeSegment(const Segment::Type type, const Word addr) {
     segments.push_back(seg);
 }
 
-
+Address Executable::find(const ByteString &pattern, Block where) const {
+    if (!where.isValid()) where = { 
+        Address{loadSegment, 0}, 
+        Address{SEG_TO_OFFSET(loadSegment) + codeSize}
+    };
+    return code.find(pattern, where);
+}
 
 

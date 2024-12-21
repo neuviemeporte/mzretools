@@ -56,6 +56,7 @@ struct Routine {
 // A map of an executable, records which areas have been claimed by routines, and which have not, serializable to a file
 class RoutineMap {
     friend class AnalysisTest;
+    Word loadSegment;
     Size mapSize;
     std::vector<Routine> routines;
     std::vector<Block> unclaimed;
@@ -64,16 +65,17 @@ class RoutineMap {
     RoutineId curId, prevId, curBlockId, prevBlockId;
 
 public:
-    RoutineMap(const Size mapSize) : mapSize(mapSize), curId(0), prevId(0), curBlockId(0), prevBlockId(0) {}
+    RoutineMap(const Word loadSegment, const Size mapSize) : loadSegment(loadSegment), mapSize(mapSize), curId(0), prevId(0), curBlockId(0), prevBlockId(0) {}
     RoutineMap(const ScanQueue &sq, const std::vector<Segment> &segs, const Word loadSegment, const Size mapSize);
-    RoutineMap(const std::string &path, const Word reloc = 0);
-    RoutineMap() : RoutineMap(0) {}
+    RoutineMap(const std::string &path, const Word loadSegment = 0);
+    RoutineMap() : RoutineMap(0, 0) {}
 
     Size routineCount() const { return routines.size(); }
     Routine getRoutine(const Size idx) const { return routines.at(idx); }
     Routine getRoutine(const Address &addr) const;
     Routine getRoutine(const std::string &name) const;
     Routine& getMutableRoutine(const std::string &name);
+    std::vector<Block> getUnclaimed() const { return unclaimed; }
     Routine findByEntrypoint(const Address &ep) const;
     bool empty() const { return routines.empty(); }
     Size match(const RoutineMap &other) const;
@@ -87,12 +89,12 @@ public:
     Segment findSegment(const std::string &name) const;
     Segment findSegment(const Offset off) const;
     void setSegments(const std::vector<Segment> &seg);
+    void buildUnclaimed();
     
 private:
     void closeBlock(Block &b, const Address &next, const ScanQueue &sq);
     Block moveBlock(const Block &b, const Word segment) const;
     void sort();
-    void buildUnclaimed(const Word loadSegment);
     void loadFromMapFile(const std::string &path, const Word reloc);
     void loadFromIdaFile(const std::string &path, const Word reloc);
     std::string routineString(const Routine &r, const Word reloc) const;

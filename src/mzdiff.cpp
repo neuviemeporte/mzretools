@@ -119,7 +119,7 @@ Executable loadExe(const string &spec, const Word segment, Analyzer::Options &op
         const string hexa = match[1].str();
         debug("Entrypoint search at location of '" + hexa + "'");
         auto pattern = hexaToNumeric(hexa);
-        Address ep = mz.find(pattern);
+        Address ep = exe.find(pattern);
         if (!ep.isValid()) fatal("Could not find pattern '" + hexa + "' in " + path);
         debug("pattern found at " + ep.toString());
         exe.setEntrypoint(ep);

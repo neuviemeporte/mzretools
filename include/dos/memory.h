@@ -59,7 +59,7 @@ public:
     const Byte* pointer(const Offset addr) const { return data_.cbegin() + addr; }
     const Byte* pointer(const Address &addr) const { return data_.cbegin() + addr.toLinear(); }
     const Byte* base() const { return pointer(0); }
-
+    Address find(const ByteString &pattern, Block where = {}) const;
     std::string info() const;
     void dump(const Block &range, const std::string &path) const;
 };

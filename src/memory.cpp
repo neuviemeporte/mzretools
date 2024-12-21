@@ -67,6 +67,31 @@ void Memory::writeBuf(const Offset addr, const Byte *data, const Size size) {
     copy(data, data + size, begin(data_) + addr);
 }
 
+// TODO: use std::search with custom predicate to cover -1 case
+Address Memory::find(const ByteString &pattern, Block where) const {
+    if (!where.isValid()) where = { {0}, {MEM_TOTAL - 1} };
+    const Offset start = where.begin.toLinear();
+    const Offset end = std::min(where.end.toLinear(), MEM_TOTAL);
+    if (start >= end) throw AddressError("Invalid search range: " + where.toString());
+    const Size patSize = pattern.size();
+    Address found;
+    vector<Byte> buffer(patSize);
+    for (Offset dataIdx = start; dataIdx + patSize < end; ++dataIdx) {
+        std::copy(data_.begin() + dataIdx, data_.begin() + dataIdx + patSize, buffer.begin());
+        //debug("dataIdx = " + hexVal(dataIdx) + ", buffer: " + byteBufString(buffer));
+        bool match = true;
+        // ouch, O(n^2)
+        for (Offset patIdx = 0; patIdx < pattern.size(); ++patIdx) {
+            const SWord pat = pattern[patIdx];
+            //debug(hexVal(pat, false) + " ");
+            if (pat == -1) continue;
+            if (pat != buffer[patIdx]) { match = false; break; }
+        }
+        if (match) { found = Address{dataIdx}; break; }
+    }
+    return found;
+}
+
 string Memory::info() const {
     ostringstream infoStr;
     infoStr << "total size = " << MEM_TOTAL << " / " << MEM_TOTAL / KB << " kB @" << hexVal(reinterpret_cast<Offset>(base())) << ", "

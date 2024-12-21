@@ -28,6 +28,10 @@ class LogicError : public Error {
     using Error::Error;
 };
 
+class AddressError : public Error {
+    using Error::Error;
+};
+
 class CpuError : public Error {
     using Error::Error;
 };

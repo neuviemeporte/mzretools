@@ -36,6 +36,7 @@ public:
     const Byte* codePointer(const Address &addr) const { return code.pointer(addr); }
     const std::vector<Segment>& getSegments() const { return segments; }
     Word getLoadSegment() const { return loadSegment; }
+    Address find(const ByteString &pattern, Block where = {}) const;
 
 private:
     void init();
