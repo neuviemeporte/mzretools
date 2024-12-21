@@ -69,7 +69,7 @@ public:
     RoutineEntrypoint getEntrypoint(const std::string &name);
     std::vector<Routine> getRoutines() const;
     std::vector<Block> getUnvisited() const;
-    void dumpVisited(const std::string &path, const Offset start = 0, Size size = 0) const;
+    void dumpVisited(const std::string &path) const;
     void dumpEntrypoints() const;
 };
 
@@ -173,7 +173,7 @@ private:
     void advanceComparison(const Instruction &refInstr, Instruction tgtInstr);
     bool checkComparisonStop();
     void checkMissedRoutines(const RoutineMap &refMap);
-    Address findTargetLocation();
+    Address findTargetLocation(const Executable &ref, const Executable &tgt);
     bool comparisonLoop(const Executable &ref, const Executable &tgt, const RoutineMap &refMap, RoutineMap &tgtMap);
     Branch getBranch(const Executable &exe, const Instruction &i, const RegisterState &regs) const;
     ComparisonResult instructionsMatch(const Executable &ref, const Executable &tgt, const Instruction &refInstr, Instruction tgtInstr);
