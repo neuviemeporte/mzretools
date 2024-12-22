@@ -229,7 +229,7 @@ bool OffsetMap::codeMatch(const Address from, const Address to) {
     // otherwise save new mapping
     debug("Registering new code address mapping: " + from.toString() + " -> " + to.toString());
     codeMap[from] = to;
-    return true;    
+    return true;
 }
 
 bool OffsetMap::dataMatch(const SOffset from, const SOffset to) {
@@ -656,10 +656,11 @@ bool Analyzer::compareCode(const Executable &ref, Executable &tgt, const Routine
             debug("Location already compared, skipping");
             continue;
         }
-        // determine the reference executable routine that we are currently in
         routine = {"unknown", {}};
+        tgtCsip = offMap.getCode(refCsip);
         Size routineCount = 0;
         if (!refMap.empty()) { // comparing with a map
+            // determine the reference executable routine that we are currently in
             routine = refMap.getRoutine(refCsip);
             // make sure we are inside a reachable block of a known routine from reference binary
             if (!routine.isValid()) {
@@ -675,7 +676,6 @@ bool Analyzer::compareCode(const Executable &ref, Executable &tgt, const Routine
                 continue;
             }
             // get corresponding address for comparison in target binary
-            tgtCsip = offMap.getCode(refCsip);
             if (!tgtCsip.isValid()) {
                 // last resort, try to search by instruction opcodes if not present in offset map from observing call destinations
                 tgtCsip = findTargetLocation(ref, tgt);
@@ -691,19 +691,6 @@ bool Analyzer::compareCode(const Executable &ref, Executable &tgt, const Routine
             }
             tgt.storeSegment(Segment::SEG_CODE, tgtCsip.segment);
             verbose("--- Now @"s + refCsip.toString() + ", routine " + routine.toString(false) + ", block " + compareBlock.toString(true) +  ", target @" + tgtCsip.toString());
-            // // try to get get equivalent routine from target map, create one if it doesn't exist yet
-
-            // Routine &tgtRoutine = tgtMap.getMutableRoutine(routine.name);
-            // targetBlock = tgtRoutine.blockContaining(tgtCsip);
-            // if (!targetBlock.isValid()) {
-            //     targetBlock = Block(tgtCsip);
-            //     debug("Opened target block at " + tgtCsip.toString() + " for routine " + tgtRoutine.name);
-            //     // we are at the entrypoint, so mark it as such in the target routine also
-            //     if (refCsip == routine.entrypoint()) {
-            //         debug("Marking as target routine entrypoint");
-            //         tgtRoutine.extents.begin = targetBlock.begin;
-            //     }
-            // }
         }
         // TODO: consider dropping this "feature"
         else { // comparing without a map
@@ -939,14 +926,7 @@ bool Analyzer::comparisonLoop(const Executable &ref, const Executable &tgt, cons
         advanceComparison(refInstr, tgtInstr);
 
         // check loop termination conditions
-        if (checkComparisonStop()) {
-            // // close block in target executable and add to its routine map
-            // Routine &tgtRoutine = tgtMap.getMutableRoutine(routine.name);
-            // targetBlock.end = tgtCsip - 1;
-            // tgtRoutine.reachable.push_back(targetBlock);
-            // debug("Closed target block " + targetBlock.toString() + " for routine " + tgtRoutine.name + " and placed in map");
-            break;
-        }
+        if (checkComparisonStop()) break;
     } // iterate over instructions at current comparison location
 
     return true;
