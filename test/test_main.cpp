@@ -21,7 +21,10 @@ int main(int argc, char* argv[]) {
         }
         else if (arg == "--nocpu") {
             setModuleVisibility(LOG_CPU, false);
-        }        
+        }
+        else if (arg == "--nomem") {
+            setModuleVisibility(LOG_MEMORY, false);
+        }
     }
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();

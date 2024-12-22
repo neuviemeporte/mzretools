@@ -15,10 +15,6 @@
 using namespace std;
 namespace fs = std::filesystem;
 
-static void debug(const string &msg) {
-    output(msg, LOG_OTHER, LOG_DEBUG);
-}
-
 void hexDump(const Byte *buf, const Size size, const Size off, const bool header) {
     ostringstream str;
     if (header) str << std::hex << std::setfill('0') << "buf[0x" << size
@@ -268,6 +264,14 @@ ByteString hexaToNumeric(const std::string &hexa) {
         ret.push_back(stoi(byteStr, nullptr, 16));
     }
     return ret; 
+}
+
+std::string bytesToHex(const std::vector<Byte> &bytes) {
+    ostringstream str;
+    for (Byte b : bytes) { 
+        str << hexVal(b, false) << " ";
+    }
+    return str.str();
 }
 
 std::string numericToHexa(const ByteString &pattern) {

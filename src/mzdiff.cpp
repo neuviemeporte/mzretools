@@ -16,9 +16,9 @@
 // - highlight in bright red differences in literal arguments, e.g mov cl, 0x5 =~ mov cl, 0xa, not offsets though
 // - instruction skipping prints instructions in incorrect order
 // - assertion failure when invalid instruction hit in context print
-
-
 using namespace std;
+
+OUTPUT_CONF(LOG_SYSTEM)
 
 void usage() {
     output("usage: mzdiff [options] base.exe[:entrypoint] compare.exe[:entrypoint]\n"
@@ -49,16 +49,8 @@ void usage() {
 }
 
 void fatal(const string &msg) {
-    output("ERROR: "s + msg, LOG_OTHER, LOG_ERROR);
+    error(msg);
     exit(1);
-}
-
-void info(const string &msg) {
-    output(msg, LOG_OTHER, LOG_INFO);
-}
-
-void debug(const string &msg) {
-    output(msg, LOG_OTHER, LOG_DEBUG);
 }
 
 string mzInfo(const MzImage &mz) {

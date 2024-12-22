@@ -16,13 +16,7 @@
 
 using namespace std;
 
-static void info(const string &msg) {
-    output(msg, LOG_OS, LOG_INFO);
-}
-
-static void debug(const string &msg) {
-    output(msg, LOG_OS, LOG_DEBUG);
-}
+OUTPUT_CONF(LOG_OS)
 
 // parse and read exe header and relocation table
 MzImage::MzImage(const std::string &path) : path_(path), loadSegment_(0) {
@@ -164,14 +158,6 @@ std::string MzImage::dump() const {
     msg << endl << "--- load module @ " << hex << "0x" << loadModuleOffset_ 
         << ", size = 0x" << loadModuleSize_ << " / " << dec << loadModuleSize_ << " bytes";
     return msg.str();
-}
-
-std::string byteBufString(const std::vector<Byte> &bytes) {
-    ostringstream str;
-    for (Byte b : bytes) { 
-        str << hexVal(b, false) << " ";
-    }
-    return str.str();
 }
 
 // read actual load module data

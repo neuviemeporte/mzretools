@@ -1,6 +1,7 @@
 #!/bin/bash
 
-mzre=mzretools/debug
+script_dir=$(dirname $BASH_SOURCE)
+mzre=$script_dir/../debug
 mzhdr=$mzre/mzhdr
 
 noff=0
@@ -12,6 +13,7 @@ infile=$1
 shift
 [ "$infile" ] || { echo "Syntax: disasm input_file [[0x]start_offset] [--noff]"; exit 1; }
 [ -f "$infile" ] || { echo "File $infile does not exist!"; exit 1; }
+[ -f "$mzhdr" ] || { echo "$mzhdr does not exist!"; exit 1; }
 hdrlen=$($mzhdr $infile -l)
 until [ -z "$1" ]; do 
     case $1 in

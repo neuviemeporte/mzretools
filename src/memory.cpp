@@ -7,8 +7,11 @@
 #include "dos/error.h"
 #include "dos/mz.h"
 #include "dos/util.h"
+#include "dos/output.h"
 
 using namespace std;
+
+OUTPUT_CONF(LOG_MEMORY)
 
 Memory::Memory() : break_(INIT_BREAK) {
     const Byte pattern[] = { 0xde, 0xad, 0xbe, 0xef };
@@ -70,15 +73,20 @@ void Memory::writeBuf(const Offset addr, const Byte *data, const Size size) {
 // TODO: use std::search with custom predicate to cover -1 case
 Address Memory::find(const ByteString &pattern, Block where) const {
     if (!where.isValid()) where = { {0}, {MEM_TOTAL - 1} };
+    if (where.size() < pattern.size()) {
+        debug("Block " + where.toString() + " too small to fit pattern of size " + to_string(pattern.size()));
+        return {};
+    }
     const Offset start = where.begin.toLinear();
     const Offset end = std::min(where.end.toLinear(), MEM_TOTAL);
-    if (start >= end) throw AddressError("Invalid search range: " + where.toString());
+    if (start > end) throw AddressError("Invalid search range: " + where.toString());
     const Size patSize = pattern.size();
+    debug("Searching for pattern of size " + sizeStr(patSize) + " within " + where.toString());
     Address found;
     vector<Byte> buffer(patSize);
-    for (Offset dataIdx = start; dataIdx + patSize < end; ++dataIdx) {
+    for (Offset dataIdx = start; dataIdx + patSize - 1 <= end; ++dataIdx) {
         std::copy(data_.begin() + dataIdx, data_.begin() + dataIdx + patSize, buffer.begin());
-        //debug("dataIdx = " + hexVal(dataIdx) + ", buffer: " + byteBufString(buffer));
+        //debug("dataIdx = " + hexVal(dataIdx) + ", buffer: " + bytesToHex(buffer));
         bool match = true;
         // ouch, O(n^2)
         for (Offset patIdx = 0; patIdx < pattern.size(); ++patIdx) {

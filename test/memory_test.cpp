@@ -211,15 +211,27 @@ TEST_F(MemoryTest, BlockIntersect) {
 }
 
 TEST_F(MemoryTest, FindPattern) {
+    Block where{0, 9};
     const Byte data[] = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 };
     Memory mem;
     mem.writeBuf(0, data, sizeof(data));
+
     const ByteString pattern1 = { 3, -1, 5, 6, -1};
-    const auto addr1 = mem.find(pattern1);
+    TRACELN("Looking for pattern1: " + numericToHexa(pattern1));
+    const auto addr1 = mem.find(pattern1, where);
     TRACELN("Found pattern1: " << addr1.toString());
     ASSERT_EQ(addr1.toLinear(), 2);
+
     const ByteString pattern2 = { 5, 1, -1, 3, 8};
-    const auto addr2 = mem.find(pattern2);
+    TRACELN("Looking for pattern2: " + numericToHexa(pattern2));
+    const auto addr2 = mem.find(pattern2, where);
     TRACELN("Found pattern2: " << addr2.toString());
     ASSERT_FALSE(addr2.isValid());
+
+    const ByteString pattern3 = { 1, 2, 3, 4, -1, 6, 7, -1, 9, 10 };
+    TRACELN("Looking for pattern3: " + numericToHexa(pattern3));
+    const auto addr3 = mem.find(pattern3, where);
+    TRACELN("Found pattern3: " << addr3.toString());
+    ASSERT_TRUE(addr3.isValid());
+    ASSERT_EQ(addr3.toLinear(), 0);
 }

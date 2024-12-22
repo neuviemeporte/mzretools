@@ -14,6 +14,8 @@
 
 using namespace std;
 
+OUTPUT_CONF(LOG_SYSTEM)
+
 void usage() {
     output("usage: mzmap [options] [<file.exe[:entrypoint]>] <output.map>\n"
            "Scans a DOS MZ executable and tries to find routine boundaries, saves output into an editable map file\n"
@@ -30,20 +32,8 @@ void usage() {
 }
 
 void fatal(const string &msg) {
-    output("ERROR: "s + msg, LOG_OTHER, LOG_ERROR);
+    error(msg);
     exit(1);
-}
-
-void info(const string &msg) {
-    output(msg, LOG_OTHER, LOG_ERROR);
-}
-
-void verbose(const string &msg, const bool noNewline = false) {
-    output(msg, LOG_OTHER, LOG_VERBOSE, noNewline);
-}
-
-void debug(const string &msg) {
-    output(msg, LOG_OTHER, LOG_DEBUG);
 }
 
 string mzInfo(const MzImage &mz) {

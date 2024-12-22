@@ -9,10 +9,6 @@
 
 using namespace std;
 
-static void debug(const string &msg) {
-    output(msg, LOG_CPU, LOG_DEBUG);
-}
-
 const Word BYTE_HIGH = 8, BYTE_LOW = 0;
                                                    // AL         AH        BL         BH        CL         CH        DL         DH
 static const Register PARENT_REG[]  = { REG_NONE,   REG_AX,    REG_AX,   REG_BX,    REG_BX,   REG_CX,    REG_CX,   REG_DX,    REG_DX };
