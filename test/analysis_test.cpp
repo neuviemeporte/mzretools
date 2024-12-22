@@ -301,7 +301,7 @@ TEST_F(AnalysisTest, CodeCompare) {
     ASSERT_TRUE(a.compareCode(e1, e2, map));
     // cross-check target map
     RoutineMap tgtMap("hello.tgt");
-    ASSERT_TRUE(crossCheck(map, tgtMap, 4));
+    ASSERT_TRUE(crossCheck(map, tgtMap, 0));
 
     // compare different
     TRACELN("Test #2, comparison mismatch");

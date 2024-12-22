@@ -138,9 +138,9 @@ bool ScanQueue::saveCall(const Address &dest, const RegisterState &regs, const b
         destId = getRoutineId(dest.toLinear());
         RoutineId newRoutineId = routineCount() + 1;
         if (destId == NULL_ROUTINE)
-            debug("call destination not belonging to any routine, claiming as entrypoint for new routine, id " + to_string(newRoutineId));
+            debug("Call destination not belonging to any routine, claiming as entrypoint for new routine, id " + to_string(newRoutineId));
         else 
-            debug("call destination belonging to routine " + to_string(destId) + ", reclaiming as entrypoint for new routine, id " + to_string(newRoutineId));
+            debug("Call destination belonging to routine " + to_string(destId) + ", reclaiming as entrypoint for new routine, id " + to_string(newRoutineId));
         queue.emplace_back(Destination(dest, newRoutineId, true, regs));
         RoutineEntrypoint ep{dest, newRoutineId, near};
         if (!name.empty()) ep.name = name;
@@ -598,7 +598,7 @@ Address Analyzer::findTargetLocation(const Executable &ref, const Executable &tg
             break;
         }
         else if (matchCount == 1) {
-            debug("Found single match");
+            debug("Found single match, done with target search");
             break;
         }
         // more than one match found, need to disambiguate by expanding the search string in the next iteration
@@ -674,12 +674,20 @@ bool Analyzer::compareCode(const Executable &ref, Executable &tgt, const Routine
                 excludedNames.insert(routine.name);
                 continue;
             }
-            // get corresponding address in target binary, try to search by opcodes if not present in offset map from observing call destinations
+            // get corresponding address for comparison in target binary
             tgtCsip = offMap.getCode(refCsip);
-            if (!tgtCsip.isValid() && !(tgtCsip = findTargetLocation(ref, tgt)).isValid()) {
-                error("Could not find equivalent address for "s + refCsip.toString() + " in address map for target executable");
-                success = false;
-                break;
+            if (!tgtCsip.isValid()) {
+                // last resort, try to search by instruction opcodes if not present in offset map from observing call destinations
+                tgtCsip = findTargetLocation(ref, tgt);
+                if (!tgtCsip.isValid()) {
+                    error("Could not find equivalent address for "s + refCsip.toString() + " in address map for target executable");
+                    success = false;
+                    break;
+                }
+                // add routine entrypoint to target queue, otherwise it will not get marked as visited when comparing
+                if (refCsip == routine.entrypoint()) {
+                    tgtQueue.saveCall(tgtCsip, {}, routine.near, routine.name);
+                }
             }
             tgt.storeSegment(Segment::SEG_CODE, tgtCsip.segment);
             verbose("--- Now @"s + refCsip.toString() + ", routine " + routine.toString(false) + ", block " + compareBlock.toString(true) +  ", target @" + tgtCsip.toString());
@@ -870,8 +878,8 @@ bool Analyzer::comparisonLoop(const Executable &ref, const Executable &tgt, cons
     refSkipCount = tgtSkipCount = 0;
     const RoutineEntrypoint tgtEp = tgtQueue.getEntrypoint(routine.name);
     if (!tgtEp.addr.isValid()) {
+        warn("Unable to find target entrypoint for routine " + routine.name);
         tgtQueue.dumpEntrypoints();
-        debug("Unable to find target entrypoint for routine " + routine.name);
     }
     while (true) {
         // if we ran outside of the code extents, consider the comparison successful
@@ -912,7 +920,7 @@ bool Analyzer::comparisonLoop(const Executable &ref, const Executable &tgt, cons
             }
             const Routine refRoutine = refMap.getRoutine(refBranch.destination);
             if (refRoutine.isValid()) {
-                debug("Registering target entrypoint for routine " + refRoutine.name);
+                debug("Registering target call for routine " + refRoutine.name);
                 tgtQueue.saveCall(tgtBranch.destination, {}, tgtInstr.isNearBranch(), refRoutine.name);
             }
         }
