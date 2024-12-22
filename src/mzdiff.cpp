@@ -16,6 +16,7 @@
 // - highlight in bright red differences in literal arguments, e.g mov cl, 0x5 =~ mov cl, 0xa, not offsets though
 // - instruction skipping prints instructions in incorrect order
 // - assertion failure when invalid instruction hit in context print
+// - why aren't jumps saved to search queue?
 using namespace std;
 
 OUTPUT_CONF(LOG_SYSTEM)
