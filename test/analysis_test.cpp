@@ -287,11 +287,12 @@ TEST_F(AnalysisTest, RoutineMapCollision) {
 }
 
 TEST_F(AnalysisTest, CodeCompare) {
+    const Word loadSegment = 0x1000;
     MzImage mz{"../bin/hello.exe"};
-    mz.load(0);
+    mz.load(loadSegment);
     Executable e1{mz}, e2{mz};
     const string mapPath = "hello.map";
-    auto map = RoutineMap{mapPath};
+    auto map = RoutineMap{mapPath, loadSegment};
     Analyzer::Options opt;
     opt.mapPath = mapPath;
     Analyzer a{opt};

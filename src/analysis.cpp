@@ -117,6 +117,7 @@ vector<Block> ScanQueue::getUnvisited() const {
         else if (id != NULL_ROUTINE && curBlock.begin.isValid()) { 
             // switching to visited, close current block if open
             curBlock.end = Address{off - 1};
+            curBlock.relocate(origin.segment);
             ret.push_back(curBlock);
             curBlock = Block();
         }
@@ -552,7 +553,7 @@ void Analyzer::checkMissedRoutines(const RoutineMap &refMap) {
     for (const auto &rn : missedNames) {
         const Routine mr = refMap.getRoutine(rn);
         if (!mr.isValid()) throw LogicError("Unable to find missed routine " + rn + " in routine map");
-        verbose("Inserting routine " + mr.name + " into queue, entrypoint: " + mr.entrypoint().toString());
+        debug("Inserting routine " + mr.name + " into queue, entrypoint: " + mr.entrypoint().toString());
         scanQueue.saveCall(mr.entrypoint(), {}, mr.near);
     }
 }
