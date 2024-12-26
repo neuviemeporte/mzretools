@@ -717,11 +717,6 @@ bool Analyzer::compareCode(const Executable &ref, Executable &tgt, const Routine
         if (scanQueue.empty()) checkMissedRoutines(refMap);
     } // iterate over comparison location queue
 
-    if (success) {
-        verbose(output_color(OUT_GREEN) + "Comparison result: match" + output_color(OUT_DEFAULT));
-        comparisonSummary(ref, refMap, true);
-    }
-
     tgtQueue.dumpVisited("tgt.visited");
     // save target map file regardless of comparison result (can be incomplete)
     const string tgtMapPath = replaceExtension(options.mapPath, "tgt");
@@ -733,6 +728,12 @@ bool Analyzer::compareCode(const Executable &ref, Executable &tgt, const Routine
         info("Saving target map to " + tgtMapPath);
         tgtMap.save(tgtMapPath, 0, true);
     }
+
+    if (success) {
+        verbose(output_color(OUT_GREEN) + "Comparison result: match" + output_color(OUT_DEFAULT));
+        comparisonSummary(ref, refMap, true);
+    }
+    else verbose(output_color(OUT_RED) + "Comparison result: mismatch" + output_color(OUT_DEFAULT));
     return success;
 }
 
