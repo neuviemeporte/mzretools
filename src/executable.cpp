@@ -42,17 +42,31 @@ void Executable::init() {
     debug("Loaded executable data into memory, code at "s + codeExtents.toString() + ", relocated entrypoint " + entrypoint().toString() + ", stack " + stack.toString());    
 }
 
-void Executable::setEntrypoint(const Address &addr) {
+void Executable::setEntrypoint(const Address &addr, const bool relocate) {
     ep = addr;
-    ep.relocate(loadSegment);
+    if (relocate) ep.relocate(loadSegment);
+    debug("Entrypoint set to " + ep.toString());
 }
 
-void Executable::storeSegment(const Segment::Type type, const Word addr) {
+Segment Executable::getSegment(const Word addr) const {
+    Segment ret;
+    auto found = std::find_if(segments.begin(), segments.end(), [=](const Segment &s){
+        return s.address == addr;
+    });
+    if (found != segments.end()) ret = *found;
+    return ret;
+}
+
+bool Executable::storeSegment(const Segment::Type type, const Word addr) {
+    debug("Attempting to register segment " + hexVal(addr) + " of type " + Segment::typeString(type));
     // ignore segments which are already known
     auto found = std::find_if(segments.begin(), segments.end(), [=](const Segment &s){
         return s.type == type && s.address == addr;
     });
-    if (found != segments.end()) return;
+    if (found != segments.end()) {
+        debug("Segment already registered");
+        return true;
+    }
     // check if an existing segment of a different type has the same address
     found = std::find_if(segments.begin(), segments.end(), [&](const Segment &s){ 
         return s.address == addr;
@@ -60,12 +74,19 @@ void Executable::storeSegment(const Segment::Type type, const Word addr) {
     if (found != segments.end()) {
         const Segment &existing = *found;
         // existing code segments cannot share an address with another segment
-        if (existing.type == Segment::SEG_CODE) return;
+        if (existing.type == Segment::SEG_CODE) {
+            warn("Segment " + hexVal(addr) + " already exists with type CODE, ignoring");
+            return false;
+        }
         // a new data segment trumps an existing stack segment
         else if (existing.type == Segment::SEG_STACK && type == Segment::SEG_DATA) {
+            debug("Segment " + hexVal(addr) + " already exists with type STACK, replacing with DATA");
             segments.erase(found);
         }
-        else return;
+        else {
+            warn("Segment " + hexVal(addr) + " already exists with type " + Segment::typeString(existing.type) + ", ignoring");
+            return false;
+        }
     }
     // compose name for new segment
     int idx=1;
@@ -81,8 +102,9 @@ void Executable::storeSegment(const Segment::Type type, const Word addr) {
     }
     segName += to_string(idx);
     Segment seg{segName, type, addr};
-    debug("Found new segment: " + seg.toString());
+    debug("Registered new segment: " + seg.toString());
     segments.push_back(seg);
+    return true;
 }
 
 Address Executable::find(const ByteString &pattern, Block where) const {

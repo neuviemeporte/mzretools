@@ -110,12 +110,13 @@ Executable loadExe(const string &spec, const Word segment, Analyzer::Options &op
     // use location of provided hexa string as entrypoint, if found in the executable
     else if (regex_match(entry, match, HEXASTR_RE)) {
         const string hexa = match[1].str();
-        debug("Entrypoint search at location of '" + hexa + "'");
+        debug("Entrypoint search for location of '" + hexa + "'");
         auto pattern = hexaToNumeric(hexa);
         Address ep = exe.find(pattern);
         if (!ep.isValid()) fatal("Could not find pattern '" + hexa + "' in " + path);
-        debug("pattern found at " + ep.toString());
-        exe.setEntrypoint(ep);
+        debug("Pattern found at " + ep.toString());
+        // do not relocate, search already performed on relocated addresses
+        exe.setEntrypoint(ep, false);
     }
     else fatal("Invalid exe spec string: "s + entry);
     return exe;

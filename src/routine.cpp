@@ -53,10 +53,14 @@ Block Routine::mainBlock() const {
 }
 
 Block Routine::blockContaining(const Address &a) const {
-    const auto &found = std::find_if(reachable.begin(), reachable.end(), [&a](const Block &b){
+    const auto &foundR = std::find_if(reachable.begin(), reachable.end(), [&a](const Block &b){
         return b.contains(a);
     });
-    if (found != reachable.end()) return *found;
+    if (foundR != reachable.end()) return *foundR;
+    const auto &foundU = std::find_if(unreachable.begin(), unreachable.end(), [&a](const Block &b){
+        return b.contains(a);
+    });
+    if (foundU != unreachable.end()) return *foundU;
     return {};
 }
 

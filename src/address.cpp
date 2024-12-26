@@ -186,6 +186,16 @@ std::smatch Segment::stringMatch(const std::string &str) {
     return match;
 }
 
+std::string Segment::typeString(const Type t) {
+    switch (t) {
+    case SEG_NONE: return "NONE";
+    case SEG_CODE: return "CODE";
+    case SEG_DATA: return "DATA";
+    case SEG_STACK: return "STACK";
+    }
+    return {};
+}
+
 std::string Segment::toString() const {
     ostringstream str;
     str << name << " ";

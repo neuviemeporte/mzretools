@@ -564,13 +564,17 @@ Address Analyzer::findTargetLocation(const Executable &ref, const Executable &tg
     std::vector<Address> matchLocations;
     ByteString searchString;
 
+    if (!compareBlock.isValid()) {
+        error("Current comparison block is invalid");
+        return ret;
+    }
     const auto unvisited = tgtQueue.getUnvisited();
     if (unvisited.empty()) {
         error("Target executable contains no unvisited blocks");
         return ret;
     }
-    debug("Trying to find equivalent target location of reference address " + refCsip.toString() + " across " + to_string(unvisited.size()) + " unvisited target blocks");
 
+    debug("Trying to find equivalent target location of reference address " + refCsip.toString() + " across " + to_string(unvisited.size()) + " unvisited target blocks");
     while (true) {
         // get next instruction, extract its pattern
         Instruction curInstr{seqEnd, ref.codePointer(seqEnd)};
@@ -623,15 +627,15 @@ static constexpr RoutineId VISITED_ID = 1;
 bool Analyzer::compareCode(const Executable &ref, Executable &tgt, const RoutineMap &refMap) {
     verbose("Comparing code between reference (entrypoint "s + ref.entrypoint().toString() + ") and target (entrypoint " + tgt.entrypoint().toString() + ") executables");
     debug("Routine map of reference binary has " + to_string(refMap.routineCount()) + " entries");
-    offMap = OffsetMap{refMap.segmentCount(Segment::SEG_DATA)};
-    scanQueue = ScanQueue{ref.loadAddr(), ref.size(), Destination(ref.entrypoint(), VISITED_ID, true, {})};
-    // find name of entrypoint routine for seeding the target queue
+    // find name of reference entrypoint routine for seeding queues
     const Routine epr = refMap.getRoutine(ref.entrypoint());
     string eprName;
     if (epr.isValid()) {
         eprName = epr.name;
         debug("Found entrypoint routine: " + eprName);
     }
+    offMap = OffsetMap{refMap.segmentCount(Segment::SEG_DATA)};
+    scanQueue = ScanQueue{ref.loadAddr(), ref.size(), Destination(ref.entrypoint(), VISITED_ID, true, {}), eprName};
     tgtQueue = ScanQueue{tgt.loadAddr(), tgt.size(), Destination(tgt.entrypoint(), VISITED_ID, true, {}), eprName};
     // map of equivalent addresses in the compared binaries, seed with the two entrypoints
     offMap.setCode(ref.entrypoint(), tgt.entrypoint());
@@ -643,7 +647,7 @@ bool Analyzer::compareCode(const Executable &ref, Executable &tgt, const Routine
         // get next location for linear scan and comparison of instructions from the front of the queue,
         // to visit functions in the same order in which they were first encountered
         const Destination compare = scanQueue.nextPoint();
-        verbose("New search location "s + compare.address.toString() + ", queue size = " + to_string(scanQueue.size()));
+        verbose("New comparison location "s + compare.address.toString() + ", queue size = " + to_string(scanQueue.size()));
         // when entering a routine, forget all the current stack offset mappings
         if (compare.isCall) {
             offMap.resetStack();
@@ -671,6 +675,11 @@ bool Analyzer::compareCode(const Executable &ref, Executable &tgt, const Routine
             }
             routineNames.insert(routine.name);
             compareBlock = routine.blockContaining(compare.address);
+            if (!compareBlock.isValid()) {
+                error("Comparison address "s + compare.address.toString() + " does not belong to any routine");
+                success = false;
+                break;
+            }
             if (routine.ignore || (routine.assembly && !options.checkAsm)) {
                 verbose("--- Skipping excluded routine " + routine.toString(false) + " @"s + refCsip.toString() + ", block " + compareBlock.toString(true) +  ", target @" + tgtCsip.toString());
                 excludedNames.insert(routine.name);
@@ -862,7 +871,7 @@ bool Analyzer::checkComparisonStop() {
 }
 
 // compare instructions between two executables over a contiguous block
-bool Analyzer::comparisonLoop(const Executable &ref, const Executable &tgt, const RoutineMap &refMap) {
+bool Analyzer::comparisonLoop(const Executable &ref, Executable &tgt, const RoutineMap &refMap) {
     refSkipCount = tgtSkipCount = 0;
     const RoutineEntrypoint tgtEp = tgtQueue.getEntrypoint(routine.name);
     if (!tgtEp.addr.isValid()) {
@@ -920,6 +929,19 @@ bool Analyzer::comparisonLoop(const Executable &ref, const Executable &tgt, cons
                 tgtBranch = getBranch(tgt, tgtInstr, {});
             if (refBranch.destination.isValid() && tgtBranch.destination.isValid()) {
                 offMap.codeMatch(refBranch.destination, tgtBranch.destination);
+            }
+        }
+
+        // register segment of far call with target executable
+        if (refInstr.isFarCall() && !refMap.empty()) {
+            const Address farDest = refInstr.op1.farAddr();
+            const Word tgtSegment = tgtInstr.op1.farAddr().segment;
+            auto refSegment = refMap.findSegment(farDest.segment);
+            if (refSegment.type == Segment::SEG_NONE) {
+                warn("Farcall segment " + hexVal(farDest.segment) + " not found in reference map");
+            }
+            else if (!tgt.storeSegment(refSegment.type, tgtSegment)) {
+                warn("Unable to register farcall destination segment " + hexVal(tgtSegment) + " with target executable");
             }
         }
 

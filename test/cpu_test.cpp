@@ -464,6 +464,16 @@ TEST_F(CpuTest, Instruction) {
     }
 }
 
+TEST_F(CpuTest, FarCall) {
+    const Byte code[] = { 0x9a, 0x2f, 0xc, 0xb5, 0x6 }; // call 0x6b5:0xc2f
+    Instruction ins(Address{0, 0}, code);
+    TRACELN("instrucion: " << ins.toString());
+    ASSERT_TRUE(ins.isFarCall());
+    const Address a = ins.op1.farAddr();
+    ASSERT_EQ(a.segment, 0x6b5);
+    ASSERT_EQ(a.offset, 0xc2f);
+}
+
 TEST_F(CpuTest, InstructionMatch) {
     const Address a{0x1000, 0x0};
     const Byte code[] = {

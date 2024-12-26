@@ -282,6 +282,8 @@ public:
         InstructionMatch match(const Operand &other) const;
         Register regId() const;
         Word wordValue() const;
+        DWord dwordValue() const;
+        Address farAddr() const;
         ByteString immediateValue() const;
     } op1, op2;
     const Byte* data;
@@ -303,6 +305,7 @@ public:
     bool isJump() const { return iclass == INS_JMP || iclass == INS_JMP_IF || iclass == INS_JMP_FAR; }
     bool isUnconditionalJump() const { return iclass == INS_JMP || iclass == INS_JMP_FAR; }
     bool isCall() const { return iclass == INS_CALL || iclass == INS_CALL_FAR; }
+    bool isFarCall() const { return iclass == INS_CALL_FAR; }
     bool isLoop() const { return iclass == INS_LOOP || iclass == INS_LOOPZ || iclass == INS_LOOPNZ; }
     bool isBranch() const { return isJump() || isCall() || isLoop(); }
     bool isNearJump() const { return iclass == INS_JMP || iclass == INS_JMP_IF || isLoop(); }

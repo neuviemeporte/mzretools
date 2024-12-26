@@ -811,6 +811,24 @@ Word Instruction::Operand::wordValue() const {
     return ret;
 }
 
+DWord Instruction::Operand::dwordValue() const {
+    DWord ret = 0;
+    switch (size) {
+    case OPRSZ_DWORD: ret = immval.u32; break;
+    case OPRSZ_WORD: ret = immval.u16; break;
+    case OPRSZ_BYTE: ret = immval.u8; break;
+    }
+    return ret;
+}
+
+Address Instruction::Operand::farAddr() const {
+   const DWord val = dwordValue();
+   const Word
+       segment = static_cast<Word>(val >> 16),
+       offset = static_cast<Word>(val & 0xffff);
+   return {segment, offset};
+}
+
 ByteString Instruction::Operand::immediateValue() const {
     ByteString value;
     // TODO: assumes little-endian

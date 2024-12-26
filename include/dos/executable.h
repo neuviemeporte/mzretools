@@ -26,12 +26,13 @@ public:
     Address loadAddr() const { return { loadSegment, 0 }; }
     const Address& entrypoint() const { return ep; }
     const Address& stackAddr() const { return stack; }
-    void setEntrypoint(const Address &addr);
+    void setEntrypoint(const Address &addr, const bool relocate = true);
 
     Size size() const { return codeSize; }
     Block extents() const { return codeExtents; }
     bool contains(const Address &addr) const { return codeExtents.contains(addr); }
-    void storeSegment(const Segment::Type type, const Word addr);
+    Segment getSegment(const Word addr) const;
+    bool storeSegment(const Segment::Type type, const Word addr);
     const Memory& getCode() const { return code; }
     const Byte* codePointer(const Address &addr) const { return code.pointer(addr); }
     const std::vector<Segment>& getSegments() const { return segments; }

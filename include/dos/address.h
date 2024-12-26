@@ -113,6 +113,7 @@ struct Segment {
     Word address;
 
     static std::smatch stringMatch(const std::string &str);
+    static std::string typeString(const Type t);
 
     Segment(const std::string &name, Type type, Word address) : name(name), type(type), address(address) {}
     Segment(const std::smatch &match);
