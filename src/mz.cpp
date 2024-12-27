@@ -21,56 +21,50 @@ OUTPUT_CONF(LOG_OS)
 // parse and read exe header and relocation table
 MzImage::MzImage(const std::string &path) : path_(path), loadSegment_(0) {
     if (path_.empty()) 
-        throw ArgError("Empty path for MzImage!");
+        throw ArgError("Empty path for MZ file!");
     const auto file = checkFile(path);
-    if (!file.exists) {
-        ostringstream msg("MzImage file ", std::ios_base::ate);
-        msg << path << " does not exist";
-        throw IoError(msg.str());
-    }
+    if (!file.exists)
+        throw IoError("MZ file " + path + " does not exist");
 
     filesize_ = file.size;
     if (filesize_ < MZ_HEADER_SIZE)
-        throw IoError(string("MzImage file too small (") + to_string(filesize_) + ")!");
+        throw IoError("MZ file " + path + " too small: " + to_string(filesize_) + " bytes");
 
     // parse MZ header
-    // TODO: use fstream and ios::binary
-    FILE *mzFile = fopen(path_.c_str(), "r");
+    ifstream mzFile{path_, ios::binary};
     if (!mzFile)
         throw IoError("Unable to open file "s + path_);
-    auto totalSize = fread(&header_, 1, MZ_HEADER_SIZE, mzFile);
-    if (totalSize != MZ_HEADER_SIZE) {
-        fclose(mzFile);
-        throw IoError("Incorrect read size from MzImage file: "s + to_string(totalSize));
-    }
-    if (header_.signature != MZ_SIGNATURE) {
-        ostringstream msg("MzImage file has incorrect signature (0x", std::ios_base::ate);
-        msg << std::hex << header_.signature << ")!";
-        fclose(mzFile);
-        throw IoError(msg.str());
-    }
+    if (!mzFile.read(reinterpret_cast<char*>(&header_), MZ_HEADER_SIZE))
+        throw IoError(("Unable to read header from file "s + path_));
+    const auto hdrReadSize = mzFile.gcount();
+    if (hdrReadSize != MZ_HEADER_SIZE)
+        throw IoError("Incorrect read size for MZ header: "s + to_string(hdrReadSize));
+    if (header_.signature != MZ_SIGNATURE)
+        throw IoError("MZ executable file has incorrect signature: " + hexVal(header_.signature));
 
-    // read in any bytes between end of header and beginning of relocation table: optional overlay information?
+    // read in any bytes between end of header and beginning of relocation table (optional overlay information)
     debug("Relocation table at offset "s + hexVal(header_.reloc_table_offset) + ", header size = " + hexVal(MZ_HEADER_SIZE));
     if (header_.reloc_table_offset > MZ_HEADER_SIZE) {
         const Size ovlInfoSize = header_.reloc_table_offset - MZ_HEADER_SIZE;
         ovlinfo_ = vector<Byte>(ovlInfoSize);
-        fread(ovlinfo_.data(), 1, ovlInfoSize, mzFile);
+        if (!mzFile.read(reinterpret_cast<char*>(ovlinfo_.data()), ovlInfoSize))
+            throw IoError("Unable to read overlay info from "s + path_);
+        const auto ovlReadSize = mzFile.gcount();
+        if (ovlReadSize != ovlInfoSize) 
+            throw IoError("Incorrect read size for overlay info: " + to_string(ovlReadSize));
     }
 
     // read in relocation entries
     if (header_.num_relocs) {
-        if (fseek(mzFile, header_.reloc_table_offset, SEEK_SET) != 0) {
-            fclose(mzFile);
+        if (!mzFile.seekg(header_.reloc_table_offset, ios::beg))
             throw IoError("Unable to seek to relocation table!");
-        }
         for (size_t i = 0; i < header_.num_relocs; ++i) {
             Word relocData[2];
-            auto relocReadSize = fread(&relocData, 1, MZ_RELOC_SIZE, mzFile);
-            if (relocReadSize != MZ_RELOC_SIZE) {
-                fclose(mzFile);
-                throw IoError("Invalid relocation read size from MzImage file: "s + to_string(relocReadSize));
-            }
+            if (!mzFile.read(reinterpret_cast<char*>(&relocData), MZ_RELOC_SIZE))
+                throw IoError("Unable to read data for relocation " + to_string(i));
+            auto relocReadSize = mzFile.gcount();
+            if (relocReadSize != MZ_RELOC_SIZE)
+                throw IoError("Invalid relocation read size from MZ file: "s + to_string(relocReadSize));
             Relocation reloc;
             reloc.segment = relocData[1];
             reloc.offset = relocData[0];
@@ -87,19 +81,16 @@ MzImage::MzImage(const std::string &path) : path_(path), loadSegment_(0) {
     for (auto &reloc : relocs_) {
         Address relocAddr(reloc.segment, reloc.offset);
         Offset fileOffset = relocAddr.toLinear() + loadModuleOffset_;
-        if (fseek(mzFile, fileOffset, SEEK_SET) != 0) {
-            fclose(mzFile);
-            throw IoError("Unable to seek to relocation offset!");
-        }
+        if (!mzFile.seekg(fileOffset, ios::beg))
+            throw IoError("Unable to seek to relocation offset " + hexVal(fileOffset));
         Word relocVal;
-        auto relocValSize = fread(&relocVal, 1, sizeof(Word), mzFile);
-        if (relocValSize != sizeof(Word)) {
-            fclose(mzFile);
-            throw IoError("Invalid relocation value read size from MzImage file: "s + to_string(relocValSize));
-        }
+        if (!mzFile.read(reinterpret_cast<char*>(&relocVal), sizeof(relocVal)))
+            throw IoError("Unable to read relocation value at offset " + hexVal(fileOffset));
+        auto relocValSize = mzFile.gcount();
+        if (relocValSize != sizeof(relocVal))
+            throw IoError("Invalid relocation value read size from MZ file: "s + to_string(relocValSize));
         reloc.value = relocVal;
     }
-    fclose(mzFile);
     debug("Loaded MZ exe header from "s + path_ + ", entrypoint @ " + entrypoint().toString() + ", stack @ " + stackPointer().toString());
 }
 
@@ -163,16 +154,18 @@ std::string MzImage::dump() const {
 // read actual load module data
 void MzImage::load(const Word loadSegment) {
     debug("Loading executable code: size = "s + hexVal(loadModuleSize_) + " bytes starting at file offset "s + hexVal(loadModuleOffset_) + ", relocation factor " + hexVal(loadSegment));
-    ifstream mzFile(path_, ios::binary);
-    if (!mzFile.is_open()) throw IoError("Unable to open exe file: " + path_);
-    mzFile.seekg(loadModuleOffset_);
+    ifstream mzFile{path_, ios::binary};
+    if (!mzFile) 
+        throw IoError("Unable to open MZ file: " + path_);
+    if (!mzFile.seekg(loadModuleOffset_))
+        throw IoError("Unable to seek to load module at offset " + hexVal(loadModuleOffset_));
     loadModuleData_.reserve(loadModuleSize_);
     loadSegment_ = loadSegment;
-    mzFile.read(reinterpret_cast<char*>(loadModuleData_.data()), loadModuleSize_);
+    if (!mzFile.read(reinterpret_cast<char*>(loadModuleData_.data()), loadModuleSize_))
+        throw IoError("Error while reading load module data from "s + path_);
     const auto bytesRead = mzFile.gcount();
-    if (!mzFile) throw IoError("Error while reading load module data from "s + path_);
-    if (bytesRead != loadModuleSize_) throw IoError("Incorrect number of bytes read from "s  + path_ + ": " + to_string(bytesRead));
-    mzFile.close();
+    if (bytesRead != loadModuleSize_) 
+        throw IoError("Incorrect number of bytes read from "s  + path_ + ": " + to_string(bytesRead));
     // patch relocations
     for (const Relocation &r : relocs_) {
         const Address addr(r.segment, r.offset);
