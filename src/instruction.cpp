@@ -9,8 +9,6 @@
 
 using namespace std;
 
-// TODO: handle invalid opcodes gracefully, don't throw/assert
-
 OUTPUT_CONF(LOG_CPU)
 
 #define X(x) #x,
@@ -274,6 +272,8 @@ void Instruction::load(const Byte *data)  {
             modop1 = modrm_op1(opcode),
             modop2 = modrm_op2(opcode);
         iclass = instr_class(opcode);
+        if (iclass == INS_ERR)
+            throw CpuError("Invalid instruction (opcode: " + hexVal(opcode) + " at " + addr.toString());        
         debug("modrm opcode "s + opcodeName(opcode) + ", modrm = " + hexVal(modrm) + ", operand types: op1 = "s + MODRM_OPR_ID[modop1] + ", op2 = " + MODRM_OPR_ID[modop2] 
             + ", class " + INS_CLASS_ID[iclass]);
         // convert from messy modrm operand designation to our nice type
@@ -284,18 +284,23 @@ void Instruction::load(const Byte *data)  {
     }
     // group instruction opcode
     else {
-        assert(opcodeIsGroup(opcode));
+        if (!opcodeIsGroup(opcode))
+            throw CpuError("Opcode is not group: " + hexVal(opcode) + " at " + addr.toString());
         const Byte modrm = *data++; // load modrm byte
         length++;
         // obtain index of group for instruction class lookup
         const InstructionGroupIndex grpIdx = GRP_IDX[opcode];
         const Byte grpInstrIdx = modrm_grp(modrm) >> MODRM_GRP_SHIFT;
         debug("group opcode "s + opcodeName(opcode) + ", modrm = " + hexVal(modrm) + ", group index " + GRP_IDX_ID[grpIdx] + ", instruction " + hexVal(grpInstrIdx));
-        assert(grpIdx >= IGRP_1 && grpIdx <= IGRP_5);
-        assert(grpInstrIdx < 8); // groups have up to 8 instructions (index 0-based)
+        if (grpIdx < IGRP_1 || grpIdx > IGRP_5)
+            throw CpuError("Group index out of range: " + to_string(grpIdx) + " at " + addr.toString());
+        // groups have up to 8 instructions (index 0-based)
+        if (grpInstrIdx >= 8)
+            throw CpuError("Group Instruction index out of range: " + to_string(grpInstrIdx) + " at " + addr.toString());
         // determine instruction class
         iclass = GRP_INS_CLASS[grpIdx][grpInstrIdx];
-        assert(iclass != INS_ERR);
+        if (iclass == INS_ERR)
+            throw CpuError("Invalid group instruction (group: " + to_string(grpIdx) + ", index: " + to_string(grpInstrIdx) + ") at " + addr.toString());
         // the rest is just like a "normal" modrm opcode
         ModrmOperand 
             modop1 = modrm_op1(opcode),
@@ -306,12 +311,13 @@ void Instruction::load(const Byte *data)  {
             case IGRP_3a: modop2 = MODRM_Ib; break;
             case IGRP_3b: modop2 = MODRM_Iv; break;
             default:
-                throw CpuError("Invalid group index for TEST opcode");
+                throw CpuError("Invalid group index for TEST opcode at " + addr.toString());
             }
         }
         // another special case for operand override in group 5 far call and jmp instructions
         else if (iclass == INS_CALL_FAR || iclass == INS_JMP_FAR) {
-            assert(grpIdx == IGRP_5);
+            if (grpIdx != IGRP_5)
+                throw CpuError("Unexpected group index for far call/jump instruction: " + to_string(grpIdx) + " at " + addr.toString());
             modop1 = MODRM_Mp;
         }
         debug("modrm operand types: op1 = "s + MODRM_OPR_ID[modop1] + ", op2 = " + MODRM_OPR_ID[modop2] + ", class " + INS_CLASS_ID[iclass]);            
@@ -322,8 +328,8 @@ void Instruction::load(const Byte *data)  {
         op2.size = MODRM_OPR_SIZE[modop2];
     }
 
-    // TODO: handle gracefully, throw
-    assert(op1.type != OPR_ERR && op2.type != OPR_ERR);
+    if (op1.type == OPR_ERR || op2.type == OPR_ERR)
+        throw CpuError("Error parsing instruction operand(s) at " + addr.toString());
     debug("generalized operands, op1: type = "s + OPR_TYPE_ID[op1.type] + ", size = " + OPR_SIZE_ID[op1.size] + ", op2: type = " + OPR_TYPE_ID[op2.type] + ", size = " + OPR_SIZE_ID[op2.size]);
     // load immediate values if present
     Size immSize = loadImmediate(op1, data);

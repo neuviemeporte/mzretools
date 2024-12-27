@@ -107,11 +107,10 @@ std::string MzImage::dump() const {
         << "\t[0x" << hex << offsetof(Header, last_page_size) << "] last_page_size = " << std::hex << "0x" << header_.last_page_size
             << " (" << std::dec << header_.last_page_size << " bytes)" <<  endl       
         << "\t[0x" << hex << offsetof(Header, pages_in_file) << "] pages_in_file = " << std::dec << header_.pages_in_file 
-            << " (" << header_.pages_in_file * PAGE_SIZE << " bytes, load module = " 
-            << loadModuleSize() << "/" << hexVal(loadModuleSize()) << " bytes)" << endl
+            << " (" << header_.pages_in_file * PAGE_SIZE << " bytes, load module size "  << sizeStr(loadModuleSize()) << " bytes)" << endl
         << "\t[0x" << hex << offsetof(Header, num_relocs) << "] num_relocs = " << std::dec << header_.num_relocs << endl
         << "\t[0x" << hex << offsetof(Header, header_paragraphs) << "] header_paragraphs = " << std::dec << header_.header_paragraphs 
-            << " (" << header_.header_paragraphs * PARAGRAPH_SIZE << " bytes)" << endl
+            << " (" << headerLength() << " bytes, load module starts at " << hexVal(headerLength()) <<  ")" << endl
         << "\t[0x" << hex << offsetof(Header, min_extra_paragraphs) << "] min_extra_paragraphs = " << std::dec << header_.min_extra_paragraphs 
             << " (" << header_.min_extra_paragraphs * PARAGRAPH_SIZE << " bytes)" << endl
         << "\t[0x" << hex << offsetof(Header, max_extra_paragraphs) << "] max_extra_paragraphs = " << std::dec << header_.max_extra_paragraphs << endl

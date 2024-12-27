@@ -15,6 +15,8 @@
 
 using namespace std;
 
+#define DEBUG 1
+
 OUTPUT_CONF(LOG_ANALYSIS)
 
 void searchMessage(const Address &addr, const string &msg) {
@@ -202,7 +204,11 @@ void ScanQueue::dumpVisited(const string &path) const {
             if (printOffset != 0) mapFile << endl;
             mapFile << hex << setw(5) << setfill('0') << printOffset << " ";
         }
-        mapFile << dec << setw(5) << setfill(' ') << id << " ";
+        switch (id) {
+        // case BAD_ROUTINE: mapFile << " !!! "; break;
+        // case NULL_ROUTINE: mapFile << "     "; break;
+        default: mapFile << dec << setw(5) << setfill(' ') << id << " "; break;
+        }
     }
 }
 
@@ -409,21 +415,26 @@ static void applyMov(const Instruction &i, RegisterState &regs, Executable &exe)
         auto &code = exe.getCode();
         Address srcAddr(regs.getValue(segReg), i.op2.immval.u16);
         if (exe.contains(srcAddr)) {
+            Byte byteVal;
+            Word wordVal;
             switch(i.op2.size) {
             case OPRSZ_BYTE:
-                searchMessage(i.addr, "source address for byte: " + srcAddr.toString());
-                regs.setValue(dest, code.readByte(srcAddr)); 
+                byteVal = code.readByte(srcAddr);
+                searchMessage(i.addr, "source address for byte: " + srcAddr.toString() + ", value in memory: " + hexVal(byteVal));
+                regs.setValue(dest, byteVal); 
                 set = true;
                 break;
             case OPRSZ_WORD:
-                searchMessage(i.addr, "source address for word: " + srcAddr.toString());
-                regs.setValue(dest, code.readWord(srcAddr));
+                wordVal = code.readWord(srcAddr);
+                searchMessage(i.addr, "source address for word: " + srcAddr.toString() + ", value in memory: " + hexVal(wordVal));
+                regs.setValue(dest, wordVal);
                 set = true;
                 break;
             }
         }
         else searchMessage(i.addr, "mov source address outside code extents: "s + srcAddr.toString());
     }
+    // TODO: support mov mem, reg? would need to keep stack of memories per queue item... maybe just a delta list to keep storage down?
     if (set) {
         searchMessage(i.addr, "executed move to register: "s + i.toString());
         if (i.op1.type == OPR_REG_DS) exe.storeSegment(Segment::SEG_DATA, regs.getValue(REG_DS));
@@ -478,60 +489,73 @@ RoutineMap Analyzer::findRoutines(Executable &exe) {
         RegisterState regs = search.regs;
         regs.setValue(REG_CS, csip.segment);
         exe.storeSegment(Segment::SEG_CODE, csip.segment);
-        // iterate over instructions at current search location in a linear fashion, until an unconditional jump or return is encountered
-        while (true) {
-            if (!exe.contains(csip))
-                throw AnalysisError("Advanced past loaded code extents: "s + csip.toString());
-            // check if this location was visited before
-            const auto rid = scanQueue.getRoutineId(csip.toLinear());
-            if (rid != NULL_ROUTINE) {
+        try {
+            // iterate over instructions at current search location in a linear fashion, until an unconditional jump or return is encountered
+            while (true) {
+                if (!exe.contains(csip))
+                    throw AnalysisError("Advanced past loaded code extents: "s + csip.toString());
+                // check if this location was visited before
+                const auto rid = scanQueue.getRoutineId(csip.toLinear());
+                if (rid == BAD_ROUTINE) {
+                    searchMessage(csip, "Location previously marked as bad, ignoring");
+                    break;
+                }
                 // make sure we do not steamroll over previously explored instructions from a wild jump (a call has precedence)
-                if (!search.isCall) {
-                    searchMessage(csip, "location already claimed by routine "s + to_string(rid) + " and search point did not originate from a call, halting scan");
+                if (rid != NULL_ROUTINE && !search.isCall) {
+                    searchMessage(csip, "Location already claimed by routine "s + to_string(rid) + " and search point did not originate from a call, halting scan");
                     break;
                 }
-            }
-            const auto isEntry = scanQueue.isEntrypoint(csip);
-            // similarly, protect yet univisited locations which are however recognized as routine entrypoints, unless visiting from a matching routine id
-            if (isEntry != NULL_ROUTINE && isEntry != search.routineId) {
-                searchMessage(csip, "location marked as entrypoint for routine "s + to_string(isEntry) + " while scanning from " + to_string(search.routineId) + ", halting scan");
-                break;
-            }
-            Instruction i(csip, exe.codePointer(csip));
-            regs.setValue(REG_IP, csip.offset);
-            // mark memory map items corresponding to the current instruction as belonging to the current routine
-            scanQueue.setRoutineId(csip.toLinear(), i.length);
-            // interpret the instruction
-            if (i.isBranch()) {
-                const Branch branch = getBranch(exe, i, regs);
-                // if the destination of the branch can be established, place it in the search queue
-                scanQueue.saveBranch(branch, regs, exe.extents());
-                // even if the branch destination is not known, we cannot keep scanning here if it was unconditional
-                if (branch.isUnconditional) {
-                    searchMessage(csip, "routine scan interrupted by unconditional branch");
+                const auto atEntrypoint = scanQueue.isEntrypoint(csip);
+                // similarly, protect yet univisited locations which are however recognized as routine entrypoints, unless visiting from a matching routine id
+                if (atEntrypoint != NULL_ROUTINE && atEntrypoint != search.routineId) {
+                    searchMessage(csip, "Location marked as entrypoint for routine "s + to_string(atEntrypoint) + " while scanning from " + to_string(search.routineId) + ", halting scan");
                     break;
                 }
-            }
-            else if (i.isReturn()) {
-                // TODO: check if return matches entrypoint type (near/far), warn otherwise
-                searchMessage(csip, "routine scan interrupted by return");
-                break;
-            }
-            else if (i.iclass == INS_MOV) {
-                applyMov(i, regs, exe);
-            }
-            else {
-                for (Register r : i.touchedRegs()) {
-                    regs.setUnknown(r);
+                Instruction i(csip, exe.codePointer(csip));
+                regs.setValue(REG_IP, csip.offset);
+                // mark memory map items corresponding to the current instruction as belonging to the current routine 
+                // (routine id is tracked by the queue, no need to provide)
+                scanQueue.setRoutineId(csip.toLinear(), i.length);
+                // interpret the instruction
+                if (i.isBranch()) {
+                    const Branch branch = getBranch(exe, i, regs);
+                    // if the destination of the branch can be established, place it in the search queue
+                    scanQueue.saveBranch(branch, regs, exe.extents());
+                    // even if the branch destination is not known, we cannot keep scanning here if it was unconditional
+                    if (branch.isUnconditional) {
+                        searchMessage(csip, "routine scan interrupted by unconditional branch");
+                        break;
+                    }
                 }
-            }
-            // advance to next instruction
-            csip += i.length;
-        } // next instructions
-    } // next address from search queue
+                else if (i.isReturn()) {
+                    // TODO: check if return matches entrypoint type (near/far), warn otherwise
+                    searchMessage(csip, "routine scan interrupted by return");
+                    break;
+                }
+                else if (i.iclass == INS_MOV) {
+                    applyMov(i, regs, exe);
+                }
+                else {
+                    for (Register r : i.touchedRegs()) {
+                        regs.setUnknown(r);
+                    }
+                }
+                // advance to next instruction
+                csip += i.length;
+            } // next instruction at current search location
+        } // try block
+        catch (Error &e) {
+            debug("Routine discovery encountered exception at " + csip.toString() + ": " + e.why());
+            const Address start = search.address;
+            assert(start <= csip);
+            const Size rollbackSize = csip.toLinear() - start.toLinear() + 1;
+            debug("Search started at " + start.toString() + ", rolling back " + sizeStr(rollbackSize) + " bytes, marking bad");
+            scanQueue.setRoutineId(start.toLinear(), rollbackSize, BAD_ROUTINE);
+        }
+    } // next search location from search queue
     info("Done analyzing code");
 #ifdef DEBUG
-    scanQueue.dumpVisited("routines.visited", SEG_TO_OFFSET(loadSegment), codeSize);
+    scanQueue.dumpVisited("routines.visited");
 #endif
 
     // create routine map from contents of search queue

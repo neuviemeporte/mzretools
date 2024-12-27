@@ -36,6 +36,8 @@ Executable::Executable(const Word loadSegment, const std::vector<Byte> &data) :
 
 // common initialization after construction
 void Executable::init() {
+    if (codeSize == 0)
+        throw ArgError("Code size is zero while constructing executable");
     codeExtents = Block{{loadSegment, Word(0)}, Address(SEG_TO_OFFSET(loadSegment) + codeSize - 1)};
     stack.relocate(loadSegment);
     storeSegment(Segment::SEG_STACK, stack.segment);
@@ -46,6 +48,7 @@ void Executable::setEntrypoint(const Address &addr, const bool relocate) {
     ep = addr;
     if (relocate) ep.relocate(loadSegment);
     debug("Entrypoint set to " + ep.toString());
+    storeSegment(Segment::SEG_CODE, ep.segment);
 }
 
 Segment Executable::getSegment(const Word addr) const {

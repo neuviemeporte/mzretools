@@ -8,7 +8,9 @@
 #include "dos/address.h"
 
 using RoutineId = int;
-static constexpr RoutineId NULL_ROUTINE = 0;
+static constexpr RoutineId 
+    BAD_ROUTINE = -1,
+    NULL_ROUTINE = 0;
 
 class ScanQueue;
 

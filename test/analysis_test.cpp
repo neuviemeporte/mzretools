@@ -254,6 +254,29 @@ TEST_F(AnalysisTest, FindFarRoutines) {
     ASSERT_EQ(far2.entrypoint().segment, loadSegment+1);    
 }
 
+TEST_F(AnalysisTest, FindWithRollback) {
+    // Sample of code where control goes into the weeds, 
+    // data within code after a far call which is not supposed to return.
+    // This is supposed to test the capability of rolling back after encountering
+    // an instruction error while scanning an executable.
+    const string path = "../bin/dn1.bin";
+    const auto status = checkFile(path);
+    ASSERT_TRUE(status.exists);
+    vector<Byte> code(status.size, Byte{0});
+    ASSERT_TRUE(readBinaryFile(path, code.data()));
+    MzImage mz{code};
+    Executable exe{mz};
+    Analyzer a{Analyzer::Options()};
+    const RoutineMap discoveredMap = a.findRoutines(exe);
+    TRACE(discoveredMap.dump());
+    ASSERT_FALSE(discoveredMap.empty());
+    ASSERT_GE(discoveredMap.routineCount(), 5);
+    const auto segments = discoveredMap.getSegments();
+    ASSERT_EQ(segments.size(), 1);
+    const Segment s = segments.front();
+    ASSERT_EQ(s.type, Segment::SEG_CODE);
+}
+
 TEST_F(AnalysisTest, RoutineMapCollision) {
     const string path = "bad.map";
     RoutineMap rm = emptyRoutineMap();

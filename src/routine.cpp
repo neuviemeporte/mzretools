@@ -276,7 +276,7 @@ void RoutineMap::closeBlock(Block &b, const Address &next, const ScanQueue &sq) 
         throw AnalysisError("Attempted to close invalid block");
 
     // block contains reachable code
-    if (curBlockId != NULL_ROUTINE) { 
+    if (curBlockId > NULL_ROUTINE) { 
         debug("    block is reachable");
         // get handle to matching routine
         assert(curBlockId - 1 < routines.size());
@@ -289,7 +289,7 @@ void RoutineMap::closeBlock(Block &b, const Address &next, const ScanQueue &sq) 
         r.reachable.push_back(b);
     }
     // block contains unreachable code or data, attribute to a routine if surrounded by that routine's blocks on both sides
-    else if (prevBlockId != NULL_ROUTINE && curId == prevBlockId) { 
+    else if (prevBlockId > NULL_ROUTINE && curId == prevBlockId) { 
         debug("    block is unreachable");
         // get handle to matching routine
         assert(prevBlockId - 1 < routines.size());
@@ -301,7 +301,7 @@ void RoutineMap::closeBlock(Block &b, const Address &next, const ScanQueue &sq) 
     // block is unreachable and unclaimed by any routine
     else {
         debug("    block is unclaimed");
-        assert(curBlockId == NULL_ROUTINE);
+        assert(curBlockId <= NULL_ROUTINE);
         unclaimed.push_back(b);
     }
 

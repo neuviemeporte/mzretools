@@ -70,7 +70,7 @@ Executable loadExe(const string &spec, const Word loadSegment) {
 }
 
 void loadAndPrintMap(const string &mapfile, const bool verbose, const bool brief, const bool format) {
-    debug("Single parameter specified, printing existing mapfile");
+    info("Single parameter specified, printing existing mapfile");
     auto fs = checkFile(mapfile);
     if (!fs.exists) fatal("Mapfile does not exist: " + mapfile);
     RoutineMap map(mapfile);
