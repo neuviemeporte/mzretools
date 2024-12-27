@@ -3,11 +3,13 @@
 #include <string>
 #include "dos/mz.h"
 #include "dos/error.h"
+#include "dos/output.h"
 
 using namespace std;
 
 void usage() {
-    cout << "Usage: mzhdr <mzfile> [-l]" << endl;
+    cout << "mzhdr v" << VERSION << endl
+         << "Usage: mzhdr <mzfile> [-l]" << endl;
     exit(0);
 }
 

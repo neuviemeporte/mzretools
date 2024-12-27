@@ -6,7 +6,8 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ggdb -O0 -Wfatal-errors")
 
-set(LIBDOS_SRC 
+set(LIBDOS_SRC
+    ${CMAKE_CURRENT_BINARY_DIR}/version.cpp
     src/registers.cpp
     src/cpu.cpp
     src/interrupt.cpp
@@ -47,6 +48,13 @@ set(LIBDOS_HDR
 # the DOS emulation library
 add_library(libdos STATIC ${LIBDOS_SRC} ${LIBDOS_HDR})
 target_include_directories(libdos PUBLIC include)
+
+add_custom_command(
+    OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/version.cpp
+    COMMAND tools/version_gen.sh ${CMAKE_CURRENT_BINARY_DIR}
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    DEPENDS ${CMAKE_SOURCE_DIR}/version.txt ${CMAKE_SOURCE_DIR}/tools/version_gen.sh
+)
 
 # Include Google testing framework
 # Prevent overriding the parent project's compiler/linker settings on Windows

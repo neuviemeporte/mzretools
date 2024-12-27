@@ -22,7 +22,8 @@ using namespace std;
 OUTPUT_CONF(LOG_SYSTEM)
 
 void usage() {
-    output("usage: mzdiff [options] base.exe[:entrypoint] compare.exe[:entrypoint]\n"
+    output("mzdiff v" + VERSION + "\n"
+           "usage: mzdiff [options] base.exe[:entrypoint] compare.exe[:entrypoint]\n"
            "Compares two DOS MZ executables instruction by instruction, accounting for differences in code layout\n"
            "Options:\n"
            "--map basemap  map file of reference executable (recommended, otherwise functionality limited)\n"

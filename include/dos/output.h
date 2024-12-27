@@ -54,4 +54,7 @@ static void warn(const std::string &msg) {\
     output("WARNING: "s + msg, module, LOG_WARN);\
 }
 
+extern const std::string VERSION;
+void abcd();
+
 #endif // OUTPUT_H

@@ -2,11 +2,13 @@
 #include "dos/psp.h"
 #include "dos/util.h"
 #include "dos/error.h"
+#include "dos/output.h"
 
 using namespace std;
 
 void usage() {
-    cout << "Usage: psptool <psp_image_file>" << endl;
+    cout << "psptool v" << VERSION << endl 
+         << "Usage: psptool <psp_image_file>" << endl;
     exit(0);
 }
 
