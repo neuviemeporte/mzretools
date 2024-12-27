@@ -311,6 +311,9 @@ public:
     bool isNearJump() const { return iclass == INS_JMP || iclass == INS_JMP_IF || isLoop(); }
     bool isNearBranch() const { return isNearJump() || iclass == INS_CALL; }
     bool isReturn() const { return iclass == INS_RET || iclass == INS_RETF || iclass == INS_IRET; }
+    bool isInt(const Byte n) { 
+        return (iclass == INS_INT && op1.immval.u8 == n) || (iclass == INS_INT3 && n == 3) || (iclass == INS_INTO && n == 4); 
+    }
 
 private:
     OperandType getModrmOperand(const Byte modrm, const ModrmOperand op);

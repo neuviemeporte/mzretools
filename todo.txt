@@ -1,3 +1,2 @@
 - add segments to routine map constructor, trace current segment, place unclaimed blocks in current rather than load segment
 - OMF parser, extract segments, function signatures etc
-- make instruction scan break on some heuristics like int 21 while ah=4c etc. where we know there will not be a return

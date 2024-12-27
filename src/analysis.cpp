@@ -535,6 +535,15 @@ RoutineMap Analyzer::findRoutines(Executable &exe) {
                 else if (i.iclass == INS_MOV) {
                     applyMov(i, regs, exe);
                 }
+                // interrupts which don't return
+                else if ((i.isInt(0x21) && regs.getValue(REG_AH) == 0x4c) // 21.4c: exit with code
+                        || (i.isInt(0x21) && regs.getValue(REG_AH) == 0x31) // 21.31: dos 2+ tsr
+                        || (i.isInt(0x21) && regs.getValue(REG_AH) == 0x0) // 21.0: terminate
+                        || (i.isInt(0x27) && regs.getValue(REG_DX) == 0xfff0) // 27,dx=fff0: dos 1+ tsr
+                        || (i.isInt(0x20))) { // 20: terminate
+                    searchMessage(csip, "routine scan interrupted by non-returning interrupt");
+                    break;
+                }
                 else {
                     for (Register r : i.touchedRegs()) {
                         regs.setUnknown(r);
