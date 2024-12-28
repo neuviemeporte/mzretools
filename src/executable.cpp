@@ -39,16 +39,16 @@ void Executable::init() {
     if (codeSize == 0)
         throw ArgError("Code size is zero while constructing executable");
     codeExtents = Block{{loadSegment, Word(0)}, Address(SEG_TO_OFFSET(loadSegment) + codeSize - 1)};
+    storeSegment(Segment::SEG_CODE, ep.segment);
     stack.relocate(loadSegment);
     storeSegment(Segment::SEG_STACK, stack.segment);
-    debug("Loaded executable data into memory, code at "s + codeExtents.toString() + ", relocated entrypoint " + entrypoint().toString() + ", stack " + stack.toString());    
+    debug("Loaded executable data into memory, code at "s + codeExtents.toString() + ", relocated entrypoint " + entrypoint().toString() + ", stack " + stack.toString());
 }
 
 void Executable::setEntrypoint(const Address &addr, const bool relocate) {
     ep = addr;
     if (relocate) ep.relocate(loadSegment);
     debug("Entrypoint set to " + ep.toString());
-    storeSegment(Segment::SEG_CODE, ep.segment);
 }
 
 Segment Executable::getSegment(const Word addr) const {
@@ -62,6 +62,11 @@ Segment Executable::getSegment(const Word addr) const {
 
 bool Executable::storeSegment(const Segment::Type type, const Word addr) {
     debug("Attempting to register segment " + hexVal(addr) + " of type " + Segment::typeString(type));
+    const Address segAddress{addr, 0};
+    if (!codeExtents.contains(segAddress)) {
+        debug("Segment " + segAddress.toString() + " outside extents of executable: " + codeExtents.toString());
+        return false;
+    }
     // ignore segments which are already known
     auto found = std::find_if(segments.begin(), segments.end(), [=](const Segment &s){
         return s.type == type && s.address == addr;
@@ -78,7 +83,7 @@ bool Executable::storeSegment(const Segment::Type type, const Word addr) {
         const Segment &existing = *found;
         // existing code segments cannot share an address with another segment
         if (existing.type == Segment::SEG_CODE) {
-            warn("Segment " + hexVal(addr) + " already exists with type CODE, ignoring");
+            debug("Segment " + hexVal(addr) + " already exists with type CODE, ignoring");
             return false;
         }
         // a new data segment trumps an existing stack segment
@@ -87,7 +92,7 @@ bool Executable::storeSegment(const Segment::Type type, const Word addr) {
             segments.erase(found);
         }
         else {
-            warn("Segment " + hexVal(addr) + " already exists with type " + Segment::typeString(existing.type) + ", ignoring");
+            debug("Segment " + hexVal(addr) + " already exists with type " + Segment::typeString(existing.type) + ", ignoring");
             return false;
         }
     }

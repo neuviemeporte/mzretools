@@ -220,7 +220,7 @@ void ScanQueue::dumpVisited(const string &path) const {
     mapFile << endl;
     const Offset start = origin.toLinear();
     const Size size = visited.size();
-    info("Dumping visited map of size "s + hexVal(size) + " starting at " + hexVal(start) + " to " + path);
+    info("DEBUG: Dumping visited map of size "s + hexVal(size) + " starting at " + hexVal(start) + " to " + path);
     for (Offset mapOffset = start; mapOffset < start + size; ++mapOffset) {
         const auto id = getRoutineId(mapOffset);
         //debug(hexVal(mapOffset) + ": " + to_string(m));

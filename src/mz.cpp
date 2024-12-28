@@ -170,6 +170,7 @@ void MzImage::load(const Word loadSegment) {
         const Address addr(r.segment, r.offset);
         const Offset off = addr.toLinear();
         const Word patchedVal = r.value + loadSegment;
+        debug("Patching relocation at " + addr.toString() + " to " + hexVal(patchedVal));
         loadModuleData_[off] = lowByte(patchedVal);
         loadModuleData_[off + 1] = hiByte(patchedVal);
     }
