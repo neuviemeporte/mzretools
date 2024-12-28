@@ -29,6 +29,18 @@ string Destination::toString() const {
     return str.str();
 }
 
+string Branch::toString() const {
+    ostringstream str;
+    str << source.toString() << " -> " << destination.toString() << " [";
+    if (isCall) str << "call";
+    else str << "jump";
+    if (isUnconditional) str << ",cond";
+    else str << ",nocond";
+    if (isNear) str << ",near]";
+    else str << ",far]";
+    return str.str();
+}
+
 ScanQueue::ScanQueue(const Address &origin, const Size codeSize, const Destination &seed, const std::string name) :
     visited(codeSize, NULL_ROUTINE),
     origin(origin)
@@ -57,6 +69,19 @@ void ScanQueue::setRoutineId(Offset off, const Size length, RoutineId id) {
     off -= origin.toLinear();
     assert(off < visited.size());
     fill(visited.begin() + off, visited.begin() + off + length, id);
+}
+
+void ScanQueue::clearRoutineId(Offset off) {
+    assert(off >= origin.toLinear());
+    off -= origin.toLinear();
+    assert(off < visited.size());
+    auto it = visited.begin() + off;
+    const auto clearId = *it;
+    if (clearId == NULL_ROUTINE) return;
+    while (it != visited.end() && *it == clearId) {
+        *it = NULL_ROUTINE;
+        ++it;
+    }
 }
 
 Destination ScanQueue::nextPoint() {
@@ -140,11 +165,11 @@ bool ScanQueue::saveCall(const Address &dest, const RegisterState &regs, const b
     else { // not a known entrypoint and not yet in queue
         destId = getRoutineId(dest.toLinear());
         RoutineId newRoutineId = routineCount() + 1;
-        if (destId == NULL_ROUTINE)
-            debug("Call destination not belonging to any routine, claiming as entrypoint for new routine, id " + to_string(newRoutineId));
-        else 
-            debug("Call destination belonging to routine " + to_string(destId) + ", reclaiming as entrypoint for new routine, id " + to_string(newRoutineId));
         queue.emplace_back(Destination(dest, newRoutineId, true, regs));
+        if (destId == NULL_ROUTINE)
+            debug("Call destination not belonging to any routine, claiming as entrypoint for new routine, id " + to_string(newRoutineId) + ", queue size = " + to_string(size()));
+        else 
+            debug("Call destination belonging to routine " + to_string(destId) + ", reclaiming as entrypoint for new routine, id " + to_string(newRoutineId) + ", queue size = " + to_string(size()));
         RoutineEntrypoint ep{dest, newRoutineId, near};
         if (!name.empty()) ep.name = name;
         entrypoints.push_back(ep);
@@ -161,8 +186,8 @@ bool ScanQueue::saveJump(const Address &dest, const RegisterState &regs) {
     else if (hasPoint(dest, false))
         debug("Queue already contains jump to address "s + dest.toString());
     else { // not claimed by any routine and not yet in queue
-        debug("Jump destination not yet visited, scheduled visit from routine " + to_string(curSearch.routineId) + ", queue size = " + to_string(size()));
         queue.emplace_front(Destination(dest, curSearch.routineId, false, regs));
+        debug("Jump destination not yet visited, scheduled visit from routine " + to_string(curSearch.routineId) + ", queue size = " + to_string(size()));
         return true;
     }
     return false;
@@ -181,7 +206,7 @@ bool ScanQueue::saveBranch(const Branch &branch, const RegisterState &regs, cons
         return ret;
     }
     else {
-        searchMessage(branch.source, "branch destination outside code boundaries: "s + branch.destination.toString());
+        searchMessage(branch.source, "Branch destination outside code boundaries: "s + branch.destination.toString());
     }
     return false; 
 }
@@ -518,11 +543,25 @@ RoutineMap Analyzer::findRoutines(Executable &exe) {
                 scanQueue.setRoutineId(csip.toLinear(), i.length);
                 // interpret the instruction
                 if (i.isBranch()) {
-                    const Branch branch = getBranch(exe, i, regs);
+                    Branch branch = getBranch(exe, i, regs);
+                    debug("Encountered branch: " + branch.toString());
                     // if the destination of the branch can be established, place it in the search queue
                     scanQueue.saveBranch(branch, regs, exe.extents());
-                    // even if the branch destination is not known, we cannot keep scanning here if it was unconditional
-                    if (branch.isUnconditional) {
+                    // for a conditional branch, we can continue scanning, but do it under a new search queue location 
+                    // to have finer granularity in case we run into data in the middle of code and have to rollback the whole block as bad
+                    if (!branch.isUnconditional) {
+                        branch.destination = csip + static_cast<Offset>(i.length);
+                        const Offset destOffset = branch.destination.toLinear();
+                        branch.isCall = false;
+                        branch.isNear = true;
+                        debug("Saving fall-through branch: " + branch.toString());
+                        // make the destination of this fake "branch" undiscovered in the queue, wipe any claiming routine id run
+                        scanQueue.clearRoutineId(destOffset);
+                        scanQueue.saveBranch(branch, regs, exe.extents());
+                        break;
+                    }
+                    // if the branch is unconditional then we cannot keep scanning here, regardless of the destination resolution
+                    else {
                         searchMessage(csip, "routine scan interrupted by unconditional branch");
                         break;
                     }
@@ -990,11 +1029,9 @@ bool Analyzer::comparisonLoop(const Executable &ref, Executable &tgt, const Rout
 }
 
 Branch Analyzer::getBranch(const Executable &exe, const Instruction &i, const RegisterState &regs) const {
+    const Address addr = i.addr;
     Branch branch;
-    branch.isCall = false;
-    branch.isUnconditional = false;
-    branch.isNear = true;
-    const Address &addr = i.addr;
+    branch.source = addr;
     switch (i.iclass) {
     // conditional jump
     case INS_JMP_IF:

@@ -200,6 +200,7 @@ TEST_F(AnalysisTest, RoutineMapFromQueue) {
 
 TEST_F(AnalysisTest, FindRoutines) {
     const Word loadSegment = 0x1234;
+    const Size expectedFound = 39;
     // discover routines inside an executable
     MzImage mz{"../bin/hello.exe"};
     mz.load(loadSegment);
@@ -208,17 +209,18 @@ TEST_F(AnalysisTest, FindRoutines) {
     const RoutineMap discoveredMap = a.findRoutines(exe);
     TRACE(discoveredMap.dump());
     ASSERT_FALSE(discoveredMap.empty());
+    discoveredMap.save("hello.map", loadSegment, true);    
+    ASSERT_EQ(discoveredMap.routineCount(), expectedFound);
 
     // create map from IDA listing
     const RoutineMap idaMap{"../bin/hello.lst", loadSegment};
-    const Size idaMatchCount = 37; // not all 54 routines that ida finds can be identified for now    
     // compare our map against IDA map
     Size matchCount = idaMap.match(discoveredMap);
+    const Size idaMatchCount = 37; // not all 54 routines that ida finds can be identified for now    
     TRACELN("Discovered vs IDA, found matching " << matchCount << " routines out of " << idaMap.routineCount());
     ASSERT_EQ(matchCount, idaMatchCount);
     
-    // save to file and reload
-    discoveredMap.save("hello.map", loadSegment, true);
+    // reload from file
     RoutineMap reloadMap("hello.map", loadSegment);
     ASSERT_EQ(reloadMap.routineCount(), discoveredMap.routineCount());
 

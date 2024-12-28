@@ -35,6 +35,8 @@ struct Destination {
 struct Branch {
     Address source, destination;
     bool isCall, isUnconditional, isNear;
+    Branch() : isCall(false), isUnconditional(false), isNear(true) {}
+    std::string toString() const;
 };
 
 // utility class for keeping track of the queue of potentially interesting Destinations, and which bytes in the executable have been visited already
@@ -65,6 +67,7 @@ public:
     std::string statusString() const;
     RoutineId getRoutineId(Offset off) const;
     void setRoutineId(Offset off, const Size length, RoutineId id = NULL_ROUTINE);
+    void clearRoutineId(Offset off);
     RoutineId isEntrypoint(const Address &addr) const;
     RoutineEntrypoint getEntrypoint(const std::string &name);
     std::vector<Routine> getRoutines() const;
