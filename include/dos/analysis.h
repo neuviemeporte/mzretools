@@ -34,8 +34,8 @@ struct Destination {
 
 struct Branch {
     Address source, destination;
-    bool isCall, isUnconditional, isNear;
-    Branch() : isCall(false), isUnconditional(false), isNear(true) {}
+    bool isCall, isConditional, isNear;
+    Branch() : isCall(false), isConditional(false), isNear(true) {}
     std::string toString() const;
 };
 

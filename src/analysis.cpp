@@ -34,7 +34,7 @@ string Branch::toString() const {
     str << source.toString() << " -> " << destination.toString() << " [";
     if (isCall) str << "call";
     else str << "jump";
-    if (isUnconditional) str << ",cond";
+    if (isConditional) str << ",cond";
     else str << ",nocond";
     if (isNear) str << ",near]";
     else str << ",far]";
@@ -504,13 +504,15 @@ RoutineMap Analyzer::findRoutines(Executable &exe) {
     // queue for BFS search
     scanQueue = ScanQueue{exe.loadAddr(), exe.size(), Destination(exe.entrypoint(), 1, true, initRegs)};
     info("Analyzing code within extents: "s + exe.extents());
+    Size locations = 0;
  
     // iterate over entries in the search queue
     while (!scanQueue.empty()) {
         // get a location from the queue and jump to it
         const Destination search = scanQueue.nextPoint();
+        locations++;
         Address csip = search.address;
-        searchMessage(csip, "--- starting search at new location for routine " + to_string(search.routineId) + ", call: "s + to_string(search.isCall) + ", queue = " + to_string(scanQueue.size()));
+        searchMessage(csip, "--- Scanning at new location from routine " + to_string(search.routineId) + ", call: "s + to_string(search.isCall) + ", queue = " + to_string(scanQueue.size()));
         RegisterState regs = search.regs;
         regs.setValue(REG_CS, csip.segment);
         exe.storeSegment(Segment::SEG_CODE, csip.segment);
@@ -547,20 +549,24 @@ RoutineMap Analyzer::findRoutines(Executable &exe) {
                     debug("Encountered branch: " + branch.toString());
                     // if the destination of the branch can be established, place it in the search queue
                     scanQueue.saveBranch(branch, regs, exe.extents());
-                    // for a conditional branch, we can continue scanning, but do it under a new search queue location 
+                    // for a call or conditional branch, we can continue scanning, but do it under a new search queue location 
                     // to have finer granularity in case we run into data in the middle of code and have to rollback the whole block as bad
-                    if (!branch.isUnconditional) {
+                    if (branch.isCall || branch.isConditional) {
                         branch.destination = csip + static_cast<Offset>(i.length);
                         const Offset destOffset = branch.destination.toLinear();
-                        branch.isCall = false;
-                        branch.isNear = true;
-                        debug("Saving fall-through branch: " + branch.toString());
-                        // make the destination of this fake "branch" undiscovered in the queue, wipe any claiming routine id run
-                        scanQueue.clearRoutineId(destOffset);
-                        scanQueue.saveBranch(branch, regs, exe.extents());
+                        const RoutineId destId = scanQueue.getRoutineId(destOffset);
+                        if (destId != search.routineId) {
+                            branch.isCall = false;
+                            branch.isNear = true;
+                            branch.isConditional = false;
+                            debug("Saving fall-through branch: " + branch.toString() + " over id " + to_string(destId));
+                            // make the destination of this fake "branch" undiscovered in the queue, wipe any claiming routine id run
+                            scanQueue.clearRoutineId(destOffset);
+                            scanQueue.saveBranch(branch, regs, exe.extents());
+                        }
                         break;
                     }
-                    // if the branch is unconditional then we cannot keep scanning here, regardless of the destination resolution
+                    // if the branch is an unconditional jump, we cannot keep scanning here, regardless of the destination resolution
                     else {
                         searchMessage(csip, "routine scan interrupted by unconditional branch");
                         break;
@@ -601,7 +607,7 @@ RoutineMap Analyzer::findRoutines(Executable &exe) {
             scanQueue.setRoutineId(start.toLinear(), rollbackSize, BAD_ROUTINE);
         }
     } // next search location from search queue
-    info("Done analyzing code");
+    info("Done analyzing code, examined " + to_string(locations) + " locations");
 #ifdef DEBUG
     scanQueue.dumpVisited("routines.visited");
 #endif
@@ -1035,20 +1041,22 @@ Branch Analyzer::getBranch(const Executable &exe, const Instruction &i, const Re
     switch (i.iclass) {
     // conditional jump
     case INS_JMP_IF:
+        branch.isCall = false;
+        branch.isConditional = true;
         branch.destination = i.destinationAddress();
         searchMessage(addr, "encountered conditional near jump to "s + branch.destination.toString());
         break;
     // unconditional jumps
     case INS_JMP:
+        branch.isCall = false;
+        branch.isConditional = false;
         switch (i.opcode) {
         case OP_JMP_Jb: 
         case OP_JMP_Jv: 
             branch.destination = i.destinationAddress();
-            branch.isUnconditional = true;
             searchMessage(addr, "encountered unconditional near jump to "s + branch.destination.toString());
             break;
         case OP_GRP5_Ev:
-            branch.isUnconditional = true;
             searchMessage(addr, "unknown near jump target: "s + i.toString());
             debug(regs.toString());
             break; 
@@ -1057,9 +1065,10 @@ Branch Analyzer::getBranch(const Executable &exe, const Instruction &i, const Re
         }
         break;
     case INS_JMP_FAR:
+        branch.isCall = false;
+        branch.isConditional = false;
         if (i.op1.type == OPR_IMM32) {
             branch.destination = Address{i.op1.immval.u32}; 
-            branch.isUnconditional = true;
             branch.isNear = false;
             searchMessage(addr, "encountered unconditional far jump to "s + branch.destination.toString());
         }
@@ -1072,19 +1081,21 @@ Branch Analyzer::getBranch(const Executable &exe, const Instruction &i, const Re
     case INS_LOOP:
     case INS_LOOPNZ:
     case INS_LOOPZ:
+        branch.isCall = false;
+        branch.isConditional = true;
         branch.destination = i.destinationAddress();
         searchMessage(addr, "encountered loop to "s + branch.destination.toString());
         break;
     // calls
     case INS_CALL:
+        branch.isCall = true;
+        branch.isConditional = false;
         if (i.op1.type == OPR_IMM16) {
             branch.destination = i.destinationAddress();
-            branch.isCall = true;
             searchMessage(addr, "encountered near call to "s + branch.destination.toString());
         }
         else if (operandIsReg(i.op1.type) && regs.isKnown(i.op1.regId())) {
             branch.destination = {i.addr.segment, regs.getValue(i.op1.regId())};
-            branch.isCall = true;
             searchMessage(addr, "encountered near call through register to "s + branch.destination.toString());
         }
         else if (operandIsMemImmediate(i.op1.type) && regs.isKnown(REG_DS)) {
@@ -1092,7 +1103,6 @@ Branch Analyzer::getBranch(const Executable &exe, const Instruction &i, const Re
             Address memAddr{regs.getValue(REG_DS), i.op1.immval.u16};
             if (exe.contains(memAddr)) {
                 branch.destination = Address{i.addr.segment, exe.getCode().readWord(memAddr)};
-                branch.isCall = true;
                 searchMessage(addr, "encountered near call through mem pointer to "s + branch.destination.toString());
             }
             else debug("mem pointer of call destination outside code extents: " + memAddr.toString());
@@ -1103,10 +1113,11 @@ Branch Analyzer::getBranch(const Executable &exe, const Instruction &i, const Re
         } 
         break;
     case INS_CALL_FAR:
+        branch.isCall = true;
+        branch.isConditional = false;
+        branch.isNear = false;
         if (i.op1.type == OPR_IMM32) {
             branch.destination = Address(DWORD_SEGMENT(i.op1.immval.u32), DWORD_OFFSET(i.op1.immval.u32));
-            branch.isCall = true;
-            branch.isNear = false;
             searchMessage(addr, "encountered far call to "s + branch.destination.toString());
         }
         else {

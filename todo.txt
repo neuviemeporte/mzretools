@@ -1,5 +1,3 @@
 - add segments to routine map constructor, trace current segment, place unclaimed blocks in current rather than load segment
 - OMF parser, extract segments, function signatures etc
-- dn1 0x24f6 loop?
-- overwrite queue item when creating fall-through branch?
 - add load() call to mzimage constructor, will probably break tests
