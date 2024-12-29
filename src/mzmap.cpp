@@ -124,7 +124,7 @@ int main(int argc, char *argv[]) {
             }
             if (verbose) cout << map.dump(verbose, brief);
             map.save(file2, loadSegment);
-            info("Please review the output file (" + file2 + ") and resolve inaccuracies manually; this tool is not perfect");
+            info("Please review the output file (" + file2 + "), assign names to routines/segments\nYou may need to resolve inaccuracies with routine block ranges manually; this tool is not perfect");
         }
     }
     catch (Error &e) {

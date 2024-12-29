@@ -151,11 +151,14 @@ TEST_F(AnalysisTest, RoutineMapFromQueue) {
     visited = { 
     //  0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f
         0, 0, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 2, 2, 0, 0, // 0
-        1, 1, 3, 0, 3, 3, 3, 0, 0, 0, 0, 0, 0, 2, 2, 2, // 1
+        0, 1, 1, 3, 3, 3, 3, 0, 0, 0, 0, 0, 0, 2, 2, 2, // 1
         3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 2
         0, 0                                            // 3
     };
-    entrypoints = { {0x8, 1}, {0xc, 2}, {0x12, 3} };
+    // force the end of the routine map to overflow the segment 
+    // where the last (unreachable) block starts
+    visited.insert(visited.end(), 70000, 0);
+    entrypoints = { {0x8, 1}, {0xc, 2}, {0x13, 3} };
     RoutineMap queueMap{sq, segments, loadSegment, visited.size()};
     queueMap.dump();
     ASSERT_EQ(queueMap.routineCount(), 3);
@@ -166,7 +169,7 @@ TEST_F(AnalysisTest, RoutineMapFromQueue) {
     ASSERT_EQ(r1.reachable.size(), 3);
     ASSERT_EQ(r1.reachable.at(0), Block(0x2, 0x4));
     ASSERT_EQ(r1.reachable.at(1), Block(0x8, 0xb));
-    ASSERT_EQ(r1.reachable.at(2), Block(0x10, 0x11));
+    ASSERT_EQ(r1.reachable.at(2), Block(0x11, 0x12));
     ASSERT_EQ(r1.unreachable.size(), 1);
     ASSERT_EQ(r1.unreachable.at(0), Block(0x5, 0x7));
 
@@ -180,20 +183,20 @@ TEST_F(AnalysisTest, RoutineMapFromQueue) {
 
     Routine r3 = queueMap.getRoutine(2);
     ASSERT_FALSE(r3.name.empty());
-    ASSERT_EQ(r3.extents, Block(0x12, 0x16));
-    ASSERT_EQ(r3.reachable.size(), 3);
-    ASSERT_EQ(r3.reachable.at(0), Block(0x12, 0x12));
-    ASSERT_EQ(r3.reachable.at(1), Block(0x14, 0x16));
-    ASSERT_EQ(r3.reachable.at(2), Block(0x20, 0x22));
-    ASSERT_EQ(r3.unreachable.size(), 1);
-    ASSERT_EQ(r3.unreachable.at(0), Block(0x13, 0x13));
+    ASSERT_EQ(r3.extents, Block(0x13, 0x16));
+    ASSERT_EQ(r3.reachable.size(), 2);
+    ASSERT_EQ(r3.reachable.at(0), Block(0x13, 0x16));
+    ASSERT_EQ(r3.reachable.at(1), Block(0x20, 0x22));
+    ASSERT_EQ(r3.unreachable.size(), 0);
 
     const auto &unclaimed = mapUnclaimed(queueMap);
-    ASSERT_EQ(unclaimed.size(), 4);
+    ASSERT_EQ(unclaimed.size(), 6);
     ASSERT_EQ(unclaimed.at(0), Block(0x0, 0x1));
     ASSERT_EQ(unclaimed.at(1), Block(0xe, 0xf));
-    ASSERT_EQ(unclaimed.at(2), Block(0x17, 0x1c));
-    ASSERT_EQ(unclaimed.at(3), Block(0x23, 0x31));
+    ASSERT_EQ(unclaimed.at(2), Block(0x10, 0x10));
+    ASSERT_EQ(unclaimed.at(3), Block(0x17, 0x1c));
+    ASSERT_EQ(unclaimed.at(4), Block(0x23, 0x2f));
+    ASSERT_EQ(unclaimed.at(5), Block(0x30, 0x30 + 0xffff));
 
     TRACELN(queueMap.dump());
 }
