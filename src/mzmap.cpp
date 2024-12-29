@@ -54,7 +54,7 @@ Executable loadExe(const string &spec, const Word loadSegment) {
     const auto stat = checkFile(path);
     if (!stat.exists) fatal("File does not exist: "s + path);
     else if (stat.size <= MZ_HEADER_SIZE) fatal("File too small ("s + to_string(stat.size) + "B): " + path); 
-    verbose("Loading executable "s + path + " at segment "s + hexVal(loadSegment));
+    info("Loading executable "s + path + " at segment "s + hexVal(loadSegment));
     MzImage mz{path};
     mz.load(loadSegment);
     debug(mzInfo(mz));
@@ -70,7 +70,7 @@ Executable loadExe(const string &spec, const Word loadSegment) {
 }
 
 void loadAndPrintMap(const string &mapfile, const bool verbose, const bool brief, const bool format) {
-    debug("Single parameter specified, printing existing mapfile");
+    info("Single parameter specified, printing existing mapfile");
     auto fs = checkFile(mapfile);
     if (!fs.exists) fatal("Mapfile does not exist: " + mapfile);
     RoutineMap map(mapfile);
@@ -111,6 +111,10 @@ int main(int argc, char *argv[]) {
             loadAndPrintMap(file1, verbose, brief, format);
         }
         else { // regular operation, scan executable for routines
+            if (checkFile(file2).exists) {
+                fatal("Output file already exists: " + file2);
+                return 1;
+            }
             Executable exe = loadExe(file1, loadSegment);
             Analyzer a = Analyzer(Analyzer::Options());
             RoutineMap map = a.findRoutines(exe);
@@ -120,6 +124,7 @@ int main(int argc, char *argv[]) {
             }
             if (verbose) cout << map.dump(verbose, brief);
             map.save(file2, loadSegment);
+            info("Please review the output file (" + file2 + "), assign names to routines/segments\nYou may need to resolve inaccuracies with routine block ranges manually; this tool is not perfect");
         }
     }
     catch (Error &e) {

@@ -130,8 +130,11 @@ RegisterState::RegisterState() {
 RegisterState::RegisterState(const Address &code, const Address &stack) : RegisterState() {
     setValue(REG_CS, code.segment);
     setValue(REG_IP, code.offset);
-    setValue(REG_SS, stack.segment);
-    setValue(REG_SP, stack.offset);
+    // some test cases load code from binary files and cs:ip == ss:sp == 0:0 which leads to trouble
+    if (stack != code) {
+        setValue(REG_SS, stack.segment);
+        setValue(REG_SP, stack.offset);
+    }
 }
 
 bool RegisterState::isKnown(const Register r) const {

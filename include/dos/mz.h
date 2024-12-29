@@ -32,6 +32,8 @@ private:
         Word cs;                   // 0x16, relocated at load time by adding by adding addr of start segment to it
         Word reloc_table_offset;   // 0x18, from start of file
         Word overlay_number;       // 0x1a, rarely used
+        Header() : signature(0), last_page_size(0), pages_in_file(0), num_relocs(0), header_paragraphs(0), min_extra_paragraphs(0), max_extra_paragraphs(0), 
+            ss(0), sp(0), checksum(0), ip(0), cs(0), reloc_table_offset(0), overlay_number(0) {} 
     } header_;
     static_assert(sizeof(Header) == MZ_HEADER_SIZE, "Invalid EXE header size");
 #pragma pack(pop)

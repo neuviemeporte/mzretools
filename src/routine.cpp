@@ -158,24 +158,46 @@ RoutineMap::RoutineMap(const ScanQueue &sq, const std::vector<Segment> &segs, co
     routines = sq.getRoutines();
 
     const Offset startOffset = SEG_TO_OFFSET(loadSegment);
-    const Offset endOffset = startOffset + mapSize;
+    Offset endOffset = startOffset + mapSize;
     Block b(startOffset);
     prevId = curBlockId = prevBlockId = NULL_ROUTINE;
     Segment curSeg;
 
+    debug("Starting at " + hexVal(startOffset) + ", ending at " + hexVal(endOffset) + ", map size: " + sizeStr(mapSize));
     for (Offset mapOffset = startOffset; mapOffset < endOffset; ++mapOffset) {
+        curId = sq.getRoutineId(mapOffset);
         // find segment matching currently processed offset
-        // TODO: add size field to Segment, calculate segment bounds in routine find routine, verify going out of segment range? In that case also don't need to check every iteration
-        Segment offSeg = findSegment(mapOffset);
-        if (offSeg.type == Segment::SEG_NONE) continue;
-        if (offSeg != curSeg) {
-            curSeg = offSeg;
+        Segment newSeg = findSegment(mapOffset);
+        if (newSeg.type == Segment::SEG_NONE) {
+            error("Unable to find a segment for routine map offset " + hexVal(mapOffset) + ", ignoring remainder");
+            endOffset = mapOffset;
+            break;
+        }
+        if (newSeg != curSeg) {
+            curSeg = newSeg;
             debug("=== Segment change to " + curSeg.toString());
+            // check if segment change made currently open block go out of bounds
+            if (!b.begin.inSegment(newSeg.address)) {
+                debug("Currently open block " + b.toString() + " does not fit into new segment, forcing close");
+                Address closeAddr{mapOffset};
+                // force close block before current location
+                closeBlock(b, closeAddr, sq);
+                // force open a new block at current location if the ID remains the same so that it does not get lost,
+                // or erase the block otherwise, so that the rest of this loop opens up a new one instead of closing one that is no longer valid
+                if (curId == prevId) {
+                    closeAddr.move(curSeg.address);
+                    b = Block{closeAddr};
+                    debug(closeAddr.toString() + ": forcing opening of new block: " + b.toString() + " for routine_" + to_string(curId));
+                }
+                else {
+                    debug(closeAddr.toString() + ": erasing invalid block: " + b.toString());
+                    b = {};
+                }
+            }
         }
         // convert map offset to segmented address
         Address curAddr{mapOffset};
         curAddr.move(curSeg.address);
-        curId = sq.getRoutineId(mapOffset);
         // do nothing as long as the value doesn't change, unless we encounter a routine entrypoint in the middle of a block, in which case we force a block close
         if (curId == prevId && !sq.isEntrypoint(curAddr)) continue;
         // value in map changed (or forced block close because of encounterted entrypoint), new block begins, so close old block and attribute it to a routine if possible
@@ -189,6 +211,7 @@ RoutineMap::RoutineMap(const ScanQueue &sq, const std::vector<Segment> &segs, co
         prevId = curId;
     }
     // close last block finishing on the last byte of the memory map
+    debug("Closing final block: " + b.toString() + " at offset " + hexVal(endOffset));
     closeBlock(b, endOffset, sq);
     order();
 }
@@ -263,7 +286,7 @@ Routine RoutineMap::colidesBlock(const Block &b) const {
     else return {};
 }
 
-// utility function used when constructing from  an instance of SearchQueue
+// utility function used when constructing from an instance of SearchQueue
 void RoutineMap::closeBlock(Block &b, const Address &next, const ScanQueue &sq) {
     if (!b.isValid()) return;
 
@@ -276,7 +299,7 @@ void RoutineMap::closeBlock(Block &b, const Address &next, const ScanQueue &sq) 
         throw AnalysisError("Attempted to close invalid block");
 
     // block contains reachable code
-    if (curBlockId != NULL_ROUTINE) { 
+    if (curBlockId > NULL_ROUTINE) { 
         debug("    block is reachable");
         // get handle to matching routine
         assert(curBlockId - 1 < routines.size());
@@ -289,7 +312,7 @@ void RoutineMap::closeBlock(Block &b, const Address &next, const ScanQueue &sq) 
         r.reachable.push_back(b);
     }
     // block contains unreachable code or data, attribute to a routine if surrounded by that routine's blocks on both sides
-    else if (prevBlockId != NULL_ROUTINE && curId == prevBlockId) { 
+    else if (prevBlockId > NULL_ROUTINE && curId == prevBlockId) { 
         debug("    block is unreachable");
         // get handle to matching routine
         assert(prevBlockId - 1 < routines.size());
@@ -301,7 +324,7 @@ void RoutineMap::closeBlock(Block &b, const Address &next, const ScanQueue &sq) 
     // block is unreachable and unclaimed by any routine
     else {
         debug("    block is unclaimed");
-        assert(curBlockId == NULL_ROUTINE);
+        assert(curBlockId <= NULL_ROUTINE);
         unclaimed.push_back(b);
     }
 
@@ -384,11 +407,18 @@ void RoutineMap::save(const std::string &path, const Word reloc, const bool over
     if (checkFile(path).exists && !overwrite) throw AnalysisError("Map file already exists: " + path);
     info("Saving routine map (routines = " + to_string(routineCount()) + ") to "s + path + ", reversing relocation by " + hexVal(reloc));
     ofstream file{path};
-    file << "Size " << hexVal(mapSize, false) << endl;
+    file << "# Size of the executable's load module covered by the map" << endl << "Size " << hexVal(mapSize, false) << endl;
+    file << "# Discovered segments, one per line, syntax is \"SegmentName Type(CODE/DATA/STACK) Address\"" << endl;
     for (auto s: segments) {
         s.address -= reloc;
         file << s.toString() << endl;
     }
+    file << "# Discovered routines, one per line, syntax is \"RoutineName: Segment Type(NEAR/FAR) Extents [R/U]Block1 [R/U]Block2...\"" << endl
+         << "# The routine extents is the largest continuous block of instructions attributed to this routine and originating" << endl 
+         << "# at the location determined to be the routine's entrypoint." << endl
+         << "# Blocks are offset ranges relative to the segment that the routine belongs to, specifying address as belonging to the routine." << endl 
+         << "# Blocks starting with R contain code that was determined reachable, U were unreachable but still likely belong to the routine." << endl
+         << "# The routine blocks may cover a greater area than the extents if the routine has disconected chunks it jumps into." << endl;
     for (const auto &r : routines) {
         file << routineString(r, reloc) << endl;
     }

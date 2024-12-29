@@ -3,6 +3,7 @@
 #include "gtest/gtest.h"
 #include "dos/memory.h"
 #include "dos/util.h"
+#include "dos/error.h"
 
 using namespace std;
 
@@ -37,12 +38,32 @@ TEST_F(MemoryTest, AddressFromString) {
 }
 
 TEST_F(MemoryTest, Segmentation) {
-    Address a(0x6ef, 0x1234);
-    ASSERT_EQ(a.toLinear(), 0x8124);
+    const Word segment = 0x86ef, offset = 0x1234;
+    Address a(segment, offset);
+    const Offset linear = static_cast<Offset>(segment) * PARAGRAPH_SIZE + offset;
+    ASSERT_EQ(a.toLinear(), linear);
     a.normalize();
-    ASSERT_EQ(a.segment, 0x812);
-    ASSERT_EQ(a.offset, 0x4);
-    ASSERT_EQ(a.toLinear(), 0x8124);
+    const Word normSeg = linear / PARAGRAPH_SIZE, normOff = linear % PARAGRAPH_SIZE;
+    TRACELN("normalized: " + a.toString());
+    ASSERT_EQ(a.segment, normSeg);
+    ASSERT_EQ(a.offset, normOff);
+    ASSERT_FALSE(a.inSegment(0));
+    const Word leftBoundSeg = OFFSET_TO_SEG(linear - 64_kB);
+    TRACELN("left boundary segment: " + hexVal(leftBoundSeg));
+    ASSERT_FALSE(a.inSegment(leftBoundSeg));
+    // all segments from the boundary 64kb before and up to and including the normalized one can contain this address
+    for (Word moveSeg = leftBoundSeg + 1; moveSeg <= normSeg; ++moveSeg) {
+        ASSERT_TRUE(a.inSegment(moveSeg));
+        a.move(moveSeg);
+        TRACELN("moved to " + hexVal(moveSeg) + ": " + a.toString());
+        ASSERT_EQ(a.segment, moveSeg);
+        ASSERT_EQ(a.toLinear(), linear);
+    }
+    // segments just past the normalized one cannot contain this address
+    ASSERT_FALSE(a.inSegment(normSeg + 1));
+    ASSERT_THROW(a.move(normSeg + 1), MemoryError);
+    ASSERT_FALSE(a.inSegment(normSeg + 2));
+    ASSERT_THROW(a.move(normSeg + 2), MemoryError);
 }
 
 TEST_F(MemoryTest, Rebase) {

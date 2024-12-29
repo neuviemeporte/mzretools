@@ -179,16 +179,20 @@ This Python script will parse an IDA-generated listing `.LST` file and generate 
     ],
     "code_segments": [ "startCode1", "startCode2" ],
     "data_segments": [ "startData", "startBss" ],
-    // the sum of the size of all the items in the data segment, used to verify that the assembly file contains all the data
+    // the sum of the size of all the items in the data segment, used to verify 
+    // that the assembly file contains all the data
     "data_size": "0x7b10",
     // locations and contents of input lines that should be replaced in the assembly output
     "replace": [ 
         // can modify segment definitions on the fly
-        { "seg": "startCode1", "off": "0x0", "from": "startCode1 segment", "to": "startCode1 segment word public 'CODE'" },
-        { "seg": "startData", "off": "0x0", "from": "startData segment", "to": "startData segment word public 'DATA'" },
+        { "seg": "startCode1", "off": "0x0", "from": "startCode1 segment", 
+            "to": "startCode1 segment word public 'CODE'" },
+        { "seg": "startData", "off": "0x0", "from": "startData segment", 
+            "to": "startData segment word public 'DATA'" },
         // modify instructions into literal bytes to enforce specific encoding
         { "seg": "startCode1", "off": "0x2ff", "to": "db 05h, 48h, 0" },
         { "seg": "startCode1", "off": "0x376a", "to": "db 3Dh, 10h, 0" }, 
+        // modify segment termination to force closing of a different segment
         { "seg": "startData",  "off": "0x7afc", "from": "ends", "to": "startBss ends" }
     ],
     // locations and contents of lines that should be inserted into the assembly output
@@ -200,26 +204,37 @@ This Python script will parse an IDA-generated listing `.LST` file and generate 
             ]
         }
     ],
-    // blocks that should be eliminated from the input, usually because they have been already ported to C code
+    // blocks that should be eliminated from the input, usually because they have been 
+    // already ported to C code
     "extract": [ 
         // a bunch of initial zeros at the beginning of the code segment caused by .DOSSEG
-        { "seg": "startCode1", "begin": "0x10",   "end": "0x482",  "from": "main",              "to": "endp" },
-        { "seg": "startCode1", "begin": "0x4a0",  "end": "0x510",  "from": "initGraphics",      "to": "endp" },
-        { "seg": "startCode1", "begin": "0x511",  "end": "0x543",  "from": "cleanup",           "to": "endp" },
-        { "seg": "startCode1", "begin": "0x54a",  "end": "0x560",  "from": "clearKeybuf",       "to": "endp" },
+        { "seg": "startCode1", "begin": "0x10",   "end": "0x482",  "from": "main",
+            "to": "endp" },
+        { "seg": "startCode1", "begin": "0x4a0",  "end": "0x510",  "from": "initGraphics",
+            "to": "endp" },
+        { "seg": "startCode1", "begin": "0x511",  "end": "0x543",  "from": "cleanup",
+            "to": "endp" },
+        { "seg": "startCode1", "begin": "0x54a",  "end": "0x560",  "from": "clearKeybuf",
+            "to": "endp" },
     ],
-    // list of procs that should be copied into the output assembly from the input, if this list is empty, then all procs will be preserved (copied).
-    // Otherwise (list not empty), procs not in this list will just have a single "retn" instruction inside, so that they are marked as needing porting because the comparison tool will trip on them. Use this to mark routines which cannot or are not expected to be ported for some reason
+    // list of procs that should be copied into the output assembly from the input, if this list is empty, 
+    // then all procs will be preserved (copied).
+    // Otherwise (list not empty), procs not in this list will just have a single "retn" instruction inside, 
+    // so that they are marked as needing porting because the comparison tool will trip on them. 
+    // Use this to mark routines which cannot or are not expected to be ported for some reason.
     "preserves" : [
-        "installCBreakHandler", "setupOverlaySlots", "setTimerIrqHandler", "timerIrqHandler", "loadOverlay", "restoreTimerIrqHandler", "copyJoystickData", "restoreCbreakHandler"
+        "installCBreakHandler", "setupOverlaySlots", "setTimerIrqHandler", "timerIrqHandler", "loadOverlay", 
+        "restoreTimerIrqHandler", "copyJoystickData", "restoreCbreakHandler"
     ],
     // list of symbols to declare as external in the output assembly (because they were already ported to C code)
-    "externs": [ "main", "waitMdaCgaStatus", "openFileWrapper", "closeFileWrapper", "cleanup", "choosePilotPrompt", "pilotToGameData", "clearBriefing", "seedRandom", "gameDataToPilot", "saveHallfame", "processStoreInput", 
-    "pilotNameInput" ],
+    "externs": [ "main", "waitMdaCgaStatus", "openFileWrapper", "closeFileWrapper", "cleanup", 
+        "choosePilotPrompt", "pilotToGameData", "clearBriefing", "seedRandom", "gameDataToPilot", "saveHallfame"
+    ],
     // list of symbols to declare as public in the output assembly, so that they are visible from C code
     "publics": [ 
-       "byte_17412", "byte_17422", "word_173DE", "asc_174AC", "byte_1741A", "asc_174AF", "ranks", "pilotNameInputColors", "aMenterYourName", 
-        "copyJoystickData", "installCBreakHandler", "loadOverlay", "restoreCbreakHandler", "setTimerIrqHandler", "setupOverlaySlots", "getTimeOfDay", "cbreakHit", "movedata", "word_17282", "sub_16A7F", "a_3dg", "aOpenErrorOn__0", "aRb_0", "word_18188", "gridBuf1", 
+       "byte_17412", "byte_17422", "word_173DE", "asc_174AC", "byte_1741A", "asc_174AF", "ranks", "pilotNameInputColors",
+        "aMenterYourName", "copyJoystickData", "installCBreakHandler", "loadOverlay", "restoreCbreakHandler", 
+        "setTimerIrqHandler"
     ],
     // stuff to write at the beginning of the C header file generated by lst2ch
     "header_preamble": [
@@ -245,7 +260,7 @@ This Python script will parse an IDA-generated listing `.LST` file and generate 
 }
 ```
 
-This is pretty obscure at first glance, but not all features need to be used for it to be useful.
+This is pretty obscure at first glance, but not all features need to be utilized for it to be useful.
 
 ## lst2asm.py
 

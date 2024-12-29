@@ -76,6 +76,7 @@ target_include_directories(runtest PUBLIC include ${gtest_SOURCE_DIR}/include ${
 target_link_libraries(runtest PUBLIC gtest gmock libdos)
 # run tests automatically as part of the build
 add_custom_target(run_unit_test ALL COMMAND ./runtest DEPENDS runtest)
+add_custom_target(debug_test COMMAND ./runtest --debug DEPENDS runtest)
 
 # utility executables
 add_executable(mzmap src/mzmap.cpp)

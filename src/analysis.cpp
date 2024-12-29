@@ -15,6 +15,8 @@
 
 using namespace std;
 
+#define DEBUG 1
+
 OUTPUT_CONF(LOG_ANALYSIS)
 
 void searchMessage(const Address &addr, const string &msg) {
@@ -24,6 +26,18 @@ void searchMessage(const Address &addr, const string &msg) {
 string Destination::toString() const {
     ostringstream str;
     str << "[" << address.toString() << " / " << routineId << " / " << (isCall ? "call" : "jump") << "]";
+    return str.str();
+}
+
+string Branch::toString() const {
+    ostringstream str;
+    str << source.toString() << " -> " << destination.toString() << " [";
+    if (isCall) str << "call";
+    else str << "jump";
+    if (isConditional) str << ",cond";
+    else str << ",nocond";
+    if (isNear) str << ",near]";
+    else str << ",far]";
     return str.str();
 }
 
@@ -55,6 +69,19 @@ void ScanQueue::setRoutineId(Offset off, const Size length, RoutineId id) {
     off -= origin.toLinear();
     assert(off < visited.size());
     fill(visited.begin() + off, visited.begin() + off + length, id);
+}
+
+void ScanQueue::clearRoutineId(Offset off) {
+    assert(off >= origin.toLinear());
+    off -= origin.toLinear();
+    assert(off < visited.size());
+    auto it = visited.begin() + off;
+    const auto clearId = *it;
+    if (clearId == NULL_ROUTINE) return;
+    while (it != visited.end() && *it == clearId) {
+        *it = NULL_ROUTINE;
+        ++it;
+    }
 }
 
 Destination ScanQueue::nextPoint() {
@@ -138,11 +165,11 @@ bool ScanQueue::saveCall(const Address &dest, const RegisterState &regs, const b
     else { // not a known entrypoint and not yet in queue
         destId = getRoutineId(dest.toLinear());
         RoutineId newRoutineId = routineCount() + 1;
-        if (destId == NULL_ROUTINE)
-            debug("Call destination not belonging to any routine, claiming as entrypoint for new routine, id " + to_string(newRoutineId));
-        else 
-            debug("Call destination belonging to routine " + to_string(destId) + ", reclaiming as entrypoint for new routine, id " + to_string(newRoutineId));
         queue.emplace_back(Destination(dest, newRoutineId, true, regs));
+        if (destId == NULL_ROUTINE)
+            debug("Call destination not belonging to any routine, claiming as entrypoint for new routine, id " + to_string(newRoutineId) + ", queue size = " + to_string(size()));
+        else 
+            debug("Call destination belonging to routine " + to_string(destId) + ", reclaiming as entrypoint for new routine, id " + to_string(newRoutineId) + ", queue size = " + to_string(size()));
         RoutineEntrypoint ep{dest, newRoutineId, near};
         if (!name.empty()) ep.name = name;
         entrypoints.push_back(ep);
@@ -159,8 +186,8 @@ bool ScanQueue::saveJump(const Address &dest, const RegisterState &regs) {
     else if (hasPoint(dest, false))
         debug("Queue already contains jump to address "s + dest.toString());
     else { // not claimed by any routine and not yet in queue
-        debug("Jump destination not yet visited, scheduled visit from routine " + to_string(curSearch.routineId) + ", queue size = " + to_string(size()));
         queue.emplace_front(Destination(dest, curSearch.routineId, false, regs));
+        debug("Jump destination not yet visited, scheduled visit from routine " + to_string(curSearch.routineId) + ", queue size = " + to_string(size()));
         return true;
     }
     return false;
@@ -179,7 +206,7 @@ bool ScanQueue::saveBranch(const Branch &branch, const RegisterState &regs, cons
         return ret;
     }
     else {
-        searchMessage(branch.source, "branch destination outside code boundaries: "s + branch.destination.toString());
+        searchMessage(branch.source, "Branch destination outside code boundaries: "s + branch.destination.toString());
     }
     return false; 
 }
@@ -193,7 +220,7 @@ void ScanQueue::dumpVisited(const string &path) const {
     mapFile << endl;
     const Offset start = origin.toLinear();
     const Size size = visited.size();
-    info("Dumping visited map of size "s + hexVal(size) + " starting at " + hexVal(start) + " to " + path);
+    info("DEBUG: Dumping visited map of size "s + hexVal(size) + " starting at " + hexVal(start) + " to " + path);
     for (Offset mapOffset = start; mapOffset < start + size; ++mapOffset) {
         const auto id = getRoutineId(mapOffset);
         //debug(hexVal(mapOffset) + ": " + to_string(m));
@@ -202,7 +229,11 @@ void ScanQueue::dumpVisited(const string &path) const {
             if (printOffset != 0) mapFile << endl;
             mapFile << hex << setw(5) << setfill('0') << printOffset << " ";
         }
-        mapFile << dec << setw(5) << setfill(' ') << id << " ";
+        switch (id) {
+        // case BAD_ROUTINE: mapFile << " !!! "; break;
+        // case NULL_ROUTINE: mapFile << "     "; break;
+        default: mapFile << dec << setw(5) << setfill(' ') << id << " "; break;
+        }
     }
 }
 
@@ -409,21 +440,26 @@ static void applyMov(const Instruction &i, RegisterState &regs, Executable &exe)
         auto &code = exe.getCode();
         Address srcAddr(regs.getValue(segReg), i.op2.immval.u16);
         if (exe.contains(srcAddr)) {
+            Byte byteVal;
+            Word wordVal;
             switch(i.op2.size) {
             case OPRSZ_BYTE:
-                searchMessage(i.addr, "source address for byte: " + srcAddr.toString());
-                regs.setValue(dest, code.readByte(srcAddr)); 
+                byteVal = code.readByte(srcAddr);
+                searchMessage(i.addr, "source address for byte: " + srcAddr.toString() + ", value in memory: " + hexVal(byteVal));
+                regs.setValue(dest, byteVal); 
                 set = true;
                 break;
             case OPRSZ_WORD:
-                searchMessage(i.addr, "source address for word: " + srcAddr.toString());
-                regs.setValue(dest, code.readWord(srcAddr));
+                wordVal = code.readWord(srcAddr);
+                searchMessage(i.addr, "source address for word: " + srcAddr.toString() + ", value in memory: " + hexVal(wordVal));
+                regs.setValue(dest, wordVal);
                 set = true;
                 break;
             }
         }
         else searchMessage(i.addr, "mov source address outside code extents: "s + srcAddr.toString());
     }
+    // TODO: support mov mem, reg? would need to keep stack of memories per queue item... maybe just a delta list to keep storage down?
     if (set) {
         searchMessage(i.addr, "executed move to register: "s + i.toString());
         if (i.op1.type == OPR_REG_DS) exe.storeSegment(Segment::SEG_DATA, regs.getValue(REG_DS));
@@ -468,70 +504,112 @@ RoutineMap Analyzer::findRoutines(Executable &exe) {
     // queue for BFS search
     scanQueue = ScanQueue{exe.loadAddr(), exe.size(), Destination(exe.entrypoint(), 1, true, initRegs)};
     info("Analyzing code within extents: "s + exe.extents());
+    Size locations = 0;
  
     // iterate over entries in the search queue
     while (!scanQueue.empty()) {
         // get a location from the queue and jump to it
         const Destination search = scanQueue.nextPoint();
+        locations++;
         Address csip = search.address;
-        searchMessage(csip, "--- starting search at new location for routine " + to_string(search.routineId) + ", call: "s + to_string(search.isCall) + ", queue = " + to_string(scanQueue.size()));
+        searchMessage(csip, "--- Scanning at new location from routine " + to_string(search.routineId) + ", call: "s + to_string(search.isCall) + ", queue = " + to_string(scanQueue.size()));
         RegisterState regs = search.regs;
         regs.setValue(REG_CS, csip.segment);
         exe.storeSegment(Segment::SEG_CODE, csip.segment);
-        // iterate over instructions at current search location in a linear fashion, until an unconditional jump or return is encountered
-        while (true) {
-            if (!exe.contains(csip))
-                throw AnalysisError("Advanced past loaded code extents: "s + csip.toString());
-            // check if this location was visited before
-            const auto rid = scanQueue.getRoutineId(csip.toLinear());
-            if (rid != NULL_ROUTINE) {
+        try {
+            // iterate over instructions at current search location in a linear fashion, until an unconditional jump or return is encountered
+            while (true) {
+                if (!exe.contains(csip))
+                    throw AnalysisError("Advanced past loaded code extents: "s + csip.toString());
+                // check if this location was visited before
+                const auto rid = scanQueue.getRoutineId(csip.toLinear());
+                if (rid == BAD_ROUTINE) {
+                    searchMessage(csip, "Location previously marked as bad, ignoring");
+                    break;
+                }
                 // make sure we do not steamroll over previously explored instructions from a wild jump (a call has precedence)
-                if (!search.isCall) {
-                    searchMessage(csip, "location already claimed by routine "s + to_string(rid) + " and search point did not originate from a call, halting scan");
+                if (rid != NULL_ROUTINE && !search.isCall) {
+                    searchMessage(csip, "Location already claimed by routine "s + to_string(rid) + " and search point did not originate from a call, halting scan");
                     break;
                 }
-            }
-            const auto isEntry = scanQueue.isEntrypoint(csip);
-            // similarly, protect yet univisited locations which are however recognized as routine entrypoints, unless visiting from a matching routine id
-            if (isEntry != NULL_ROUTINE && isEntry != search.routineId) {
-                searchMessage(csip, "location marked as entrypoint for routine "s + to_string(isEntry) + " while scanning from " + to_string(search.routineId) + ", halting scan");
-                break;
-            }
-            Instruction i(csip, exe.codePointer(csip));
-            regs.setValue(REG_IP, csip.offset);
-            // mark memory map items corresponding to the current instruction as belonging to the current routine
-            scanQueue.setRoutineId(csip.toLinear(), i.length);
-            // interpret the instruction
-            if (i.isBranch()) {
-                const Branch branch = getBranch(exe, i, regs);
-                // if the destination of the branch can be established, place it in the search queue
-                scanQueue.saveBranch(branch, regs, exe.extents());
-                // even if the branch destination is not known, we cannot keep scanning here if it was unconditional
-                if (branch.isUnconditional) {
-                    searchMessage(csip, "routine scan interrupted by unconditional branch");
+                const auto atEntrypoint = scanQueue.isEntrypoint(csip);
+                // similarly, protect yet univisited locations which are however recognized as routine entrypoints, unless visiting from a matching routine id
+                if (atEntrypoint != NULL_ROUTINE && atEntrypoint != search.routineId) {
+                    searchMessage(csip, "Location marked as entrypoint for routine "s + to_string(atEntrypoint) + " while scanning from " + to_string(search.routineId) + ", halting scan");
                     break;
                 }
-            }
-            else if (i.isReturn()) {
-                // TODO: check if return matches entrypoint type (near/far), warn otherwise
-                searchMessage(csip, "routine scan interrupted by return");
-                break;
-            }
-            else if (i.iclass == INS_MOV) {
-                applyMov(i, regs, exe);
-            }
-            else {
-                for (Register r : i.touchedRegs()) {
-                    regs.setUnknown(r);
+                Instruction i(csip, exe.codePointer(csip));
+                regs.setValue(REG_IP, csip.offset);
+                // mark memory map items corresponding to the current instruction as belonging to the current routine 
+                // (routine id is tracked by the queue, no need to provide)
+                scanQueue.setRoutineId(csip.toLinear(), i.length);
+                // interpret the instruction
+                if (i.isBranch()) {
+                    Branch branch = getBranch(exe, i, regs);
+                    debug("Encountered branch: " + branch.toString());
+                    // if the destination of the branch can be established, place it in the search queue
+                    scanQueue.saveBranch(branch, regs, exe.extents());
+                    // for a call or conditional branch, we can continue scanning, but do it under a new search queue location 
+                    // to have finer granularity in case we run into data in the middle of code and have to rollback the whole block as bad
+                    if (branch.isCall || branch.isConditional) {
+                        branch.destination = csip + static_cast<Offset>(i.length);
+                        const Offset destOffset = branch.destination.toLinear();
+                        const RoutineId destId = scanQueue.getRoutineId(destOffset);
+                        if (destId != search.routineId) {
+                            branch.isCall = false;
+                            branch.isNear = true;
+                            branch.isConditional = false;
+                            debug("Saving fall-through branch: " + branch.toString() + " over id " + to_string(destId));
+                            // make the destination of this fake "branch" undiscovered in the queue, wipe any claiming routine id run
+                            scanQueue.clearRoutineId(destOffset);
+                            scanQueue.saveBranch(branch, regs, exe.extents());
+                        }
+                        break;
+                    }
+                    // if the branch is an unconditional jump, we cannot keep scanning here, regardless of the destination resolution
+                    else {
+                        searchMessage(csip, "routine scan interrupted by unconditional branch");
+                        break;
+                    }
                 }
-            }
-            // advance to next instruction
-            csip += i.length;
-        } // next instructions
-    } // next address from search queue
-    info("Done analyzing code");
+                else if (i.isReturn()) {
+                    // TODO: check if return matches entrypoint type (near/far), warn otherwise
+                    searchMessage(csip, "routine scan interrupted by return");
+                    break;
+                }
+                else if (i.iclass == INS_MOV) {
+                    applyMov(i, regs, exe);
+                }
+                // interrupts which don't return
+                else if ((i.isInt(0x21) && regs.getValue(REG_AH) == 0x4c) // 21.4c: exit with code
+                        || (i.isInt(0x21) && regs.getValue(REG_AH) == 0x31) // 21.31: dos 2+ tsr
+                        || (i.isInt(0x21) && regs.getValue(REG_AH) == 0x0) // 21.0: terminate
+                        || (i.isInt(0x27) && regs.getValue(REG_DX) == 0xfff0) // 27,dx=fff0: dos 1+ tsr
+                        || (i.isInt(0x20))) { // 20: terminate
+                    searchMessage(csip, "routine scan interrupted by non-returning interrupt");
+                    break;
+                }
+                else {
+                    for (Register r : i.touchedRegs()) {
+                        regs.setUnknown(r);
+                    }
+                }
+                // advance to next instruction
+                csip += i.length;
+            } // next instruction at current search location
+        } // try block
+        catch (Error &e) {
+            debug("Routine discovery encountered exception at " + csip.toString() + ": " + e.why());
+            const Address start = search.address;
+            assert(start <= csip);
+            const Size rollbackSize = csip.toLinear() - start.toLinear() + 1;
+            debug("Search started at " + start.toString() + ", rolling back " + sizeStr(rollbackSize) + " bytes, marking bad");
+            scanQueue.setRoutineId(start.toLinear(), rollbackSize, BAD_ROUTINE);
+        }
+    } // next search location from search queue
+    info("Done analyzing code, examined " + to_string(locations) + " locations");
 #ifdef DEBUG
-    scanQueue.dumpVisited("routines.visited", SEG_TO_OFFSET(loadSegment), codeSize);
+    scanQueue.dumpVisited("routines.visited");
 #endif
 
     // create routine map from contents of search queue
@@ -957,28 +1035,28 @@ bool Analyzer::comparisonLoop(const Executable &ref, Executable &tgt, const Rout
 }
 
 Branch Analyzer::getBranch(const Executable &exe, const Instruction &i, const RegisterState &regs) const {
+    const Address addr = i.addr;
     Branch branch;
-    branch.isCall = false;
-    branch.isUnconditional = false;
-    branch.isNear = true;
-    const Address &addr = i.addr;
+    branch.source = addr;
     switch (i.iclass) {
     // conditional jump
     case INS_JMP_IF:
+        branch.isCall = false;
+        branch.isConditional = true;
         branch.destination = i.destinationAddress();
         searchMessage(addr, "encountered conditional near jump to "s + branch.destination.toString());
         break;
     // unconditional jumps
     case INS_JMP:
+        branch.isCall = false;
+        branch.isConditional = false;
         switch (i.opcode) {
         case OP_JMP_Jb: 
         case OP_JMP_Jv: 
             branch.destination = i.destinationAddress();
-            branch.isUnconditional = true;
             searchMessage(addr, "encountered unconditional near jump to "s + branch.destination.toString());
             break;
         case OP_GRP5_Ev:
-            branch.isUnconditional = true;
             searchMessage(addr, "unknown near jump target: "s + i.toString());
             debug(regs.toString());
             break; 
@@ -987,9 +1065,10 @@ Branch Analyzer::getBranch(const Executable &exe, const Instruction &i, const Re
         }
         break;
     case INS_JMP_FAR:
+        branch.isCall = false;
+        branch.isConditional = false;
         if (i.op1.type == OPR_IMM32) {
             branch.destination = Address{i.op1.immval.u32}; 
-            branch.isUnconditional = true;
             branch.isNear = false;
             searchMessage(addr, "encountered unconditional far jump to "s + branch.destination.toString());
         }
@@ -1002,19 +1081,21 @@ Branch Analyzer::getBranch(const Executable &exe, const Instruction &i, const Re
     case INS_LOOP:
     case INS_LOOPNZ:
     case INS_LOOPZ:
+        branch.isCall = false;
+        branch.isConditional = true;
         branch.destination = i.destinationAddress();
         searchMessage(addr, "encountered loop to "s + branch.destination.toString());
         break;
     // calls
     case INS_CALL:
+        branch.isCall = true;
+        branch.isConditional = false;
         if (i.op1.type == OPR_IMM16) {
             branch.destination = i.destinationAddress();
-            branch.isCall = true;
             searchMessage(addr, "encountered near call to "s + branch.destination.toString());
         }
         else if (operandIsReg(i.op1.type) && regs.isKnown(i.op1.regId())) {
             branch.destination = {i.addr.segment, regs.getValue(i.op1.regId())};
-            branch.isCall = true;
             searchMessage(addr, "encountered near call through register to "s + branch.destination.toString());
         }
         else if (operandIsMemImmediate(i.op1.type) && regs.isKnown(REG_DS)) {
@@ -1022,7 +1103,6 @@ Branch Analyzer::getBranch(const Executable &exe, const Instruction &i, const Re
             Address memAddr{regs.getValue(REG_DS), i.op1.immval.u16};
             if (exe.contains(memAddr)) {
                 branch.destination = Address{i.addr.segment, exe.getCode().readWord(memAddr)};
-                branch.isCall = true;
                 searchMessage(addr, "encountered near call through mem pointer to "s + branch.destination.toString());
             }
             else debug("mem pointer of call destination outside code extents: " + memAddr.toString());
@@ -1033,10 +1113,11 @@ Branch Analyzer::getBranch(const Executable &exe, const Instruction &i, const Re
         } 
         break;
     case INS_CALL_FAR:
+        branch.isCall = true;
+        branch.isConditional = false;
+        branch.isNear = false;
         if (i.op1.type == OPR_IMM32) {
             branch.destination = Address(DWORD_SEGMENT(i.op1.immval.u32), DWORD_OFFSET(i.op1.immval.u32));
-            branch.isCall = true;
-            branch.isNear = false;
             searchMessage(addr, "encountered far call to "s + branch.destination.toString());
         }
         else {
