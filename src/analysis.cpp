@@ -626,7 +626,7 @@ void Analyzer::checkMissedRoutines(const RoutineMap &refMap) {
         debug("No missed routines detected");
         return;
     }
-    debug("Adding " + to_string(missedCount) + " missed routines to queue");
+    verbose("Adding " + to_string(missedCount) + " missed routines to queue");
     // go over missed routines, manually insert entrypoints into comparison location queue
     for (const auto &rn : missedNames) {
         const Routine mr = refMap.getRoutine(rn);
@@ -1162,27 +1162,33 @@ Analyzer::ComparisonResult Analyzer::instructionsMatch(const Executable &ref, co
     bool match = false;
     // instructions differ in value of immediate or memory offset
     if (insResult == INS_MATCH_DIFF || insResult == INS_MATCH_DIFFOP1 || insResult == INS_MATCH_DIFFOP2) {
-        if (refInstr.isBranch()) {
+        if (refInstr.isBranch()) { // call or jump (conditional/unconditional)
             const Branch 
                 refBranch = getBranch(ref, refInstr, {}), 
-                tgtObranch = getBranch(tgt, tgtInstr, {});
-            if (refBranch.destination.isValid() && tgtObranch.destination.isValid()) {
-                match = offMap.codeMatch(refBranch.destination, tgtObranch.destination);
-                if (!match) debug("Instruction mismatch on branch destination");
+                tgtBranch = getBranch(tgt, tgtInstr, {});
+            if (refBranch.destination.isValid() && tgtBranch.destination.isValid()) {
+                match = offMap.codeMatch(refBranch.destination, tgtBranch.destination);
+                if (!match) {
+                    debug("Instruction mismatch on branch destination");
+                    return CMP_MISMATCH;
+                }
+                // TODO: perfect match... too perfect, mark as suspicious?
+                if (refBranch.destination == tgtBranch.destination) return CMP_MATCH;
+                // special case of jmp vs jmp short - allow only if variants enabled
+                if (refInstr.opcode != tgtInstr.opcode && (refInstr.isUnconditionalJump() || tgtInstr.isUnconditionalJump())) {
+                    if (options.variant) {
+                        verbose(output_color(OUT_YELLOW) + compareStatus(refInstr, tgtInstr, true, INS_MATCH_DIFF) + output_color(OUT_DEFAULT));
+                        tgtCsip += tgtInstr.length;
+                        return CMP_VARIANT;
+                    }
+                    else return CMP_MISMATCH;
+                }
                 // near jumps are usually used within a routine to handle looping and conditions,
                 // so a different value (relative jump amount) might mean a wrong flow
                 // -- mark with a different result value to be highlighted
-                else if (refInstr.isNearJump()) return CMP_DIFFTGT;
+                if (refInstr.isNearJump()) return CMP_DIFFTGT;
             }
-            // special case of jmp vs jmp short - allow only if variants enabled
-            if (match && refInstr.opcode != tgtInstr.opcode && (refInstr.isUnconditionalJump() || tgtInstr.isUnconditionalJump())) {
-                if (options.variant) {
-                    verbose(output_color(OUT_YELLOW) + compareStatus(refInstr, tgtInstr, true, INS_MATCH_DIFF) + output_color(OUT_DEFAULT));
-                    tgtCsip += tgtInstr.length;
-                    return CMP_VARIANT;
-                }
-                else return CMP_MISMATCH;
-            }
+            // proceed with regular operand comparison
         }
         // iterate over operands, either one or both could be different, so check if the difference is acceptable
         for (int opidx = 1; opidx <= 2; ++opidx) {
