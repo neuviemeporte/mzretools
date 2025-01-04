@@ -6,7 +6,7 @@ class Regex:
     NAME = '[_a-zA-Z0-9]+'
     DATA = 'db|dw|dd'
     NUMVAL = '[x0-9a-fA-F]+h?'
-    CTYPE = 'char|int|void|__int32'
+    CTYPE = '(?:unsigned )?(?:char|int|void|__int32)'
     SPACES = r'\s+'
     SPACEOPT = r'\s*'
     ALIGN = re.compile('^align ([0-9]+)')

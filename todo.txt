@@ -1,3 +1,4 @@
 - add segments to routine map constructor, trace current segment, place unclaimed blocks in current rather than load segment
 - OMF parser, extract segments, function signatures etc
 - add load() call to mzimage constructor, will probably break tests
+- after making compare blocks more granular, probably stack offsets mapping within routine is lost when jumping to new queue item? need to preserve those

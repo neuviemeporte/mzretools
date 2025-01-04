@@ -479,10 +479,14 @@ TEST_F(CpuTest, InstructionMatch) {
     const Byte code[] = {
         0xEB, 0x0B, // jmp short 0xb
         0x75, 0x0B, // jnz 0x387
+        0x80, 0x7e, 0xf6, 0x00, // cmp byte [bp-0xa], 0
+        0x83, 0x7e, 0xf6, 0x00, // cmp word [bp-0x2], 0
     };
-    Instruction i1{a, code}, i2{a, code+i1.length};
+    Instruction i1{a, code}, i2{a, code + 2},
+        i3{a, code + 4}, i4{a, code + 8};
     ASSERT_EQ(i1.match(i2), INS_MATCH_MISMATCH);
     ASSERT_EQ(i2.match(i1), INS_MATCH_MISMATCH);
+    ASSERT_EQ(i3.match(i4), INS_MATCH_MISMATCH);
 }
 
 TEST_F(CpuTest, BranchOffset) {

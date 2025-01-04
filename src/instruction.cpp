@@ -535,8 +535,12 @@ std::string Instruction::Operand::toString() const {
 }
 
 InstructionMatch Instruction::Operand::match(const Operand &other) const {
-    if (type != other.type || size != other.size) {
-        // accept differing operand types if they are different-sized equivalents
+    if (size != other.size) return INS_MATCH_MISMATCH;
+    if (type != other.type) {
+        // Accept differing operand types if they are different-sized equivalents.
+        // In other words, if the compared operands have an offset or an immediate value that are identical in value,
+        // but differ in the type (word/byte), ignore the difference. This does not extend to different sizes
+        // of the subject memory object, which is handled as a mismatch above.
         if (operandTypeToWord(type) == operandTypeToWord(other.type)) {
             // compare offset/immediate values
             if (wordValue() == other.wordValue()) return INS_MATCH_FULL;
