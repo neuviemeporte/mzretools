@@ -9,7 +9,9 @@ using namespace std;
 
 void usage() {
     cout << "mzhdr v" << VERSION << endl
-         << "Usage: mzhdr <mzfile> [-l]" << endl;
+         << "Usage: mzhdr <mzfile> [-l|-s]" << endl
+         << "-l     just print offset of load module" << endl
+         << "-s     just print size of load module" << endl;
     exit(0);
 }
 
@@ -23,6 +25,9 @@ int main(int argc, char* argv[]) {
             string opt{argv[2]};
             if (opt == "-l") {
                 cout << "0x" << hex << mz.headerLength() << endl;
+            }
+            else if (opt == "-s") {
+                cout << "0x" << hex << mz.loadModuleSize() << endl;
             }
             else throw ArgError("Unrecognized option: "s + opt);
         }
