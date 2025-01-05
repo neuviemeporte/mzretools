@@ -158,7 +158,7 @@ void MzImage::load(const Word loadSegment) {
         throw IoError("Unable to open MZ file: " + path_);
     if (!mzFile.seekg(loadModuleOffset_))
         throw IoError("Unable to seek to load module at offset " + hexVal(loadModuleOffset_));
-    loadModuleData_.reserve(loadModuleSize_);
+    loadModuleData_ = vector<Byte>(loadModuleSize_, 0);
     loadSegment_ = loadSegment;
     if (!mzFile.read(reinterpret_cast<char*>(loadModuleData_.data()), loadModuleSize_))
         throw IoError("Error while reading load module data from "s + path_);
@@ -174,4 +174,9 @@ void MzImage::load(const Word loadSegment) {
         loadModuleData_[off] = lowByte(patchedVal);
         loadModuleData_[off + 1] = hiByte(patchedVal);
     }
+}
+
+void MzImage::writeLoadModule(const std::string &path) const {
+    ofstream file{path, ios::binary};
+    file.write(reinterpret_cast<const char*>(loadModuleData()), loadModuleSize());
 }

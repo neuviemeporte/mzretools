@@ -71,6 +71,7 @@ public:
     Address entrypoint() const { return Address(header_.cs, header_.ip); }
     Address stackPointer() const { return Address(header_.ss, header_.sp); }
     void load(const Word loadSegment);
+    void writeLoadModule(const std::string &path) const;
 };
 
 #endif // MZ_H

@@ -59,6 +59,8 @@ ninja@dell:debug$ ./mzhdr bin/hello.exe
 --- load module @ 0x200, size = 0x1a43 / 6723 bytes
 ```
 
+Also has some additional switches that make it useful in scripts, like print just the load module offset/size (`-l`, `-s`). With `-p`, it can patch an executable's relocations as if loaded at a provided segment and write the result to a file. This is useful for comparing with a memory dump obtained at runtime to detect corruption and/or other problems, see also `exeimgdump.sh`.
+
 ## mzmap
 
 Scans and interprets instructions in the executable, traces jump/call destinations and return instructions in order to try and determine the boundaries of subroutines. It can do limited register value tracing to figure out register-dependent calls and jumps. Reachable blocks are either attributed to a subroutine's main body, or it can be marked as a disconnected chunk. The map is saved to a file in a text format.
