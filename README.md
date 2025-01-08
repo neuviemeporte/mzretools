@@ -6,6 +6,8 @@ In general, these tools were written to be used in tandem with IDA, but could al
 
 ![process diagram](diagrams/process-stable.svg)
 
+A detailed write-up in the form of a blog post of how I use these in my own project can be found [here](https://neuviemeporte.github.io/f15-se2/2024/05/25/sausage.html).
+
 The project contains a unit test suite written with GTest that runs by default on every build. The build system is CMake.
 
 Patches and improvement suggestions are welcome. I hope this can be of use to somebody.

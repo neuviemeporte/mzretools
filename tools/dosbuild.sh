@@ -125,7 +125,7 @@ until [ -z "$1" ]; do
         ;;
     *)
         case $argtype in
-            i) [ -f "$arg" ] || syntax "Input file $arg does not exist" 
+            i) [ -f "$arg" ] || syntax "Input file does not exist: $arg" 
                [ "$infiles" ] && infiles+=" "
                infiles+="$arg"
                ;;
