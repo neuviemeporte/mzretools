@@ -103,6 +103,7 @@ string Routine::toString(const bool showChunks) const {
     if (detached) str << " [detached]";
     if (external) str << " [external]";
     if (assembly) str << " [assembly]";
+    if (duplicate) str << " [duplicate]";
     if (!showChunks || isUnchunked()) return str.str();
 
     auto blocks = sortedBlocks();
@@ -250,6 +251,11 @@ Routine& RoutineMap::getMutableRoutine(const std::string &name) {
     return routines.emplace_back(Routine(name, {}));
 }
 
+void RoutineMap::setRoutine(const Size idx, const Routine &r) {
+    if (idx > routines.size()) throw ArgError("Routine index out of range: " + to_string(idx));
+    routines[idx] = r;
+}
+
 Routine RoutineMap::findByEntrypoint(const Address &ep) const {
     for (const Routine &r : routines)
         if (r.entrypoint() == ep) return r;
@@ -392,6 +398,7 @@ std::string RoutineMap::routineString(const Routine &r, const Word reloc) const 
     if (r.external) str << " external";
     if (r.detached) str << " detached";
     if (r.assembly) str << " assembly";
+    if (r.duplicate) str << " duplicate";
     return str.str();
 }
 
@@ -676,6 +683,7 @@ void RoutineMap::loadFromMapFile(const std::string &path, const Word reloc) {
                 else if (token == "external") { r.ignore = true; r.external = true; }
                 else if (token == "detached") { r.ignore = true; r.detached = true; }
                 else if (token == "assembly") { r.assembly = true; }
+                else if (token == "duplicate") { r.duplicate = true; }
                 else throw ParseError("Line " + to_string(lineno) + ": invalid token: '" + token + "'");
                 token = token.substr(1, token.size() - 1);
                 break;

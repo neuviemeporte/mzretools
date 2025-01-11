@@ -63,7 +63,8 @@ int main(int argc, char *argv[]) {
         Executable ref{refMz}, tgt{tgtMz};
         RoutineMap refMap{refMapPath, loadSegment}, tgtMap{tgtMapPath, loadSegment};
         Analyzer a{options};
-        a.findDuplicates(ref, tgt, refMap, tgtMap);
+        // search for duplicates, write updated target map if any found
+        if (a.findDuplicates(ref, tgt, refMap, tgtMap)) tgtMap.save(tgtMapPath + ".dup", loadSegment, true);
     }
     catch (Error &e) {
         fatal(e.why());

@@ -168,12 +168,13 @@ private:
     std::set<std::string> routineNames, excludedNames, missedNames;
     Size refSkipCount, tgtSkipCount;
     Address refSkipOrigin, tgtSkipOrigin;
+
 public:
     Analyzer(const Options &options, const Size maxData = 0) : options(options), offMap(maxData), comparedSize(0) {}
-
     RoutineMap findRoutines(Executable &exe);
     bool compareCode(const Executable &ref, Executable &tgt, const RoutineMap &refMap);
-    void findDuplicates(const Executable &ref, Executable &tgt, const RoutineMap &refMap, const RoutineMap &tgtMap);
+    bool findDuplicates(const Executable &ref, Executable &tgt, const RoutineMap &refMap, RoutineMap &tgtMap);
+
 private:
     bool skipAllowed(const Instruction &refInstr, Instruction tgtInstr);
     bool compareInstructions(const Executable &ref, const Executable &tgt, const Instruction &refInstr, Instruction tgtInstr);

@@ -1407,9 +1407,10 @@ void Analyzer::comparisonSummary(const Executable &ref, const RoutineMap &routin
     verbose(msg.str());
 }
 
-void Analyzer::findDuplicates(const Executable &ref, Executable &tgt, const RoutineMap &refMap, const RoutineMap &tgtMap) {
+bool Analyzer::findDuplicates(const Executable &ref, Executable &tgt, const RoutineMap &refMap, RoutineMap &tgtMap) {
     if (refMap.empty() || tgtMap.empty()) throw ArgError("Empty routine map provided for duplicate search");
-    info("Searching for duplicates of " + to_string(refMap.routineCount()) + " routines among " + to_string(tgtMap.routineCount()) + " candidates");
+    info("Searching for duplicates of " + to_string(refMap.routineCount()) + " routines among " + to_string(tgtMap.routineCount()) + " candidates, minimum instructions: " + to_string(options.routineSizeThresh) + ", maximum distance: " + to_string(options.routineDistanceThresh));
+    Size dupCount = 0, ignoreCount = 0;
     // iterate over routines to find duplicates for
     for (Size refIdx = 0; refIdx < refMap.routineCount(); ++refIdx) {
         const Routine refRoutine = refMap.getRoutine(refIdx);
@@ -1420,13 +1421,15 @@ void Analyzer::findDuplicates(const Executable &ref, Executable &tgt, const Rout
         vector<Signature> refSigs = ref.getSignatures(refBlock);
         const auto refSigCount = refSigs.size();
         if (refSigCount < options.routineSizeThresh) {
-            debug("Ignoring reference routine " + refRoutine.name + ", instruction count below threshold: " + to_string(refSigCount));
+            verbose("Ignoring routine " + refRoutine.name + ", instruction count below threshold: " + to_string(refSigCount));
+            ignoreCount++;
             continue;
         }
-        info("--- Now in reference routine " + refRoutine.name + ", got string of " + to_string(refSigs.size()) + " signatures from " + refBlock.toString());
+        verbose("Searching for duplicates of routine " + refRoutine.name + ", got string of " + to_string(refSigs.size()) + " instructions from " + refBlock.toString());
         // iterate over duplicate candidates from the other executable
+        bool have_dup = false;
         for (Size tgtIdx = 0; tgtIdx < tgtMap.routineCount(); ++tgtIdx) {
-            const Routine tgtRoutine = tgtMap.getRoutine(tgtIdx);
+            Routine tgtRoutine = tgtMap.getRoutine(tgtIdx);
             // TODO: try other reachable blocks?
             const Block tgtBlock = tgtRoutine.mainBlock();
             // extract string of signatures for target routine
@@ -1435,16 +1438,25 @@ void Analyzer::findDuplicates(const Executable &ref, Executable &tgt, const Rout
             const Size sigDelta = refSigCount > tgtSigCount ? refSigCount - tgtSigCount : tgtSigCount - refSigCount;
             // ignore candidate if we know in advance the distance will be too high based on instruction count alone
             if (sigDelta > options.routineDistanceThresh) {
-                debug("Ignoring target routine " + tgtRoutine.name + ", instruction count difference exceeds distance threshold: " + to_string(sigDelta));
+                debug("\tIgnoring target routine " + tgtRoutine.name + ", instruction count difference exceeds distance threshold: " + to_string(sigDelta));
                 continue;
             }
             // calculate edit distance between reference and target signature strings
             const auto distance = edit_distance_dp(refSigs.data(), refSigs.size(), tgtSigs.data(), tgtSigs.size(), options.routineDistanceThresh);
             if (distance > options.routineDistanceThresh) {
-                debug("Ignoring target routine " + tgtRoutine.name + ", distance above threshold: " + to_string(distance));
+                debug("\tIgnoring target routine " + tgtRoutine.name + ", " + to_string(tgtSigCount) + " instructions but distance above threshold");
                 continue;
             }
-            info("Potential duplicate found: " + tgtRoutine.toString(false) + ", distance: " + to_string(distance) + " instructions");
+            have_dup = true;
+            verbose("\tPotential duplicate found: " + tgtRoutine.toString(false) + ", distance: " + to_string(distance) + " instructions");
+            tgtRoutine.name = refRoutine.name;
+            tgtRoutine.duplicate = true;
+            tgtMap.setRoutine(tgtIdx, tgtRoutine);
         }
+        if (have_dup) dupCount++;
+        else verbose("\tUnable to find duplicate");
     }
+    if (dupCount) info(output_color(OUT_GREEN) + "Found " + to_string(dupCount) + " duplicates for " + to_string(refMap.routineCount()) + " routines" + ", ignored " + to_string(ignoreCount) + output_color(OUT_DEFAULT));
+    else info(output_color(OUT_RED) + "No duplicates found, ignored " + to_string(ignoreCount) + " routines" + output_color(OUT_DEFAULT));
+    return dupCount != 0;
 }
