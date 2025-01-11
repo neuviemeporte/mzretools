@@ -1410,6 +1410,8 @@ void Analyzer::comparisonSummary(const Executable &ref, const RoutineMap &routin
 bool Analyzer::findDuplicates(const Executable &ref, Executable &tgt, const RoutineMap &refMap, RoutineMap &tgtMap) {
     if (refMap.empty() || tgtMap.empty()) throw ArgError("Empty routine map provided for duplicate search");
     info("Searching for duplicates of " + to_string(refMap.routineCount()) + " routines among " + to_string(tgtMap.routineCount()) + " candidates, minimum instructions: " + to_string(options.routineSizeThresh) + ", maximum distance: " + to_string(options.routineDistanceThresh));
+    // store smallest distance found for reference routine
+    map<RoutineId, uint32_t> minDistance;
     Size dupCount = 0, ignoreCount = 0;
     // iterate over routines to find duplicates for
     for (Size refIdx = 0; refIdx < refMap.routineCount(); ++refIdx) {
@@ -1425,6 +1427,8 @@ bool Analyzer::findDuplicates(const Executable &ref, Executable &tgt, const Rout
             ignoreCount++;
             continue;
         }
+        // initialize lowest distance found
+        minDistance[refRoutine.id] = numeric_limits<uint32_t>::max();
         verbose("Searching for duplicates of routine " + refRoutine.name + ", got string of " + to_string(refSigs.size()) + " instructions from " + refBlock.toString());
         // iterate over duplicate candidates from the other executable
         bool have_dup = false;
@@ -1449,9 +1453,14 @@ bool Analyzer::findDuplicates(const Executable &ref, Executable &tgt, const Rout
             }
             have_dup = true;
             verbose("\tPotential duplicate found: " + tgtRoutine.toString(false) + ", distance: " + to_string(distance) + " instructions");
-            tgtRoutine.name = refRoutine.name;
-            tgtRoutine.duplicate = true;
-            tgtMap.setRoutine(tgtIdx, tgtRoutine);
+            // update routine in target map
+            if (distance < minDistance[refRoutine.id]) {
+                debug("\tCalculated distance below previous value of " + to_string(minDistance[refRoutine.id]));
+                tgtRoutine.name = refRoutine.name;
+                tgtRoutine.duplicate = true;
+                tgtMap.setRoutine(tgtIdx, tgtRoutine);
+            }
+            else debug("\tIgnoring target routine " + tgtRoutine.name + ", distance above previous value of " + to_string(minDistance[refRoutine.id]));
         }
         if (have_dup) dupCount++;
         else verbose("\tUnable to find duplicate");

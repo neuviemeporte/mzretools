@@ -11,8 +11,9 @@ void usage() {
     output("mzdup v" + VERSION + "\n"
            "usage: mzdup [options] reference_exe reference_map target_exe target_map\n"
            "Attempts to identify potential duplicate routines between two DOS MZ executables\n"
+           "Updated target_map with duplicates marked will be saved to target_map.dup\n"
            "Options:\n"
-           "--verbose:       show more detailed information, including compared instructions\n"
+           "--verbose:       show more detailed information about processed routines\n"
            "--debug:         show additional debug information\n"
            "--minsize count: don't search for duplicates of routines smaller than 'count' instructions (default: 10)\n"
            "--maxdist count: routines differing by no more than 'count' instructions will be reported as duplicates (default: 5)",

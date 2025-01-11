@@ -18,7 +18,7 @@ using namespace std;
 
 OUTPUT_CONF(LOG_OS)
 
-// parse and read exe header and relocation table
+// only parse and read exe header and relocation table
 MzImage::MzImage(const std::string &path) : path_(path), loadSegment_(0) {
     if (path_.empty()) 
         throw ArgError("Empty path for MZ file!");
@@ -92,6 +92,11 @@ MzImage::MzImage(const std::string &path) : path_(path), loadSegment_(0) {
         reloc.value = relocVal;
     }
     debug("Loaded MZ exe header from "s + path_ + ", entrypoint @ " + entrypoint().toString() + ", stack @ " + stackPointer().toString());
+}
+
+// parse header and load image into memory at specified segment
+MzImage::MzImage(const std::string &path, const Word loadSegment) : MzImage(path) {
+    load(loadSegment);
 }
 
 MzImage::MzImage(const std::vector<Byte> &code) : filesize_(0), loadModuleSize_(code.size()), loadModuleOffset_(0), entrypoint_(0, 0), loadSegment_(0) {

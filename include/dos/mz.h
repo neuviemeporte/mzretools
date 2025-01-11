@@ -55,6 +55,7 @@ private:
 
 public:
     MzImage(const std::string &path);
+    MzImage(const std::string &path, const Word loadSegment);
     // useful for testing
     MzImage(const std::vector<Byte> &code); 
     MzImage(const MzImage &other) = delete;
