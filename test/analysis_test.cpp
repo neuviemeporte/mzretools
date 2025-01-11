@@ -524,10 +524,12 @@ TEST_F(AnalysisTest, DiffMemAndImm) {
 
 TEST_F(AnalysisTest, FindDuplicates) {
     const Word loadSegment = 0x1234;
-    const Size expectedRoutines = 39, expectedDuplicates = 33;
+    const Size expectedRoutines = 39, expectedDuplicates = 23;
     MzImage mz{"../bin/hello.exe", loadSegment};
     Executable exe{mz};
     Analyzer::Options opt;
+    opt.routineSizeThresh = 20;
+    opt.routineDistanceThresh = 10;
     Analyzer a{opt};
     RoutineMap rm = a.findRoutines(exe);
     TRACELN("Found routines: " + to_string(rm.routineCount()));
