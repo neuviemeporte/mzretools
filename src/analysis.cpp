@@ -1456,6 +1456,7 @@ bool Analyzer::findDuplicates(const Executable &ref, Executable &tgt, const Rout
             // update routine in target map
             if (distance < minDistance[refRoutine.id]) {
                 debug("\tCalculated distance below previous value of " + to_string(minDistance[refRoutine.id]));
+                minDistance[refRoutine.id] = distance;
                 tgtRoutine.name = refRoutine.name;
                 tgtRoutine.duplicate = true;
                 tgtMap.setRoutine(tgtIdx, tgtRoutine);
