@@ -34,6 +34,7 @@ inline bool linearInSegment(const Offset linear, const Word segment) { return li
 // A segmented address
 struct Address {
     Word segment, offset;
+
     Address(const Word segment, const Word offset) : segment(segment), offset(offset) {}
     Address(const Offset linear);
     Address(const std::string &str, const bool fixNormal = false);
@@ -55,6 +56,8 @@ struct Address {
     Address& operator+=(const SWord adjust) { offset += adjust; return *this; }
     Address& operator+=(const SByte adjust) { offset += adjust; return *this; }
     Address& operator+=(const Byte adjust) { offset += adjust; return *this; }
+    Address& operator++() { offset++; return *this; }
+    Address operator++(int) { Address old = *this; operator++(); return old; }
 
     void set(const Offset linear);
     std::string toString(const bool brief = false) const;
@@ -73,6 +76,7 @@ inline std::string operator+(const std::string &str, const Address &arg) { retur
 // An address range, both ends inclusive
 struct Block {
     Address begin, end;
+
     Block(const Address &begin, const Address &end) : begin(begin), end(end) {}
     Block(const Address &begin) : Block(begin, begin) {}
     Block(const Offset begin, const Offset end) : Block(Address{begin}, Address{end}) {}
@@ -92,7 +96,7 @@ struct Block {
     bool contains(const Address &addr) const { return addr >= begin && addr <= end; }
     bool intersects(const Block &other) const;
     bool adjacent(const Block &other) const;
-
+    bool singleSegment() const { return begin.segment == end.segment; }
     void relocate(const Word reloc) { begin.relocate(reloc); end.relocate(reloc); }
     void rebase(const Word base) { begin.rebase(base); end.rebase(base); }
     void move(const Word seg) { begin.move(seg); end.move(seg); }

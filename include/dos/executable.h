@@ -38,6 +38,7 @@ public:
     const std::vector<Segment>& getSegments() const { return segments; }
     Word getLoadSegment() const { return loadSegment; }
     Address find(const ByteString &pattern, Block where = {}) const;
+    std::vector<Signature> getSignatures(const Block &range) const;
 
 private:
     void init();

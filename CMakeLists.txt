@@ -43,7 +43,8 @@ set(LIBDOS_HDR
     include/dos/psp.h
     include/dos/dos.h
     include/dos/mz.h
-    include/dos/instruction.h)
+    include/dos/instruction.h
+    include/dos/editdistance.h)
 
 # the DOS emulation library
 add_library(libdos STATIC ${LIBDOS_SRC} ${LIBDOS_HDR})
@@ -79,6 +80,9 @@ add_custom_target(run_unit_test ALL COMMAND ./runtest DEPENDS runtest)
 add_custom_target(debug_test COMMAND ./runtest --debug DEPENDS runtest)
 
 # utility executables
+add_executable(mzdup src/mzdup.cpp)
+target_link_libraries(mzdup PUBLIC libdos)
+
 add_executable(mzmap src/mzmap.cpp)
 target_link_libraries(mzmap PUBLIC libdos)
 

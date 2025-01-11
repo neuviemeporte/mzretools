@@ -251,6 +251,11 @@ std::string binString(const Word &value) {
     return bits.to_string();
 }
 
+std::string binString(const DWord &value) {
+    bitset<32> bits{value};
+    return bits.to_string();
+}
+
 inline bool isHexDigit(const char d) {
     return (d >= '0' && d <= '9') || (d >= 'a' && d <= 'f') || (d >= 'A' && d <= 'F');
 }

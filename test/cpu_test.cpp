@@ -445,6 +445,25 @@ TEST_F(CpuTest, Instruction) {
         "268e06????", // mov es, es:[0x2c]
         "a2????", // mov [0xce],al
     };
+    const DWord signatures[] = {
+        //PRF|CLASS  |OP1TYP|OP2TYP|
+        0b000'0000010'010100'000001, // none|push|reg_es|none
+        0b000'0010000'001000'000001, // none|dec|reg_cx||none
+        0b000'0010110'001000'110010, // none|mov|reg_cx|imm16
+        0b110'0100110'000001'000001, // rep|stosb|none|none
+        0b000'0001101'100111'110010, // none|cmp|mem_bx_si_off16|imm16
+        0b011'0000111'100110'001011, // ss|and|mem_off16|reg_dx
+        0b000'0010010'110010'000001, // none|jmp_if|imm_8|none
+        0b000'1000111'000011'110000, // none|rol|reg_al|imm_1
+        0b011'0010110'100110'000010, // ss|mov|mem_off16|reg_ax
+        0b000'0010100'001100'110010, // none|test|reg_dl|imm_8
+        0b000'0011100'010110'000001, // none|call_far|mem_bx_si|none
+        0b000'1001000'011000'110000, // none|ror|mem_bp_si|imm_1
+        0b000'0000100'010001'101011, // none|or|reg_sp|mem_si_off16
+        0b000'0010001'001000'000001, // none|jmp|reg_cx|none
+        0b001'0010110'010100'100110, // es|mov|reg_es|mem_off16
+        0b000'0010110'100110'000011, // none|mov|mem_off16|reg_al
+    };
     const Size lengths[] = {
         1, 1, 3, 2, 5, 5, 2, 2, 4, 3, 2, 2, 4, 2, 5, 3,
     };
@@ -459,7 +478,11 @@ TEST_F(CpuTest, Instruction) {
         ASSERT_EQ(ins.length, lengths[i]);
         const string patStr = numericToHexa(ins.pattern());
         TRACELN("pattern: " << patStr << ", expected: " << patterns[i]);
+        const DWord sig = ins.signature();
         ASSERT_EQ(patStr, patterns[i]);
+        TRACELN("signature: " << hexVal(sig) << "/" << binString(sig) << endl
+             << "expected:  " << hexVal(signatures[i]) << "/" << binString(signatures[i]));
+        ASSERT_EQ(sig, signatures[i]);
         codeofs += ins.length;
     }
 }

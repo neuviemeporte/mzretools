@@ -142,11 +142,11 @@ static const OperandSize OPR_SIZE[] = {
     OPRSZ_UNK, OPRSZ_UNK, OPRSZ_UNK, OPRSZ_UNK, OPRSZ_UNK, OPRSZ_UNK, OPRSZ_UNK, 
     OPRSZ_UNK, OPRSZ_UNK, OPRSZ_UNK, OPRSZ_UNK, OPRSZ_UNK, OPRSZ_UNK, OPRSZ_UNK, 
     OPRSZ_UNK, OPRSZ_UNK, OPRSZ_UNK, OPRSZ_UNK, // all memory operands
-    OPRSZ_UNK, // immediate 0
-    OPRSZ_UNK, // immediate 1
-    OPRSZ_BYTE,
-    OPRSZ_WORD,
-    OPRSZ_DWORD,
+    OPRSZ_NONE,  // immediate 0 (implicit)
+    OPRSZ_NONE,  // immediate 1 (implicit)
+    OPRSZ_BYTE,  // immediate8
+    OPRSZ_WORD,  // immediate16
+    OPRSZ_DWORD, // immediate32
 };
 
 // map modrm operand type to operand size
@@ -161,7 +161,7 @@ static const OperandSize MODRM_OPR_SIZE[] = {
     OPRSZ_WORD,  // MODRM_Sw
     OPRSZ_UNK,   // MODRM_M
     OPRSZ_DWORD, // MODRM_Mp
-    OPRSZ_UNK,   // MODRM_1
+    OPRSZ_NONE,  // MODRM_1
     OPRSZ_BYTE,  // MODRM_CL
 };
 
@@ -259,10 +259,14 @@ void Instruction::load(const Byte *data)  {
         op1.type = OP1_TYPE[opcode];
         op2.type = OP2_TYPE[opcode];
         debug("regular opcode "s + opcodeName(opcode) + ", operand types: op1 = "s + OPR_TYPE_ID[op1.type] + ", op2 = " + OPR_TYPE_ID[op2.type] 
-            + ", class " + INS_CLASS_ID[iclass]);        
+            + ", class " + INS_CLASS_ID[iclass]);
         // TODO: do not derive size from operand type, but from opcode, same for modrm and group
         op1.size = OPR_SIZE[op1.type];
         op2.size = OPR_SIZE[op2.type];
+        // temporary stopgap, derive unknown 1st op's size from 2nd op if possible
+        if (op1.size == OPRSZ_UNK && operandIsMem(op1.type) && operandIsImmediate(op2.type))
+            op1.size = op2.size;
+
     }
     // modr/m insruction opcode
     else if (!opcodeIsGroup(opcode)) {
@@ -320,7 +324,7 @@ void Instruction::load(const Byte *data)  {
                 throw CpuError("Unexpected group index for far call/jump instruction: " + to_string(grpIdx) + " at " + addr.toString());
             modop1 = MODRM_Mp;
         }
-        debug("modrm operand types: op1 = "s + MODRM_OPR_ID[modop1] + ", op2 = " + MODRM_OPR_ID[modop2] + ", class " + INS_CLASS_ID[iclass]);            
+        debug("modrm operand types: op1 = "s + MODRM_OPR_ID[modop1] + ", op2 = " + MODRM_OPR_ID[modop2] + ", class " + INS_CLASS_ID[iclass]);
         // convert from messy modrm operand designation to our nice type
         op1.type = getModrmOperand(modrm, modop1);
         op2.type = getModrmOperand(modrm, modop2);
@@ -649,6 +653,42 @@ ByteString Instruction::pattern() const {
     return ret;
 }
 
+// similar to the search pattern above, a signature is an ambiguation of an instruction, 
+// but this time used to lookup equivalent instruction sequences using edit distance
+Signature Instruction::signature() const {
+    Signature ret = 0;
+    // fuse the instruction subtypes into a singular 32bit value that will serve as the instruction's signature:
+    // |reserved|prefix|class|op1type|op1size|op2type|op2size|
+    //  4b       3b     7b    6b      3b      6b      3b
+    // |reserved|prefix|class|op1type|op2type|
+    //  10b      3b     7b    6b      6b    
+    const int reserved = 10;
+    int shift = (sizeof(ret) * 8) - reserved;
+    if (prefix > 0b111) throw RangeError("Instruction prefix out of range: " + hexVal((Word)prefix));
+    DWord val = static_cast<DWord>(prefix) << (shift -= 3);
+    ret |= val;
+    if (iclass > 0b1111111) throw RangeError("Instruction class out of range: " + hexVal((Word)iclass));
+    val = static_cast<DWord>(iclass) << (shift -= 7);
+    ret |= val;
+    // ambiguate away embedded immediate size differences by converting a byte type to an equivalent word type
+    // TODO: create specialized enum for signatures, this could fit in 16bits?
+    auto optype = operandTypeToWord(op1.type);
+    if (optype > 0b111111) throw RangeError("Instruction operand 1 type out of range: " + hexVal((Word)optype));
+    val = static_cast<DWord>(optype) << (shift -= 6);
+    ret |= val;
+    // if (op1.size > 0b111) throw RangeError("Instruction operand 1 size out of range: " + hexVal((Word)op1.size));
+    // val = static_cast<DWord>(op1.size) << (shift -= 3);
+    // ret |= val;
+    optype = operandTypeToWord(op2.type);
+    if (optype > 0b111111) throw RangeError("Instruction operand 2 type out of range: " + hexVal((Word)optype));
+    val = static_cast<DWord>(optype) << (shift -= 6);
+    ret |= val;
+    // if (op2.size > 0b111) throw RangeError("Instruction operand 2 size out of range: " + hexVal((Word)op2.size));    
+    // val = static_cast<DWord>(op2.size) << (shift -= 3);
+    // ret |= val;
+    return ret;
+}
+
 InstructionMatch Instruction::match(const Instruction &other) const {
     // normally we check whether instructions match in their "class", e.g. MOV, not whether they
     // have the same opcode. An exception are conditional jumps, which all belong to class JMP_IF,
@@ -665,6 +705,7 @@ InstructionMatch Instruction::match(const Instruction &other) const {
         return INS_MATCH_MISMATCH; // either operand mismatch -> instruction mismatch
     else if (op1match == INS_MATCH_DIFF && op2match == INS_MATCH_DIFF)
         return INS_MATCH_DIFF; // difference on both operands
+    // TODO: handle both operands different from original?
     else if (op1match == INS_MATCH_DIFF)
         return INS_MATCH_DIFFOP1; // difference on operand 1
     else if (op2match == INS_MATCH_DIFF)
