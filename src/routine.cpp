@@ -534,10 +534,12 @@ void RoutineMap::buildUnclaimed() {
     sort();
     for (Size ri = 0; ri < routineCount(); ++ri) {
         const Routine &r = getRoutine(ri);
+        // in a sorted map, the current routine's beginning is supposed to be at or after the previous one's end
+        assert(r.extents.begin >= b.begin);
         debug("Processing routine " + r.name + ": " + r.extents.toString());
         // the current routine starts after the last claimed position
         if (r.extents.begin > b.begin) {
-            debug("Potential unclaimed block found starting at " + b.begin.toString());
+            debug("Gap between the start of this routine and the end of the previous one, potentially unclaimed");
             // check if the potential unclaimed block does not really belong to any routine,
             // it could be a detached chunk outside the main extents
             const auto chunkRoutine = getRoutine(b.begin);
@@ -548,12 +550,13 @@ void RoutineMap::buildUnclaimed() {
                 b.begin = chunkBlock.end + Offset(1);
                 debug("Block belongs to chunk " + chunkBlock.toString() + " of routine " + chunkRoutine.name + ", advanced block to " + b.begin.toString());
             }
+            
             // unclaimed block crosses segment boundary, split into two
             if (r.extents.begin.segment != b.begin.segment) {
                 // first block ends before the segment start of the current routine
                 b.end = Address(SEG_TO_OFFSET(r.extents.begin.segment) - 1);
-                b.end.move(b.begin.segment);
                 debug("Unclaimed block crosses segment boundary, forcing split: " + b.toString());
+                b.end.move(b.begin.segment);
                 if (b.isValid() && findSegment(b.begin.segment).type == Segment::SEG_CODE) 
                     unclaimed.push_back(b);
                 // the second part of the unclaimed block starts at the segment start of the current routine, 
@@ -576,6 +579,7 @@ void RoutineMap::buildUnclaimed() {
         }
         // start next potential unclaimed block past the end of the current routine
         b = Block(r.extents.end + Offset(1));
+        debug("Opening potential unclaimed block: " + b.toString());
     }
     Address mapEnd{mapSize};
     // check last block, create unclaimed if it does not match the end of the load module
