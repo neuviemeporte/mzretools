@@ -177,6 +177,35 @@ TEST_F(MemoryTest, Block) {
     ASSERT_EQ(s1, s5);    
 }
 
+TEST_F(MemoryTest, BlockSplit) {
+    Block b{Address{0x2274, 0x70}, Address{0x628b, 0xebe}};
+    size_t splitCount = (b.size() / 0x10000) + 1;
+    TRACELN("Splitting block: " + b.toString() + " / " + b.toString(true, true) + " of size " + sizeStr(b.size()));
+    auto split = b.splitSegments();
+    TRACELN("Split result:");
+    Size splitSpan = 0;
+    for (Block b : split) {
+        TRACELN(b.toString() + " / " + b.toString(true, true));
+        splitSpan += b.size();
+    }
+    ASSERT_EQ(split.size(), splitCount);
+    ASSERT_EQ(splitSpan, b.size());
+    ASSERT_EQ(split.front().begin, b.begin);
+    ASSERT_EQ(split.back().end, b.end);
+
+    b.end = b.begin;
+    TRACELN("Splitting block: " + b.toString() + " / " + b.toString(true, true) + " of size " + sizeStr(b.size()));
+    split = b.splitSegments();
+    TRACELN("Split result:");
+    splitSpan = 0;
+    for (Block b : split) {
+        TRACELN(b.toString() + " / " + b.toString(true, true));
+        splitSpan += b.size();
+    }
+    ASSERT_EQ(split.size(), 1);
+    ASSERT_EQ(splitSpan, b.size());
+}
+
 TEST_F(MemoryTest, Init) {
     const Size memSize = mem.size();
     const Byte pattern[] = { 0xde, 0xad, 0xbe, 0xef };
