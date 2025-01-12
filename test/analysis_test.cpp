@@ -201,6 +201,11 @@ TEST_F(AnalysisTest, RoutineMapFromQueue) {
     TRACELN(queueMap.dump());
 }
 
+TEST_F(AnalysisTest, BigRoutineMap) {
+    RoutineMap rm{"../bin/egame.map", 0x1000};
+    ASSERT_EQ(rm.routineCount(), 398);
+}
+
 TEST_F(AnalysisTest, FindRoutines) {
     const Word loadSegment = 0x1234;
     const Size expectedFound = 39;

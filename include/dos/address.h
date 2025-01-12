@@ -96,7 +96,8 @@ struct Block {
     bool contains(const Address &addr) const { return addr >= begin && addr <= end; }
     bool intersects(const Block &other) const;
     bool adjacent(const Block &other) const;
-    bool singleSegment() const { return begin.segment == end.segment; }
+    bool singleSegment() const;
+    std::vector<Block> splitSegments() const;
     void relocate(const Word reloc) { begin.relocate(reloc); end.relocate(reloc); }
     void rebase(const Word base) { begin.rebase(base); end.rebase(base); }
     void move(const Word seg) { begin.move(seg); end.move(seg); }
