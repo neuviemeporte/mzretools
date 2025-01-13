@@ -157,6 +157,19 @@ ERROR: Instruction mismatch in routine main at 1000:011c/01011c: jmp 0x105 != 10
 
 The output shows `==` for an exact match, `~=` and `=~` for a "soft" difference in either the first or second operand, and `!=` for a mismatch. The idea is to iterate on the reconstruction process as long as the tool finds discrepancies, until the reconstructed code perfectly matches the original, with a margin for the different layout resulting in offset value differences.
 
+## mzdup
+
+This utility can be used to find potential duplicates of known routines from one executable in another. It uses edit distance on strings of ambiguated instructions (with any offset/immediate values stripped) with a threshold to locate the potential duplicates and save time on reversing already known routines.
+
+```
+ninja@RYZEN:f15se2-re$ mzdup ../ida/start.exe map/start.map ../ida/egame.exe map/egame.map
+Searching for duplicates of 255 routines among 398 candidates, minimum instructions: 10, maximum distance: 5
+Found 63 duplicates for 255 routines, ignored 118
+Saving routine map (routines = 398) to map/egame.map.dup, reversing relocation by 0x1000
+```
+
+Here, I have finished reconstructing one executable from my game (`start.exe`), and have its layout fully documented in the manually tweaked `start.map`, so I am using the tool to look for any similar (or identical) routines in `egame.exe`, providing an uncustomized map, freshly obtained from `mzmap` with `egame.map`. The tool extracts each routine from the first (reference) executable, generates a string of instruction signatures from it, then checks against every routine in the second (target) executable using edit distance. Finally, the target map file is patched with the names of the detected duplicates applied to the routines, and marked with the `duplicate` property, and the patched file is saved with a `.dup` suffix.
+
 ## lst2ch.py
 
 This Python script will parse an IDA-generated listing `.LST` file and generate a C header file with routine and data declarations, so they can be plugged into a C source code reconstrucion. It saves manual effort in updating the headers when routine names or routine arguments change in IDA. It can also output a C source file with data definitions, but this is more of a prototype for now. It will verify the running size of the data segment as it's iterating over the listing using two independent methods. It shares a JSON config file with the subsequent tool, `lst2asm.py` to specify the layout of the listing and the transformations needed to be performed on it. Below is a sample config file used in my reconstruction effort:
