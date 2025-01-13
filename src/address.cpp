@@ -2,11 +2,16 @@
 #include <iomanip>
 #include <sstream>
 #include <regex>
+#include <algorithm>
+
 #include "dos/address.h"
 #include "dos/error.h"
 #include "dos/util.h"
+#include "dos/output.h"
 
 using namespace std;
+
+OUTPUT_CONF(LOG_MEMORY)
 
 static const regex 
     FARADDR_RE{"([0-9a-fA-F]{1,4}):([0-9a-fA-F]{1,4})"},
@@ -150,6 +155,42 @@ bool Block::adjacent(const Block &other) const {
         maxBegin = std::max(begin, other.begin),
         minEnd   = std::min(end, other.end);
     return (maxBegin > minEnd) && (maxBegin - minEnd == 1);
+}
+
+bool Block::singleSegment() const { 
+    if (!begin.inSegment(end.segment)) throw AddressError("Unable to flatten block to single segment: " + toString());
+    return begin.segment == end.segment; 
+}
+
+// split this block into multiple blocks so that no block is larger than a segment
+std::vector<Block> Block::splitSegments() const {
+    if (!isValid()) throw AddressError("Unable to split block into segments: " + toString());
+    vector<Block> ret;
+    Size span = size();
+    debug("Splitting block " + toString());
+    Address blockStart = begin;
+    while (span != 0) {
+        const Word maxSpan = OFFSET_MAX - blockStart.offset;
+        debug("Next block starting at " + blockStart.toString() + ", remaining span: " + sizeStr(span) + ", max: " + sizeStr(maxSpan));
+        Block b{blockStart};
+        // remaining span will not fit in current segment, pad up to OFFSET_MAX and advance to the next one
+        if (span > maxSpan) { 
+            b.end = Address{b.begin.segment, OFFSET_MAX};
+            debug("Closed non-final block up to segment boundary: " + b.toString());
+            blockStart.segment += 0x1000;
+            blockStart.offset = 0;
+        }
+        // remaining span fits in current segment, make the last block to consume it whole
+        else {
+            b.end = Address{b.begin.segment, static_cast<Word>(b.begin.offset + span - 1)};
+            debug("Closed final block: " + b.toString());
+            assert(b.size() == span);
+        }
+        ret.push_back(b);
+        assert(b.size() <= span);
+        span -= b.size();
+    }
+    return ret;
 }
 
 void Block::coalesce(const Block &other) {

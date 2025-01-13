@@ -103,6 +103,7 @@ string Routine::toString(const bool showChunks) const {
     if (detached) str << " [detached]";
     if (external) str << " [external]";
     if (assembly) str << " [assembly]";
+    if (duplicate) str << " [duplicate]";
     if (!showChunks || isUnchunked()) return str.str();
 
     auto blocks = sortedBlocks();
@@ -250,6 +251,11 @@ Routine& RoutineMap::getMutableRoutine(const std::string &name) {
     return routines.emplace_back(Routine(name, {}));
 }
 
+void RoutineMap::setRoutine(const Size idx, const Routine &r) {
+    if (idx > routines.size()) throw ArgError("Routine index out of range: " + to_string(idx));
+    routines[idx] = r;
+}
+
 Routine RoutineMap::findByEntrypoint(const Address &ep) const {
     for (const Routine &r : routines)
         if (r.entrypoint() == ep) return r;
@@ -392,6 +398,7 @@ std::string RoutineMap::routineString(const Routine &r, const Word reloc) const 
     if (r.external) str << " external";
     if (r.detached) str << " detached";
     if (r.assembly) str << " assembly";
+    if (r.duplicate) str << " duplicate";
     return str.str();
 }
 
@@ -527,48 +534,32 @@ void RoutineMap::buildUnclaimed() {
     sort();
     for (Size ri = 0; ri < routineCount(); ++ri) {
         const Routine &r = getRoutine(ri);
+        // in a sorted map, the current routine's beginning is supposed to be at or after the previous one's end
+        assert(r.extents.begin >= b.begin);
         debug("Processing routine " + r.name + ": " + r.extents.toString());
         // the current routine starts after the last claimed position
         if (r.extents.begin > b.begin) {
-            debug("Potential unclaimed block found starting at " + b.begin.toString());
+            debug("Gap between the start of this routine and the end of the previous one, potentially unclaimed");
             // check if the potential unclaimed block does not really belong to any routine,
             // it could be a detached chunk outside the main extents
             const auto chunkRoutine = getRoutine(b.begin);
             if (chunkRoutine.isValid()) {
                 const auto chunkBlock = chunkRoutine.blockContaining(b.begin);
-                // the found chunk could not encompass the entire potential unclaimed block,
+                // the found chunk could cover only a part of the potential unclaimed block,
                 // so just advance the potential block's beginning past the chunk
                 b.begin = chunkBlock.end + Offset(1);
                 debug("Block belongs to chunk " + chunkBlock.toString() + " of routine " + chunkRoutine.name + ", advanced block to " + b.begin.toString());
             }
-            // unclaimed block crosses segment boundary, split into two
-            if (r.extents.begin.segment != b.begin.segment) {
-                // first block ends before the segment start of the current routine
-                b.end = Address(SEG_TO_OFFSET(r.extents.begin.segment) - 1);
-                b.end.move(b.begin.segment);
-                debug("Unclaimed block crosses segment boundary, forcing split: " + b.toString());
-                if (b.isValid() && findSegment(b.begin.segment).type == Segment::SEG_CODE) 
-                    unclaimed.push_back(b);
-                // the second part of the unclaimed block starts at the segment start of the current routine, 
-                // but make sure the routine doesn't start there as well
-                if (r.extents.begin.offset > 0) {
-                    Address newBegin = Address(r.extents.begin.segment, 0);
-                    // make sure the new beginning is not before the original beginning 
-                    // (routine from old segment could have spanned the current segment)
-                    if (newBegin > b.begin) b.begin = newBegin;
-                    else b.begin.move(r.extents.begin.segment);
-                }
-                else b.begin = {};
-                debug("Unclaimed block in new segment starts at " + b.begin.toString());
-            }
-            // create unclaimed block between the last claimed position and the beginning of this routine
+            // create unclaimed block(s) between the last claimed position and the beginning of this routine
             b.end = r.extents.begin - 1;
-            debug("Closing unclaimed block: " + b.toString());
-            if (b.isValid() && findSegment(b.begin.segment).type == Segment::SEG_CODE) 
-                unclaimed.push_back(b);
+            if (b.isValid()) { // could have been pushed into the routine by the chunk advance
+                debug("Closing unclaimed block: " + b.toString());
+                for (const auto &sb : b.splitSegments()) unclaimed.push_back(sb);
+            }
         }
         // start next potential unclaimed block past the end of the current routine
         b = Block(r.extents.end + Offset(1));
+        debug("Opening potential unclaimed block past routine end: " + b.toString());
     }
     Address mapEnd{mapSize};
     // check last block, create unclaimed if it does not match the end of the load module
@@ -676,6 +667,7 @@ void RoutineMap::loadFromMapFile(const std::string &path, const Word reloc) {
                 else if (token == "external") { r.ignore = true; r.external = true; }
                 else if (token == "detached") { r.ignore = true; r.detached = true; }
                 else if (token == "assembly") { r.assembly = true; }
+                else if (token == "duplicate") { r.duplicate = true; }
                 else throw ParseError("Line " + to_string(lineno) + ": invalid token: '" + token + "'");
                 token = token.substr(1, token.size() - 1);
                 break;

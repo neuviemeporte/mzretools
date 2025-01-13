@@ -31,10 +31,10 @@ struct Routine {
     Block extents; // largest contiguous block starting at routine entrypoint, may contain unreachable regions
     std::vector<Block> reachable, unreachable;
     RoutineId id;
-    bool near, ignore, complete, unclaimed, external, detached, assembly;
+    bool near, ignore, complete, unclaimed, external, detached, assembly, duplicate;
 
     Routine(const std::string &name, const Block &extents) : name(name), extents(extents), id(NULL_ROUTINE),
-        near(true), ignore(false), complete(false), unclaimed(false), external(false), detached(false), assembly(false) {}
+        near(true), ignore(false), complete(false), unclaimed(false), external(false), detached(false), assembly(false), duplicate(false) {}
     Routine() : Routine("", {}) {}
     Address entrypoint() const { return extents.begin; }
     Size size() const { return extents.size(); }
@@ -77,6 +77,7 @@ public:
     Routine getRoutine(const Address &addr) const;
     Routine getRoutine(const std::string &name) const;
     Routine& getMutableRoutine(const std::string &name);
+    void setRoutine(const Size idx, const Routine &r);
     std::vector<Block> getUnclaimed() const { return unclaimed; }
     Routine findByEntrypoint(const Address &ep) const;
     bool empty() const { return routines.empty(); }

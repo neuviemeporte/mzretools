@@ -201,6 +201,11 @@ TEST_F(AnalysisTest, RoutineMapFromQueue) {
     TRACELN(queueMap.dump());
 }
 
+TEST_F(AnalysisTest, BigRoutineMap) {
+    RoutineMap rm{"../bin/egame.map", 0x1000};
+    ASSERT_EQ(rm.routineCount(), 398);
+}
+
 TEST_F(AnalysisTest, FindRoutines) {
     const Word loadSegment = 0x1234;
     const Size expectedFound = 39;
@@ -520,4 +525,31 @@ TEST_F(AnalysisTest, DiffMemAndImm) {
         i2{0, e2.codePointer(0)};
     Analyzer a(opt);
     ASSERT_EQ(analyzerInstructionMatch(a, e1, e2, i1, i2), analyzerDiffVal());
+}
+
+TEST_F(AnalysisTest, FindDuplicates) {
+    const Word loadSegment = 0x1234;
+    const Size expectedRoutines = 39, expectedDuplicates = 23;
+    MzImage mz{"../bin/hello.exe", loadSegment};
+    Executable exe{mz};
+    Analyzer::Options opt;
+    opt.routineSizeThresh = 20;
+    opt.routineDistanceThresh = 10;
+    Analyzer a{opt};
+    RoutineMap rm = a.findRoutines(exe);
+    TRACELN("Found routines: " + to_string(rm.routineCount()));
+    for (int i = 0; i < rm.routineCount(); ++i) {
+        ASSERT_FALSE(rm.getRoutine(i).duplicate);
+    }
+    ASSERT_EQ(rm.routineCount(), expectedRoutines);
+    RoutineMap rmdup{rm};
+    ASSERT_EQ(rmdup.routineCount(), rm.routineCount());
+    ASSERT_TRUE(a.findDuplicates(exe, exe, rm, rmdup));
+    rmdup.save("hello.map.dup", loadSegment, true);
+    Size foundDuplicates = 0;
+    for (int i = 0; i < rmdup.routineCount(); ++i) {
+        if (rmdup.getRoutine(i).duplicate) foundDuplicates++;
+    }
+    TRACELN("Found duplicates: " + to_string(foundDuplicates));
+    ASSERT_EQ(foundDuplicates, expectedDuplicates);
 }

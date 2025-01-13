@@ -55,6 +55,5 @@ static void warn(const std::string &msg) {\
 }
 
 extern const std::string VERSION;
-void abcd();
 
 #endif // OUTPUT_H

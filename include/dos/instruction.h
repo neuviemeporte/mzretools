@@ -269,8 +269,8 @@ public:
     Byte length;
     struct Operand {
         OperandType type;
-        // the size of the operand is unrelated to the length of the optional immediate value
-        // TODO: the enum OperandSize is used not only for the operand's size here, find a better name
+        // The size is ambiguous; it is the size of the destination for mem operands, the size of the source/destination for reg operands, and the size of the source for imm operands
+        // TODO: find a better name for the enum OperandSize 
         OperandSize size, immsize;
         union {
             DWord u32;
@@ -292,6 +292,7 @@ public:
     Instruction(const Address &addr, const Byte *data);
     std::string toString(const bool extended = false) const;
     ByteString pattern() const;
+    Signature signature() const;
     InstructionMatch match(const Instruction &other) const;
     void load(const Byte *data);
     Word absoluteOffset() const;

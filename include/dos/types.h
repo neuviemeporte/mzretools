@@ -15,6 +15,7 @@ using Size   = size_t;
 // for representing linear addresses from the memory base, required because DOS addresses don't fit in a 16-bit word
 using Offset = size_t;
 using SOffset = ssize_t;
+using Signature = uint32_t;
 using ByteString = std::vector<SWord>;
 
 // TODO: assumes LE

@@ -97,8 +97,8 @@ int main(int argc, char *argv[]) {
             brief = true;
         }
         else if (arg == "--format") format = true;
-        else if (arg == "--load" && (aidx + 1 < argc)) {
-            string loadSegStr(argv[aidx+1]);
+        else if (arg == "--load" && (aidx++ + 1 < argc)) {
+            string loadSegStr(argv[aidx]);
             loadSegment = static_cast<Word>(stoi(loadSegStr, nullptr, 16));
             info("Overloading default load segment: "s + hexVal(loadSegment));
         }

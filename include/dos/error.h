@@ -20,6 +20,10 @@ class ArgError : public Error {
     using Error::Error;
 };
 
+class RangeError : public Error {
+    using Error::Error;
+};
+
 class ParseError : public Error {
     using Error::Error;
 };

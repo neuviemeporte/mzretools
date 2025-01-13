@@ -123,4 +123,13 @@ Address Executable::find(const ByteString &pattern, Block where) const {
     return code.find(pattern, where);
 }
 
-
+vector<Signature> Executable::getSignatures(const Block &range) const {
+    if (!range.singleSegment()) throw LogicError("Block boundaries reside in different segments for signature extraction");
+    vector<Signature> ret;
+    Instruction i;
+    for (Address a = range.begin; a < range.end; a += i.length) {
+        i = Instruction{a, code.pointer(a)};
+        ret.push_back(i.signature());
+    }
+    return ret;
+}
