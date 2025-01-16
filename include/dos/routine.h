@@ -30,6 +30,7 @@ struct Routine {
     std::string name;
     Block extents; // largest contiguous block starting at routine entrypoint, may contain unreachable regions
     std::vector<Block> reachable, unreachable;
+    std::vector<std::string> comments;
     RoutineId id;
     bool near, ignore, complete, unclaimed, external, detached, assembly, duplicate;
 
@@ -50,9 +51,11 @@ struct Routine {
     Block blockContaining(const Address &a) const;
     Block nextReachable(const Address &from) const;
     bool colides(const Block &block, const bool checkExtents = true) const;
-    std::string toString(const bool showChunks = true) const;
+    std::string dump(const bool showChunks = true) const;
+    std::string toString() const;
     std::vector<Block> sortedBlocks() const;
     void recalculateExtents();
+    void addComment(const std::string &comment) { comments.push_back(comment); }
 };
 
 // A map of an executable, records which areas have been claimed by routines, and which have not, serializable to a file
@@ -73,11 +76,12 @@ public:
     RoutineMap() : RoutineMap(0, 0) {}
 
     Size routineCount() const { return routines.size(); }
+    // TODO: routine.id start at 1, this is zero based, so id != idx, confusing
     Routine getRoutine(const Size idx) const { return routines.at(idx); }
     Routine getRoutine(const Address &addr) const;
     Routine getRoutine(const std::string &name) const;
+    Routine& getMutableRoutine(const Size idx) { return routines.at(idx); }
     Routine& getMutableRoutine(const std::string &name);
-    void setRoutine(const Size idx, const Routine &r);
     std::vector<Block> getUnclaimed() const { return unclaimed; }
     Routine findByEntrypoint(const Address &ep) const;
     bool empty() const { return routines.empty(); }

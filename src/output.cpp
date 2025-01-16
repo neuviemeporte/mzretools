@@ -17,9 +17,11 @@ static map<LogModule, bool> moduleVisible = {
     { LOG_OTHER,     true },
 };
 
-void output(const std::string &msg, const LogModule mod, const LogPriority pri, const bool suppressNewline) {
+void output(const std::string &msg, const LogModule mod, const LogPriority pri, const Color color, const bool suppressNewline) {
     if (pri < globalPriority || !moduleVisible[mod]) return;
+    if (color != OUT_DEFAULT) cout << output_color(color);
     cout << msg;
+    if (color != OUT_DEFAULT) cout << output_color(OUT_DEFAULT);
     if (!suppressNewline) cout << endl;
 }
 

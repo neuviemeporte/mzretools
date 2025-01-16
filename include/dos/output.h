@@ -31,27 +31,27 @@ enum Color {
     OUT_BRIGHTRED,
 };
 
-void output(const std::string &msg, const LogModule mod, const LogPriority pri = LOG_INFO, const bool suppressNewline = false);
+void output(const std::string &msg, const LogModule mod, const LogPriority pri = LOG_INFO, const Color color = OUT_DEFAULT, const bool suppressNewline = false);
 void setOutputLevel(const LogPriority minPriority);
 void setModuleVisibility(const LogModule mod, const bool visible);
 std::string output_color(const Color c);
 
 // create output functions for a system module
 #define OUTPUT_CONF(module) \
-static void debug(const std::string &msg) {\
-    output(msg, module, LOG_DEBUG);\
+static void debug(const std::string &msg, const Color color = OUT_DEFAULT) {\
+    output(msg, module, LOG_DEBUG, color);\
 }\
-static void verbose(const std::string &msg) {\
-    output(msg, module, LOG_VERBOSE);\
+static void verbose(const std::string &msg, const Color color = OUT_DEFAULT) {\
+    output(msg, module, LOG_VERBOSE, color);\
 }\
-static void info(const std::string &msg) {\
-    output(msg, module, LOG_INFO);\
+static void info(const std::string &msg, const Color color = OUT_DEFAULT) {\
+    output(msg, module, LOG_INFO, color);\
 }\
-static void error(const std::string &msg) {\
-    output("ERROR: "s + msg, module, LOG_ERROR);\
+static void error(const std::string &msg, const Color color = OUT_DEFAULT) {\
+    output("ERROR: "s + msg, module, LOG_ERROR, color);\
 }\
-static void warn(const std::string &msg) {\
-    output("WARNING: "s + msg, module, LOG_WARN);\
+static void warn(const std::string &msg, const Color color = OUT_DEFAULT) {\
+    output("WARNING: "s + msg, module, LOG_WARN, color);\
 }
 
 extern const std::string VERSION;

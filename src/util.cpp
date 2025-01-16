@@ -50,7 +50,7 @@ void hexDump(const Byte *buf, const Size size, const Size off, const bool header
             str << endl;
         }
     }
-    output(str.str(), LOG_OTHER, LOG_INFO, true);
+    output(str.str(), LOG_OTHER, LOG_INFO, OUT_DEFAULT, true);
 }
 
 std::string signedHexVal(const SByte val, bool plus) {

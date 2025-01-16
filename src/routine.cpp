@@ -74,25 +74,25 @@ Block Routine::nextReachable(const Address &from) const {
 
 bool Routine::colides(const Block &block, const bool checkExtents) const {
     if (checkExtents && extents.intersects(block)) {
-        debug("Block "s + block.toString() + " colides with extents of routine " + toString(false));
+        debug("Block "s + block.toString() + " colides with extents of routine " + dump(false));
         return true;
     }    
     for (const auto &b : reachable) {
         if (b.intersects(block)) {
-            debug("Block "s + block.toString() + " colides with reachable block " + b.toString() + " of routine " + toString(false));
+            debug("Block "s + block.toString() + " colides with reachable block " + b.toString() + " of routine " + dump(false));
             return true;
         }
     }
     for (const auto &b : unreachable) {
         if (b.intersects(block)) {
-            debug("Block "s + block.toString() + " colides with unreachable block " + b.toString() + " of routine " + toString(false));
+            debug("Block "s + block.toString() + " colides with unreachable block " + b.toString() + " of routine " + dump(false));
             return true;
         }
     }    
     return false;
 }
 
-string Routine::toString(const bool showChunks) const {
+string Routine::dump(const bool showChunks) const {
     ostringstream str;
     str << extents.toString(false, true) << ": " << name;
     if (near) str << " [near]";
@@ -121,6 +121,12 @@ string Routine::toString(const bool showChunks) const {
     return str.str();
 }
 
+std::string Routine::toString() const {
+    ostringstream str;
+    str << name << "/" + entrypoint().toString();
+    return str.str();
+}
+
 std::vector<Block> Routine::sortedBlocks() const {
     vector<Block> blocks(reachable);
     copy(unreachable.begin(), unreachable.end(), back_inserter(blocks));
@@ -136,7 +142,7 @@ void Routine::recalculateExtents() {
         return b.begin == ep;
     });
     if (mainBlock == reachable.end()) {
-        debug("Unable to find main block for routine "s + toString(false));
+        debug("Unable to find main block for routine "s + dump(false));
         extents.end = extents.begin;
         return;
     }
@@ -146,7 +152,7 @@ void Routine::recalculateExtents() {
         if (b.begin < extents.begin) continue; // ignore blocks that begin before the routine entrypoint
         extents.coalesce(b);
     }
-    debug("Calculated routine extents: "s + toString(false));
+    debug("Calculated routine extents: "s + dump(false));
 }
 
 RoutineMap::RoutineMap(const ScanQueue &sq, const std::vector<Segment> &segs, const Word loadSegment, const Size mapSize) : loadSegment(loadSegment), mapSize(mapSize) {
@@ -251,11 +257,6 @@ Routine& RoutineMap::getMutableRoutine(const std::string &name) {
     return routines.emplace_back(Routine(name, {}));
 }
 
-void RoutineMap::setRoutine(const Size idx, const Routine &r) {
-    if (idx > routines.size()) throw ArgError("Routine index out of range: " + to_string(idx));
-    routines[idx] = r;
-}
-
 Routine RoutineMap::findByEntrypoint(const Address &ep) const {
     for (const Routine &r : routines)
         if (r.entrypoint() == ep) return r;
@@ -270,14 +271,14 @@ Size RoutineMap::match(const RoutineMap &other) const {
         bool routineMatch = false;
         for (const auto &ro : other.routines) {
             if (r.extents == ro.extents) {
-                debug("Found routine match for "s + r.toString(false) + " with " + ro.toString(false));
+                debug("Found routine match for "s + r.dump(false) + " with " + ro.dump(false));
                 routineMatch = true;
                 matchCount++;
                 break;
             }
         }
         if (!routineMatch) {
-            debug("Unable to find match for "s + r.toString(false));
+            debug("Unable to find match for "s + r.dump(false));
         }
     }
     return matchCount;
@@ -478,7 +479,7 @@ string RoutineMap::dump(const bool verbose, const bool brief, const bool format)
         // print routine unless hide mode enabled and it's not important - show only uncompleted routines and big enough unclaimed blocks within code segments
         if (!(brief && (r.ignore || r.complete || r.external || r.assembly || r.size() < 3 || seg.type != Segment::SEG_CODE))) {
             if (!format) {
-                str << r.toString(verbose);
+                str << r.dump(verbose);
                 if (seg.type == Segment::SEG_DATA) str << " [data]";
                 str << endl;
             }
@@ -683,7 +684,7 @@ void RoutineMap::loadFromMapFile(const std::string &path, const Word reloc) {
             if (!colideRoutine.isValid() && r.colides(block, false)) 
                 colideRoutine = r;
             if (colideRoutine.isValid())
-                throw ParseError("Line "s + to_string(lineno) + ": block " + block.toString() + " colides with routine " + colideRoutine.toString(false));
+                throw ParseError("Line "s + to_string(lineno) + ": block " + block.toString() + " colides with routine " + colideRoutine.dump(false));
             // add block to routine
             switch(bt) {
             case BLOCK_EXTENTS: 
@@ -700,7 +701,7 @@ void RoutineMap::loadFromMapFile(const std::string &path, const Word reloc) {
             }
         } // iterate over tokens in a routine definition
         if (r.extents.isValid()) {
-            debug("routine: "s + r.toString());
+            debug("routine: "s + r.dump());
             r.id = routines.size() + 1;
             routines.push_back(r);
         }

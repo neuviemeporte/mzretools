@@ -760,7 +760,7 @@ bool Analyzer::compareCode(const Executable &ref, Executable &tgt, const Routine
                 break;
             }
             if (routine.ignore || (routine.assembly && !options.checkAsm)) {
-                verbose("--- Skipping excluded routine " + routine.toString(false) + " @"s + refCsip.toString() + ", block " + compareBlock.toString(true) +  ", target @" + tgtCsip.toString());
+                verbose("--- Skipping excluded routine " + routine.dump(false) + " @"s + refCsip.toString() + ", block " + compareBlock.toString(true) +  ", target @" + tgtCsip.toString());
                 excludedNames.insert(routine.name);
                 continue;
             }
@@ -779,7 +779,7 @@ bool Analyzer::compareCode(const Executable &ref, Executable &tgt, const Routine
                 }
             }
             tgt.storeSegment(Segment::SEG_CODE, tgtCsip.segment);
-            verbose("--- Now @"s + refCsip.toString() + ", routine " + routine.toString(false) + ", block " + compareBlock.toString(true) +  ", target @" + tgtCsip.toString());
+            verbose("--- Now @"s + refCsip.toString() + ", routine " + routine.dump(false) + ", block " + compareBlock.toString(true) +  ", target @" + tgtCsip.toString());
         }
         // TODO: consider dropping this "feature"
         else { // comparing without a map
@@ -1398,7 +1398,7 @@ void Analyzer::comparisonSummary(const Executable &ref, const RoutineMap &routin
         if (showMissed) for (const auto &n : missedNames) {
             const Routine r = routineMap.getRoutine(n);
             if (!r.isValid()) throw LogicError("Unable to find missed routine " + n + " in routine map");
-            msg << endl << r.toString(false);
+            msg << endl << r.dump(false);
         }
     }
     msg << endl 
@@ -1407,29 +1407,45 @@ void Analyzer::comparisonSummary(const Executable &ref, const RoutineMap &routin
     verbose(msg.str());
 }
 
+struct Duplicate {
+    Distance distance;
+    Size refSize, tgtSize, dupIdx;
+
+    Duplicate(const Distance distance, const Size refSize, const Size tgtSize, const Size dupIdx) : distance(distance), refSize(refSize), tgtSize(tgtSize), dupIdx(dupIdx) {}
+    Duplicate(const Distance distance) : Duplicate(distance, 0, 0, BAD_ROUTINE) {}
+    Duplicate() : Duplicate(MAX_DISTANCE) {}
+    bool isValid() const { return distance != MAX_DISTANCE; }
+    string toString() const {
+        ostringstream str;
+        str << "distance = " << distance << ", size ref: " << refSize << " tgt: " << tgtSize << ", idx: " << dupIdx;
+        return str.str();
+    }
+};
+
 bool Analyzer::findDuplicates(const Executable &ref, Executable &tgt, const RoutineMap &refMap, RoutineMap &tgtMap) {
     if (refMap.empty() || tgtMap.empty()) throw ArgError("Empty routine map provided for duplicate search");
     info("Searching for duplicates of " + to_string(refMap.routineCount()) + " routines among " + to_string(tgtMap.routineCount()) + " candidates, minimum instructions: " + to_string(options.routineSizeThresh) + ", maximum distance: " + to_string(options.routineDistanceThresh));
-    // store smallest distance found for reference routine
-    map<RoutineId, uint32_t> minDistance;
-    Size dupCount = 0, ignoreCount = 0;
+    // store relationship between reference routines and their duplicates
+    map<RoutineId, Duplicate> duplicates;
+    Size ignoreCount = 0;
+    bool collision = false;
     // iterate over routines to find duplicates for
     for (Size refIdx = 0; refIdx < refMap.routineCount(); ++refIdx) {
         const Routine refRoutine = refMap.getRoutine(refIdx);
-        debug("Processing routine: " + refRoutine.toString(false));
+        debug("Processing routine: " + refRoutine.dump(false));
         // TODO: try other reachable blocks?
         const Block refBlock = refRoutine.mainBlock();
         // extract string of signatures for reference routine
         vector<Signature> refSigs = ref.getSignatures(refBlock);
         const auto refSigCount = refSigs.size();
         if (refSigCount < options.routineSizeThresh) {
-            verbose("Ignoring routine " + refRoutine.name + ", instruction count below threshold: " + to_string(refSigCount));
+            debug("Ignoring routine " + refRoutine.name + ", instruction count below threshold: " + to_string(refSigCount));
             ignoreCount++;
             continue;
         }
-        // initialize lowest distance found
-        minDistance[refRoutine.id] = numeric_limits<uint32_t>::max();
-        verbose("Searching for duplicates of routine " + refRoutine.name + ", got string of " + to_string(refSigs.size()) + " instructions from " + refBlock.toString());
+        // seed lowest distance found
+        duplicates[refIdx] = Duplicate{MAX_DISTANCE};
+        debug("Searching for duplicates of routine " + refRoutine.name + ", got string of " + to_string(refSigs.size()) + " instructions from " + refBlock.toString());
         // iterate over duplicate candidates from the other executable
         bool have_dup = false;
         for (Size tgtIdx = 0; tgtIdx < tgtMap.routineCount(); ++tgtIdx) {
@@ -1442,31 +1458,85 @@ bool Analyzer::findDuplicates(const Executable &ref, Executable &tgt, const Rout
             const Size sigDelta = refSigCount > tgtSigCount ? refSigCount - tgtSigCount : tgtSigCount - refSigCount;
             // ignore candidate if we know in advance the distance will be too high based on instruction count alone
             if (sigDelta > options.routineDistanceThresh) {
-                debug("\tIgnoring target routine " + tgtRoutine.name + ", instruction count difference exceeds distance threshold: " + to_string(sigDelta));
+                debug("\tIgnoring target routine " + tgtRoutine.name + " (" + to_string(tgtSigCount) + " instructions), instruction count difference exceeds distance threshold: " + to_string(sigDelta));
                 continue;
             }
             // calculate edit distance between reference and target signature strings
-            const auto distance = edit_distance_dp(refSigs.data(), refSigs.size(), tgtSigs.data(), tgtSigs.size(), options.routineDistanceThresh);
+            const auto distance = edit_distance_dp_thr(refSigs.data(), refSigs.size(), tgtSigs.data(), tgtSigs.size(), options.routineDistanceThresh);
             if (distance > options.routineDistanceThresh) {
-                debug("\tIgnoring target routine " + tgtRoutine.name + ", " + to_string(tgtSigCount) + " instructions but distance above threshold");
+                debug("\tIgnoring target routine " + tgtRoutine.name + " (" + to_string(tgtSigCount) + " instructions), distance above threshold");
                 continue;
             }
-            have_dup = true;
-            verbose("\tPotential duplicate found: " + tgtRoutine.toString(false) + ", distance: " + to_string(distance) + " instructions");
-            // update routine in target map
-            if (distance < minDistance[refRoutine.id]) {
-                debug("\tCalculated distance below previous value of " + to_string(minDistance[refRoutine.id]));
-                minDistance[refRoutine.id] = distance;
-                tgtRoutine.name = refRoutine.name;
-                tgtRoutine.duplicate = true;
-                tgtMap.setRoutine(tgtIdx, tgtRoutine);
+            debug("\tPotential duplicate found: " + tgtRoutine.name + " (" + to_string(tgtSigCount) + " instructions), distance: " + to_string(distance) + " instructions");
+            Duplicate &d = duplicates[refIdx];
+            if (distance < d.distance) {
+                have_dup = true;
+                debug("\tCalculated distance below previous value of " + to_string(d.distance));
+                d = Duplicate{distance, refSigCount, tgtSigCount, tgtIdx};
+                debug("\tStored duplicate: " + duplicates[refIdx].toString());
             }
-            else debug("\tIgnoring target routine " + tgtRoutine.name + ", distance above previous value of " + to_string(minDistance[refRoutine.id]));
+            else debug("\tIgnoring target routine " + tgtRoutine.name + " (" + to_string(tgtSigCount) + " instructions), distance above previous value of " + to_string(d.distance));
+        } // iterate over target routines
+        // found an eligible duplicate after going through all target routines
+        if (have_dup) {
+            Duplicate &curDup = duplicates[refIdx];
+            debug("Processing duplicate: " + curDup.toString());
+            const Routine dupRoutine = tgtMap.getRoutine(curDup.dupIdx);
+            verbose("Found duplicate of routine " + refRoutine.toString() + " (" + to_string(curDup.refSize) + " instructions): " 
+                + dupRoutine.toString() + " (" + to_string(curDup.tgtSize) + " instructions) with distance " + to_string(curDup.distance));
+            // walk over all found duplicates looking for collisions
+            for (auto& [otherRefIdx, otherDup] : duplicates) {
+                if (otherDup.dupIdx != curDup.dupIdx || otherRefIdx == refIdx) continue;
+                // target routine which we just identified as a duplicate of the currently processed reference exe routine was already marked a duplicate of another
+                collision = true;
+                Size clearIdx;
+                const Routine otherRefRoutine = refMap.getRoutine(otherRefIdx);
+                // current duplicate better than other, clear other
+                if (curDup.distance < otherDup.distance) {
+                    warn("Unmarking " + dupRoutine.toString() + " as duplicate of " + otherRefRoutine.toString() + ", current distance " + to_string(curDup.distance) 
+                        + " better than " + to_string(otherDup.distance), OUT_YELLOW);
+                    otherDup = {};
+                }
+                // current duplicate worse than other, clear current
+                else if (curDup.distance > otherDup.distance) {
+                    warn("Ignoring " + dupRoutine.toString() + " as duplicate of " + refRoutine.toString() + ", previously better matched to " + otherRefRoutine.toString() 
+                        + " with distance " + to_string(otherDup.distance), OUT_YELLOW);
+                    clearIdx = refIdx;
+                    curDup = {};
+                }
+                // current duplicate as good as other, keep both for now
+                else {
+                    warn("Routine " + dupRoutine.toString() + " is a duplicate of " + refMap.getRoutine(otherRefIdx).toString() + " with equal distance", OUT_BRIGHTRED);
+                    continue;
+                }
+            }
         }
-        if (have_dup) dupCount++;
-        else verbose("\tUnable to find duplicate");
+        else 
+            debug("\tUnable to find duplicate of " + refRoutine.toString());
+    } // iterate over reference routines
+
+    // final run through the duplicates to patch the output map
+    Size dupCount = 0;
+    std::set<Size> dupIdxs;
+    for (const auto& [refIdx, dup] : duplicates) {
+        if (!dup.isValid()) continue;
+        dupIdxs.insert(dup.dupIdx);
+        Routine &dupRoutine = tgtMap.getMutableRoutine(dup.dupIdx);
+        debug("Emitting duplicate: " + dupRoutine.toString());
+        dupRoutine.duplicate = true;
+        dupCount++;
     }
-    if (dupCount) info(output_color(OUT_GREEN) + "Found " + to_string(dupCount) + " duplicates for " + to_string(refMap.routineCount()) + " routines" + ", ignored " + to_string(ignoreCount) + output_color(OUT_DEFAULT));
-    else info(output_color(OUT_RED) + "No duplicates found, ignored " + to_string(ignoreCount) + " routines" + output_color(OUT_DEFAULT));
+    Size uniqueDups = dupIdxs.size();
+
+    if (dupCount) 
+        info("Found duplicates for " + to_string(dupCount) + " (unique " + to_string(uniqueDups) + ") routines out of " + to_string(refMap.routineCount()) + " routines" + ", ignored " + to_string(ignoreCount), OUT_GREEN);
+    else 
+        info("No duplicates found, ignored " + to_string(ignoreCount) + " routines", OUT_RED);
+
+    if (collision) {
+        assert(uniqueDups < dupCount);
+        warn("Some routines were found as duplicates of more than one routine. This is possible, but unlikely. Try using a longer minimum routine size and/or lower distance threshold to avoid false positives.", OUT_BRIGHTRED);
+    }
+
     return dupCount != 0;
 }

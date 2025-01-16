@@ -18,8 +18,12 @@
 //     The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
 //
 //     THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-template<typename T> uint32_t edit_distance_dp(T const *str1, size_t const size1, T const *str2, size_t const size2, const uint32_t thr) {
-    std::vector<std::vector<uint32_t>> d(2, std::vector<uint32_t>(size2 + 1));
+
+using Distance = uint32_t;
+constexpr Distance MAX_DISTANCE = std::numeric_limits<Distance>::max();
+
+template<typename T> Distance edit_distance_dp_thr(T const *str1, size_t const size1, T const *str2, size_t const size2, const uint32_t thr) {
+    std::vector<std::vector<Distance>> d(2, std::vector<Distance>(size2 + 1));
     d[0][0] = 0;
     d[1][0] = 1;
     for (size_t i = 0; i < size2 + 1; i++) d[0][i] = i;
@@ -30,7 +34,7 @@ template<typename T> uint32_t edit_distance_dp(T const *str1, size_t const size1
             d[i&1][j] = std::min(std::min(d[(i-1)&1][j], d[i&1][j-1]) + 1, d[(i-1)&1][j-1] + (str1[i-1] == str2[j-1] ? 0 : 1));
             if (d[i&1][j] <= thr) below_thr = true;
         }
-        if (!below_thr) return std::numeric_limits<uint32_t>::max();
+        if (!below_thr) return MAX_DISTANCE;
     }
     return d[size1&1][size2];
 }

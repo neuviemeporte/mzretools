@@ -8,6 +8,7 @@
 #include "dos/analysis.h"
 #include "dos/opcodes.h"
 #include "dos/executable.h"
+#include "dos/editdistance.h"
 
 using namespace std;
 
@@ -32,14 +33,14 @@ protected:
         Size missCount = 0;
         for (Size idx = 0; idx < map1.routineCount(); ++idx) {
             const Routine r1 = map1.getRoutine(idx);
-            TRACELN("Routine " + to_string(idx + 1) + ": " + r1.toString(false));
+            TRACELN("Routine " + to_string(idx + 1) + ": " + r1.dump(false));
             const Routine r2 = map2.getRoutine(r1.name);
             if (!r2.isValid()) {
                 TRACELN("\tUnable to find in other map (" + to_string(++missCount) + ")");
                 if (missCount > maxMiss) return false;
                 continue;
             }
-            TRACELN("\tFound equivalent: " + r2.toString(false));
+            TRACELN("\tFound equivalent: " + r2.dump(false));
             if (r1.size() != r2.size()) {
                 TRACELN("\tRoutine sizes differ");
             }
@@ -552,4 +553,16 @@ TEST_F(AnalysisTest, FindDuplicates) {
     }
     TRACELN("Found duplicates: " + to_string(foundDuplicates));
     ASSERT_EQ(foundDuplicates, expectedDuplicates);
+}
+
+TEST_F(AnalysisTest, EditDistance) {
+    string s1 = "kitten", s2 = "sitting", s3 = "asdfvadfv";
+    uint32_t maxDistance = numeric_limits<uint32_t>::max();
+    ASSERT_EQ(edit_distance_dp_thr(s1.data(), s1.size(), s1.data(), s1.size(), 5), 0);
+    ASSERT_EQ(edit_distance_dp_thr(s1.data(), s1.size(), s1.data(), s1.size(), 5), 0);
+    ASSERT_EQ(edit_distance_dp_thr(s1.data(), s1.size(), s1.data(), s1.size(), 5), 0);
+    ASSERT_EQ(edit_distance_dp_thr(s1.data(), s1.size(), s2.data(), s2.size(), 5), 3);
+    ASSERT_EQ(edit_distance_dp_thr(s1.data(), s1.size(), s3.data(), s3.size(), 5), maxDistance);
+    ASSERT_EQ(edit_distance_dp_thr(s1.data(), s1.size(), s3.data(), s3.size(), 5), maxDistance);
+    ASSERT_EQ(edit_distance_dp_thr(s1.data(), s1.size(), s3.data(), s3.size(), 5), maxDistance);
 }

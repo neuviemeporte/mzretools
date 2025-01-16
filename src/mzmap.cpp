@@ -130,6 +130,9 @@ int main(int argc, char *argv[]) {
     catch (Error &e) {
         fatal(e.why());
     }
+    catch (std::exception &e) {
+        fatal(string(e.what()));
+    }    
     catch (...) {
         fatal("Unknown exception");
     }
