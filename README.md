@@ -159,7 +159,7 @@ The output shows `==` for an exact match, `~=` and `=~` for a "soft" difference 
 
 ## mzdup
 
-This utility can be used to find potential duplicates of known routines from one executable in another. It uses edit distance on strings of ambiguated instructions (with any offset/immediate values stripped) with a threshold to locate the potential duplicates and save time on reversing already known routines.
+This utility can be used to find potential duplicates of known routines from one executable in another. It uses edit distance on strings of ambiguated instructions (with any offset/immediate values stripped) with a threshold to locate the potential duplicates and save time on reversing already known routines. The minimum number of instructions that a routine must have to be considered for duplicate search, as well as the maximum distance at which the routines are still considered duplicates, are both configurable through commandline options.
 
 ```
 ninja@RYZEN:f15se2-re$ mzdup ../ida/start.exe map/start.map ../ida/egame.exe map/egame.map
