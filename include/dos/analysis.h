@@ -141,7 +141,7 @@ public:
         Address stopAddr;
         std::string mapPath;
         Options() : strict(true), ignoreDiff(false), noCall(false), variant(false), refSkip(0), tgtSkip(0), ctxCount(10), 
-            routineSizeThresh(10), routineDistanceThresh(5) {}
+            routineSizeThresh(15), routineDistanceThresh(1) {}
     };
 private:
     enum ComparisonResult { 

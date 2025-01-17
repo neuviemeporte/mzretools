@@ -7,17 +7,20 @@ using namespace std;
 
 OUTPUT_CONF(LOG_SYSTEM)
 
+Analyzer::Options options;
+
 void usage() {
-    output("mzdup v" + VERSION + "\n"
-           "usage: mzdup [options] reference_exe reference_map target_exe target_map\n"
-           "Attempts to identify potential duplicate routines between two DOS MZ executables\n"
-           "Updated target_map with duplicates marked will be saved to target_map.dup\n"
-           "Options:\n"
-           "--verbose:       show more detailed information about processed routines\n"
-           "--debug:         show additional debug information\n"
-           "--minsize count: don't search for duplicates of routines smaller than 'count' instructions (default: 10)\n"
-           "--maxdist count: routines differing by no more than 'count' instructions will be reported as duplicates (default: 5)",
-            LOG_OTHER, LOG_ERROR);
+    ostringstream str;
+    str << "mzdup v" << VERSION << endl
+        << "Usage: mzdup [options] reference_exe reference_map target_exe target_map" << endl
+        << "Attempts to identify potential duplicate routines between two DOS MZ executables" << endl
+        << "Updated target_map with duplicates marked will be saved to target_map.dup" << endl
+        << "Options:" << endl
+        << "--verbose:       show more detailed information about processed routines" << endl
+        << "--debug:         show additional debug information" << endl
+        << "--minsize count: don't search for duplicates of routines smaller than 'count' instructions (default: " << options.routineSizeThresh << ")" << endl
+        << "--maxdist count: routines differing by no more than 'count' instructions will be reported as duplicates (default: " << options.routineDistanceThresh << ")";
+    output(str.str(), LOG_OTHER, LOG_ERROR);
     exit(1);
 }
 
@@ -34,7 +37,6 @@ int main(int argc, char *argv[]) {
     }
     Word loadSegment = 0x1000;
     string refExePath, refMapPath, tgtExePath, tgtMapPath;
-    Analyzer::Options options;
     Size minSize = options.routineSizeThresh, maxDist = options.routineDistanceThresh;
     for (int aidx = 1; aidx < argc; ++aidx) {
         string arg(argv[aidx]);

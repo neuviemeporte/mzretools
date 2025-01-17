@@ -168,7 +168,7 @@ Found 63 duplicates for 255 routines, ignored 118
 Saving routine map (routines = 398) to map/egame.map.dup, reversing relocation by 0x1000
 ```
 
-Here, I have finished reconstructing one executable from my game (`start.exe`), and have its layout fully documented in the manually tweaked `start.map`, so I am using the tool to look for any similar (or identical) routines in `egame.exe`, providing an uncustomized map, freshly obtained from `mzmap` with `egame.map`. The tool extracts each routine from the first (reference) executable, generates a string of instruction signatures from it, then checks against every routine in the second (target) executable using edit distance. Finally, the target map file is patched with the names of the detected duplicates applied to the routines, and marked with the `duplicate` property, and the patched file is saved with a `.dup` suffix.
+Here, I have finished reconstructing one executable from my game (`start.exe`), and have its layout fully documented in the manually tweaked `start.map`, so I am using the tool to look for any similar (or identical) routines in `egame.exe`, providing an uncustomized map, freshly obtained from `mzmap` with `egame.map`. The tool extracts each routine from the first (reference) executable, generates a string of instruction signatures from it, then checks against every routine in the second (target) executable using edit distance. Finally, the target map file is updated with the duplicate information in the form of comments, and the potential duplicates being annotated with the `duplicate` property. The updated map file is saved with a `.dup` suffix.
 
 ## lst2ch.py
 
