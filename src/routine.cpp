@@ -377,6 +377,8 @@ std::string RoutineMap::routineString(const Routine &r, const Word reloc) const 
     Segment rseg = findSegment(r.extents.begin.segment);
     if (rseg.type == Segment::SEG_NONE) 
         throw AnalysisError("Unable to find segment for routine " + r.name + ", start addr " + r.extents.begin.toString() + ", relocated " + rextent.begin.toString());
+    // output routine comments before the actual routine
+    for (const string &c : r.comments) str << "# " << c << endl;
     str << r.name << ": " << rseg.name << " " << (r.near ? "NEAR " : "FAR ") << rextent.toHex();
     if (r.unclaimed) {
         str << " U" << rextent.toHex();

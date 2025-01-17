@@ -1410,6 +1410,7 @@ void Analyzer::comparisonSummary(const Executable &ref, const RoutineMap &routin
 struct Duplicate {
     Distance distance;
     Size refSize, tgtSize, dupIdx;
+    vector<Block> dupBlocks;
 
     Duplicate(const Distance distance, const Size refSize, const Size tgtSize, const Size dupIdx) : distance(distance), refSize(refSize), tgtSize(tgtSize), dupIdx(dupIdx) {}
     Duplicate(const Distance distance) : Duplicate(distance, 0, 0, BAD_ROUTINE) {}
@@ -1473,6 +1474,7 @@ bool Analyzer::findDuplicates(const Executable &ref, Executable &tgt, const Rout
                 have_dup = true;
                 debug("\tCalculated distance below previous value of " + to_string(d.distance));
                 d = Duplicate{distance, refSigCount, tgtSigCount, tgtIdx};
+                d.dupBlocks.push_back(tgtBlock);
                 debug("\tStored duplicate: " + duplicates[refIdx].toString());
             }
             else debug("\tIgnoring target routine " + tgtRoutine.name + " (" + to_string(tgtSigCount) + " instructions), distance above previous value of " + to_string(d.distance));
@@ -1521,8 +1523,11 @@ bool Analyzer::findDuplicates(const Executable &ref, Executable &tgt, const Rout
     for (const auto& [refIdx, dup] : duplicates) {
         if (!dup.isValid()) continue;
         dupIdxs.insert(dup.dupIdx);
+        const Routine origRoutine = refMap.getRoutine(refIdx);
         Routine &dupRoutine = tgtMap.getMutableRoutine(dup.dupIdx);
         debug("Emitting duplicate: " + dupRoutine.toString());
+        // TODO: list duplicate blocks once figured out how to do comparisons on other blocks than the main one
+        dupRoutine.addComment("Routine " + dupRoutine.name + " is a potential duplicate of routine " + origRoutine.name + ", block " + dup.dupBlocks.front().toString() + " differs by " + to_string(dup.distance) + " instructions");
         dupRoutine.duplicate = true;
         dupCount++;
     }
