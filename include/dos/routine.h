@@ -58,7 +58,15 @@ struct Routine {
     void addComment(const std::string &comment) { comments.push_back(comment); }
 };
 
+struct Variable {
+    std::string name;
+    Address addr;
+    static std::smatch stringMatch(const std::string &str);
+    Variable(const std::string &name, const Address &addr) : name(name), addr(addr) {}
+};
+
 // A map of an executable, records which areas have been claimed by routines, and which have not, serializable to a file
+// TODO: name no longer fits since it also keeps track of data
 class RoutineMap {
     friend class AnalysisTest;
     Word loadSegment;
@@ -66,6 +74,7 @@ class RoutineMap {
     std::vector<Routine> routines;
     std::vector<Block> unclaimed;
     std::vector<Segment> segments;
+    std::vector<Variable> vars;
     // TODO: turn these into a context struct, pass around instead of members
     RoutineId curId, prevId, curBlockId, prevBlockId;
 
@@ -97,6 +106,7 @@ public:
     Segment findSegment(const Offset off) const;
     void setSegments(const std::vector<Segment> &seg);
     void buildUnclaimed();
+    void storeDataRef(const Address &dr);
     
 private:
     void closeBlock(Block &b, const Address &next, const ScanQueue &sq);
@@ -105,6 +115,7 @@ private:
     void loadFromMapFile(const std::string &path, const Word reloc);
     void loadFromIdaFile(const std::string &path, const Word reloc);
     std::string routineString(const Routine &r, const Word reloc) const;
+    std::string varString(const Variable &v, const Word reloc) const;
 };
 
 #endif // ROUTINE_H

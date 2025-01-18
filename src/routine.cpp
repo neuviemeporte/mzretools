@@ -155,6 +155,13 @@ void Routine::recalculateExtents() {
     debug("Calculated routine extents: "s + dump(false));
 }
 
+std::smatch Variable::stringMatch(const std::string &str) {
+    static const regex VAR_RE{"^([_a-zA-Z0-9]+): ([_a-zA-Z0-9]+) VAR ([0-9a-fA-F]{1,4})"};
+    smatch match;
+    regex_match(str, match, VAR_RE);
+    return match;
+}
+
 RoutineMap::RoutineMap(const ScanQueue &sq, const std::vector<Segment> &segs, const Word loadSegment, const Size mapSize) : loadSegment(loadSegment), mapSize(mapSize) {
     const Size routineCount = sq.routineCount();
     if (routineCount == 0)
@@ -405,6 +412,15 @@ std::string RoutineMap::routineString(const Routine &r, const Word reloc) const 
     return str.str();
 }
 
+std::string RoutineMap::varString(const Variable &v, const Word reloc) const {
+    ostringstream str;
+    if (!v.addr.isValid()) throw ArgError("Invalid variable address for '" + v.name + "' while converting to string");
+    const Segment vseg = findSegment(v.addr.segment);
+    if (vseg.type == Segment::SEG_NONE) throw AnalysisError("Unable to find segment for variable " + v.name + " / " + v.addr.toString());
+    str << v.name << ": " << vseg.name << " VAR " << hexVal(v.addr.offset, false);
+    return str.str();
+}
+
 void RoutineMap::order() {
     // TODO: coalesce adjacent blocks, see routine_35 of hello.exe: 1415-14f7 R1412-1414 R1415-14f7
     for (auto &r : routines) 
@@ -423,14 +439,22 @@ void RoutineMap::save(const std::string &path, const Word reloc, const bool over
         s.address -= reloc;
         file << s.toString() << endl;
     }
-    file << "# Discovered routines, one per line, syntax is \"RoutineName: Segment Type(NEAR/FAR) Extents [R/U]Block1 [R/U]Block2...\"" << endl
+    file << "# ========" << endl
+         << "# Discovered routines, one per line, syntax is \"RoutineName: Segment Type(NEAR/FAR) Extents [R/U]Block1 [R/U]Block2...\"" << endl
          << "# The routine extents is the largest continuous block of instructions attributed to this routine and originating" << endl 
          << "# at the location determined to be the routine's entrypoint." << endl
          << "# Blocks are offset ranges relative to the segment that the routine belongs to, specifying address as belonging to the routine." << endl 
          << "# Blocks starting with R contain code that was determined reachable, U were unreachable but still likely belong to the routine." << endl
-         << "# The routine blocks may cover a greater area than the extents if the routine has disconected chunks it jumps into." << endl;
+         << "# The routine blocks may cover a greater area than the extents if the routine has disconected chunks it jumps into." << endl
+         << "# ========" << endl;
     for (const auto &r : routines) {
         file << routineString(r, reloc) << endl;
+    }
+    file << "# ========" << endl
+         << "# Discovered variables, one per line, syntax is \"VariableName: Segment VAR OffsetWithinSegment\"" << endl
+         << "# ========" << endl;
+    for (const auto &v: vars) {
+        file << varString(v, reloc) << endl;
     }
 }
 
@@ -574,6 +598,16 @@ void RoutineMap::buildUnclaimed() {
     }
 }
 
+void RoutineMap::storeDataRef(const Address &dr) {
+    const Segment ds = findSegment(dr.segment);
+    if (ds.type == Segment::SEG_NONE) {
+        debug("Unable to save variable at address " + dr.toString() + ", no record of segment at " + hexVal(dr.segment));
+        return;
+    }
+    const size_t idx = vars.size() + 1;
+    vars.emplace_back(Variable{"var_" + to_string(idx), dr});
+}
+
 Size RoutineMap::segmentCount(const Segment::Type type) const {
     Size ret = 0;
     for (const Segment &s : segments) {
@@ -633,6 +667,15 @@ void RoutineMap::loadFromMapFile(const std::string &path, const Word reloc) {
             s.address += reloc;
             debug("Parsed segment: " + s.toString());
             segments.push_back(s);
+            continue;
+        }
+        // try to interpret as a variable
+        else if (!(match = Variable::stringMatch(line)).empty()) {
+            const string varname = match.str(1), segname = match.str(2), offstr = match.str(3);
+            Segment varseg;
+            if ((varseg = findSegment(segname)).type == Segment::SEG_NONE) throw ParseError("Line " + to_string(lineno) + ": unknown segment '" + token + "'");
+            Address varaddr{varseg.address, static_cast<Word>(stoi(offstr, nullptr, 16))};
+            vars.emplace_back(Variable{varname, varaddr});
             continue;
         }
         // otherwise try interpreting as a routine description

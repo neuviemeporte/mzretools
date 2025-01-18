@@ -461,6 +461,7 @@ static void applyMov(const Instruction &i, RegisterState &regs, Executable &exe)
         else searchMessage(i.addr, "mov source address outside code extents: "s + srcAddr.toString());
     }
     // TODO: support mov mem, reg? would need to keep stack of memories per queue item... maybe just a delta list to keep storage down?
+    // create data/stack segments from mov ds/mov ss stores
     if (set) {
         searchMessage(i.addr, "executed move to register: "s + i.toString());
         if (i.op1.type == OPR_REG_DS) exe.storeSegment(Segment::SEG_DATA, regs.getValue(REG_DS));
@@ -504,6 +505,7 @@ RoutineMap Analyzer::findRoutines(Executable &exe) {
     debug("initial register values:\n"s + initRegs.toString());
     // queue for BFS search
     scanQueue = ScanQueue{exe.loadAddr(), exe.size(), Destination(exe.entrypoint(), 1, true, initRegs)};
+    dataRefs.clear();
     info("Analyzing code within extents: "s + exe.extents());
     Size locations = 0;
  
@@ -544,6 +546,8 @@ RoutineMap Analyzer::findRoutines(Executable &exe) {
                 // mark memory map items corresponding to the current instruction as belonging to the current routine 
                 // (routine id is tracked by the queue, no need to provide)
                 scanQueue.setRoutineId(csip.toLinear(), i.length);
+                // if the instruction references memory, save the location as a potential data item
+                processDataReference(exe, i, regs);
                 // interpret the instruction
                 if (i.isBranch()) {
                     Branch branch = getBranch(exe, i, regs);
@@ -615,6 +619,8 @@ RoutineMap Analyzer::findRoutines(Executable &exe) {
 
     // create routine map from contents of search queue
     auto ret = RoutineMap{scanQueue, exe.getSegments(), exe.getLoadSegment(), exe.size()};
+    // yes, this was an afterthought, why you ask? ;)
+    for (const auto &dr : dataRefs) ret.storeDataRef(dr);
     // TODO: stats like for compare
     return ret;
 }
@@ -1136,7 +1142,7 @@ Branch Analyzer::getBranch(const Executable &exe, const Instruction &i, const Re
 // TODO: support user-supplied equivalence dictionary 
 // TODO: do not hardcode, place in text file
 // TODO: automatic reverse match generation
-// TODO: replace strings with Instruction-s, support more flexible matching?
+// TODO: replace strings with Instruction-s/Signature-s, support more flexible matching?
 static const map<string, vector<vector<string>>> INSTR_VARIANT = {
     { "add sp, 0x2", { 
             { "pop cx" }, 
@@ -1405,6 +1411,30 @@ void Analyzer::comparisonSummary(const Executable &ref, const RoutineMap &routin
         << "(*) Any routines called only by ignored routines have not been seen and will lower the practical score," << endl 
         << "    but theoretically if we stepped into ignored routines, we would have seen and ignored any that were excluded.";
     verbose(msg.str());
+}
+
+void Analyzer::processDataReference(const Executable &exe, const Instruction i, const RegisterState &regs) {
+    const SOffset off = i.memOffset();
+    if (off == 0) return;
+    assert(off <= WORD_MAX);
+    Word offVal = static_cast<Word>(off);
+    // TODO: no idea what to do with negative offsets for now
+    if (offVal < 0) {
+        debug("Data reference with negative offset: " + signedHexVal(static_cast<SWord>(offVal)) + ", ignoring");
+        return;
+    }
+    Register segReg = REG_DS;
+    // handle segment override in instruction to be able to locate data in the middle of code, not sure if stack makes sense but whatever
+    if (prefixIsSegment(i.prefix)) segReg = prefixRegId(i.prefix);
+    // read value of appropriate segment if possible
+    if (!regs.isKnown(segReg)) {
+        debug("Data reference encountered with offset " + hexVal(offVal) + ", but value of " + regName(segReg) + " unknown - ignoring");
+        return;
+    }
+    const Word dsAddr = regs.getValue(segReg);
+    Address dataAddr{dsAddr, offVal};
+    dataRefs.push_back(dataAddr);
+    debug("Storing data reference: " + dataAddr.toString());
 }
 
 struct Duplicate {

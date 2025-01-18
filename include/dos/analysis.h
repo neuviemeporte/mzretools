@@ -76,12 +76,15 @@ public:
     void dumpEntrypoints() const;
 };
 
+// utility class used in code analysis routines, keeps mappings of equivalent offsets between two executables for code (calls, jumps), data (global vars) and stack (local vars)
+// to make sure they are consistent. This is particulary important in the code comparison routines to know if there is a problem with the executable layout other than just the instructions themselves.
 class OffsetMap {
     using MapSet = std::vector<SOffset>;
     Size maxData;
     std::map<Address, Address> codeMap;
     std::map<SOffset, MapSet> dataMap;
     std::map<SOffset, SOffset> stackMap;
+    std::vector<Segment> segments;
 
 public:
     // the argument is the maximum number of data segments, we allow as many alternate offset mappings 
@@ -95,6 +98,7 @@ public:
     bool dataMatch(const SOffset from, const SOffset to);
     bool stackMatch(const SOffset from, const SOffset to);
     void resetStack() { stackMap.clear(); }
+    void addSegment(const Segment &seg) { segments.push_back(seg); }
 
 private:
     std::string dataStr(const MapSet &ms) const;
@@ -168,6 +172,7 @@ private:
     std::set<std::string> routineNames, excludedNames, missedNames;
     Size refSkipCount, tgtSkipCount;
     Address refSkipOrigin, tgtSkipOrigin;
+    std::vector<Address> dataRefs;
 
 public:
     Analyzer(const Options &options, const Size maxData = 0) : options(options), offMap(maxData), comparedSize(0) {}
@@ -189,6 +194,7 @@ private:
     void skipContext(const Executable &ref, const Executable &tgt) const;
     void calculateStats(const RoutineMap &routineMap);
     void comparisonSummary(const Executable &ref, const RoutineMap &routineMap, const bool showMissed);
+    void processDataReference(const Executable &exe, const Instruction i, const RegisterState &regs);
 };
 
 #endif // ANALYSIS_H
