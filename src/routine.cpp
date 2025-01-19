@@ -462,7 +462,7 @@ void RoutineMap::save(const std::string &path, const Word reloc, const bool over
 string RoutineMap::dump(const bool verbose, const bool brief, const bool format) const {
     ostringstream str;
     if (empty()) {
-        str << "--- Empty routine map";
+        str << "--- Empty routine map" << endl;
         return str.str();;
     }
 
@@ -756,53 +756,71 @@ void RoutineMap::loadFromMapFile(const std::string &path, const Word reloc) {
     if (mapSize == 0) throw ParseError("Invalid or undefined map size");
 }
 
-// create routine map from IDA .lst file
+// create routine map from IDA listing (.lst) file
 // TODO: add collision checks
 void RoutineMap::loadFromIdaFile(const std::string &path, const Word reloc) {
+    static const string 
+        NAME_RE_STR{"[_a-zA-Z0-9]+"},
+        OFFSET_RE_STR{"[0-9a-fA-F]{1,4}"},
+        ADDR_RE_STR{"(" + NAME_RE_STR + "):(" + OFFSET_RE_STR + ")"};
+    const regex ADDR_RE{ADDR_RE_STR};
     debug("Loading IDA routine map from "s + path + ", relocation factor " + hexVal(reloc));
     ifstream fstr{path};
-    string line, lastAddr;
-    Size lineno = 1;
-    Address curAddr, endpAddr;
+    string line;
+    Size lineno = 0;
+    Offset globalPos = 0;
+    Word prevOffset = 0;
+    Segment curSegment;
     while (safeGetline(fstr, line)) {
+        lineno++;
         istringstream sstr{line};
-        string token[4];
-        Size tokenno = 0;
-        while (tokenno < 4 && sstr >> token[tokenno]) {
-            tokenno++;
+
+        // first on the line is always the address of the form segName:offset
+        string addrStr;
+        // ignore empty lines
+        if (!(sstr >> addrStr)) continue;
+        // next (optionally) is a segment/proc/label/data name
+        string nameStr;
+        // ignore lines with nothing or a comment after the address
+        if (!(sstr >> nameStr) || nameStr.empty() || nameStr[0] == ';') continue;
+        // split the address components
+        const auto addrParts = extractRegex(ADDR_RE, addrStr);
+        if (addrParts.size() != 2) throw ParseError("Unable to separate address components on line " + to_string(lineno));
+        const string segName = addrParts.front(), offsetStr = addrParts.back();
+        const Word offsetVal = static_cast<Word>(stoi(offsetStr, nullptr, 16));
+        debug("Line " + to_string(lineno) + ": seg=" + segName + ", off=" + hexVal(offsetVal) + ", name='" + nameStr + "'");
+        // the next token is going to determine the type of the line, e.g. proc/segment/var
+        string typeStr;
+        // ignore lines with no type discriminator, likely an asm directive or a standalone label
+        if (!(sstr >> typeStr) || typeStr.empty()) continue;
+        // force lowercase
+        std::transform(typeStr.begin(), typeStr.end(), typeStr.begin(), [](unsigned char c){ 
+            return std::tolower(c); 
+        });
+        debug("\ttype: '" + typeStr + "'");
+        // segment start
+        if (typeStr == "segment") {
+            if (curSegment.type != Segment::SEG_NONE) throw ParseError("New segment opening while previous segment " + curSegment.name + " still open on line " + to_string(lineno));
+            string alignStr, visStr, clsStr;
+            if (!(sstr >> alignStr >> visStr >> clsStr)) throw ParseError("Invalid segment definition on line " + to_string(lineno));
+            debug("\tsegment align=" + alignStr + ", vis=" + visStr + ", cls=" + clsStr);
         }
-        string &addrStr = token[0];
-        // TODO: get rid of harcoded segment name
-        if (addrStr.find("seg000") != string::npos) {
-            addrStr = addrStr.substr(2,9);
-            addrStr[0] = '0';
-            curAddr = Address{addrStr};
-            curAddr.relocate(reloc);
+        // segment end
+        else if (typeStr == "ends") {
         }
-        else {
-            curAddr = Address();
+        // routine start
+        else if (typeStr == "proc") {
+        }
+        // routine end
+        else if (typeStr == "endp") {
+        }
+        // simple data
+        else if (typeStr == "db" || typeStr == "dw" || typeStr == "dd") {
         }
 
-        // close previous routine if we encountered an endp and the address 
-        if (endpAddr.isValid() && curAddr != endpAddr) {
-            auto &r = routines.back();
-            r.extents.end = curAddr - 1; // go one byte before current address
-            debug("Closing routine "s + r.name + " @ " + r.extents.end.toString());
-            endpAddr = Address(); // makes address invalid
-        }
-        // start new routine
-        if (token[2] == "proc") { 
-            Routine r{token[1], curAddr};
-            r.id = routines.size() + 1;
-            routines.emplace_back(r);
-            debug("Found start of routine "s + r.name + " @ " + r.extents.begin.toString());
-        }
-        // routine end, but IDA places endp at the offset of the beginning of the last instruction, 
-        // and we want the end to include the last instructions' bytes, so just memorize the address and close the routine later
-        else if (token[2] == "endp") { 
-            endpAddr = curAddr;
-            debug("Found end of routine @ " + endpAddr.toString());
-        }
-        lineno++;
-    }
+        if (offsetVal < prevOffset) throw ParseError("Offsets going backwards on line " + to_string(lineno));
+
+
+        prevOffset = offsetVal;
+    } // iterate over listing lines
 }
