@@ -77,9 +77,10 @@ class RoutineMap {
     std::vector<Variable> vars;
     // TODO: turn these into a context struct, pass around instead of members
     RoutineId curId, prevId, curBlockId, prevBlockId;
+    bool ida;
 
 public:
-    RoutineMap(const Word loadSegment, const Size mapSize) : loadSegment(loadSegment), mapSize(mapSize), curId(0), prevId(0), curBlockId(0), prevBlockId(0) {}
+    RoutineMap(const Word loadSegment, const Size mapSize) : loadSegment(loadSegment), mapSize(mapSize), curId(0), prevId(0), curBlockId(0), prevBlockId(0), ida(false) {}
     RoutineMap(const ScanQueue &sq, const std::vector<Segment> &segs, const Word loadSegment, const Size mapSize);
     RoutineMap(const std::string &path, const Word loadSegment = 0);
     RoutineMap() : RoutineMap(0, 0) {}
@@ -95,9 +96,10 @@ public:
     Routine findByEntrypoint(const Address &ep) const;
     bool empty() const { return routines.empty(); }
     Size match(const RoutineMap &other) const;
+    bool isIda() const { return ida; }
     Routine colidesBlock(const Block &b) const;
     void order();
-    void save(const std::string &path, const Word reloc, const bool overwrite = false) const;
+    void save(const std::string &path, const Word reloc = 0, const bool overwrite = false) const;
     std::string dump(const bool verbose = true, const bool hide = false, const bool format = false) const;
     const auto& getSegments() const { return segments; }
     Size segmentCount(const Segment::Type type) const;

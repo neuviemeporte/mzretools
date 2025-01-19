@@ -162,7 +162,7 @@ std::smatch Variable::stringMatch(const std::string &str) {
     return match;
 }
 
-RoutineMap::RoutineMap(const ScanQueue &sq, const std::vector<Segment> &segs, const Word loadSegment, const Size mapSize) : loadSegment(loadSegment), mapSize(mapSize) {
+RoutineMap::RoutineMap(const ScanQueue &sq, const std::vector<Segment> &segs, const Word loadSegment, const Size mapSize) : loadSegment(loadSegment), mapSize(mapSize), ida(false) {
     const Size routineCount = sq.routineCount();
     if (routineCount == 0)
         throw AnalysisError("Attempted to create routine map from search queue with no routines");
@@ -762,33 +762,44 @@ void RoutineMap::loadFromIdaFile(const std::string &path, const Word reloc) {
     static const string 
         NAME_RE_STR{"[_a-zA-Z0-9]+"},
         OFFSET_RE_STR{"[0-9a-fA-F]{1,4}"},
-        ADDR_RE_STR{"(" + NAME_RE_STR + "):(" + OFFSET_RE_STR + ")"};
-    const regex ADDR_RE{ADDR_RE_STR};
+        ADDR_RE_STR{"(" + NAME_RE_STR + "):(" + OFFSET_RE_STR + ")"},
+        LOAD_LEN_STR{"Loaded length: ([0-9a-fA-F]+)h"};
+    const regex ADDR_RE{ADDR_RE_STR}, LOAD_LEN_RE{LOAD_LEN_STR};
     debug("Loading IDA routine map from "s + path + ", relocation factor " + hexVal(reloc));
+    ida = true;
     ifstream fstr{path};
     string line;
     Size lineno = 0;
     Offset globalPos = 0;
     Word prevOffset = 0;
     Segment curSegment;
+    Routine curProc;
     while (safeGetline(fstr, line)) {
         lineno++;
         istringstream sstr{line};
-
         // first on the line is always the address of the form segName:offset
         string addrStr;
         // ignore empty lines
         if (!(sstr >> addrStr)) continue;
         // next (optionally) is a segment/proc/label/data name
         string nameStr;
-        // ignore lines with nothing or a comment after the address
-        if (!(sstr >> nameStr) || nameStr.empty() || nameStr[0] == ';') continue;
+        // ignore lines with nothing after the address
+        if (!(sstr >> nameStr) || nameStr.empty()) continue;
+        // ignore comments except for the special case with the loaded length
+        if (nameStr[0] == ';') {
+            smatch loadLenMatch;
+            if (mapSize == 0 && regex_search(line, loadLenMatch, LOAD_LEN_RE)) {
+                mapSize = static_cast<Size>(stoi(loadLenMatch.str(1), nullptr, 16));
+                debug("Extracted loaded length: " + hexVal(mapSize) + " from line " + to_string(lineno));
+            }
+            continue;
+        }
         // split the address components
         const auto addrParts = extractRegex(ADDR_RE, addrStr);
         if (addrParts.size() != 2) throw ParseError("Unable to separate address components on line " + to_string(lineno));
         const string segName = addrParts.front(), offsetStr = addrParts.back();
         const Word offsetVal = static_cast<Word>(stoi(offsetStr, nullptr, 16));
-        debug("Line " + to_string(lineno) + ": seg=" + segName + ", off=" + hexVal(offsetVal) + ", name='" + nameStr + "'");
+        debug("Line " + to_string(lineno) + ": seg=" + segName + ", off=" + hexVal(offsetVal) + ", name='" + nameStr + "', pos=" + hexVal(globalPos));
         // the next token is going to determine the type of the line, e.g. proc/segment/var
         string typeStr;
         // ignore lines with no type discriminator, likely an asm directive or a standalone label
@@ -804,23 +815,51 @@ void RoutineMap::loadFromIdaFile(const std::string &path, const Word reloc) {
             string alignStr, visStr, clsStr;
             if (!(sstr >> alignStr >> visStr >> clsStr)) throw ParseError("Invalid segment definition on line " + to_string(lineno));
             debug("\tsegment align=" + alignStr + ", vis=" + visStr + ", cls=" + clsStr);
+            Segment::Type segType;
+            if (clsStr == "'CODE'") segType = Segment::SEG_CODE;
+            else if (clsStr == "'DATA'") segType = Segment::SEG_DATA;
+            else if (clsStr == "'STACK'") segType = Segment::SEG_STACK;
+            else throw ParseError("Unrecognized segment class " + clsStr + " on line " + to_string(lineno));
+            // XXX: figuring out the exact position where the new segment starts from the IDA listing alone is hard to impossible - would need to keep a running count of data sizes from db/dup/struc etc. strings, and instruction sizes from asm mnemonics, which are ambiguous due to multiple possible encodings of some instructions. So this is going to be just a rough guess by padding the segment boundary up to paragraph size and the user will probably need to tweak segment addresses manually
+            globalPos += PARAGRAPH_SIZE - (globalPos % PARAGRAPH_SIZE);
+            Address segAddr{globalPos};
+            segAddr.normalize();
+            curSegment = Segment{nameStr, segType, segAddr.segment};
+            debug("\tinitialized new segment at address " + hexVal(curSegment.address) + ", globalPos=" + hexVal(globalPos));
+            prevOffset = 0;
         }
         // segment end
         else if (typeStr == "ends") {
+            debug("\tclosing segment " + curSegment.name);
+            segments.push_back(curSegment);
+            curSegment = {};
         }
         // routine start
         else if (typeStr == "proc") {
+            string procType;
+            sstr >> procType;
+            if (curProc.isValid()) throw ParseError("Opening new proc '" + nameStr + "' while previous '" + curProc.name + "' still open on line " + to_string(lineno));
+            curProc = Routine{nameStr, Block{Address{curSegment.address, offsetVal}}};
+            if (procType == "far") curProc.near = false;
+            debug("Opened proc: " + curProc.toString());
         }
         // routine end
         else if (typeStr == "endp") {
+            if (!curProc.isValid()) throw ParseError("Closing proc '" + nameStr + "' without prior open on line " + to_string(lineno));
+            if (curProc.name != nameStr) throw ParseError("Closing proc '" + nameStr + "' while '" + curProc.name + "' open on line " + to_string(lineno));
+            // XXX: likewise, this will be off due to IDA placing the endp on the same offset as the last instruction of the proc, whose length we do not know
+            curProc.extents.end = Address{curSegment.address, offsetVal};
+            routines.push_back(curProc);
+            curProc = {};
         }
         // simple data
+        // TODO: support structs
         else if (typeStr == "db" || typeStr == "dw" || typeStr == "dd") {
+            vars.emplace_back(Variable{nameStr, Address{curSegment.address, offsetVal}});
         }
 
-        if (offsetVal < prevOffset) throw ParseError("Offsets going backwards on line " + to_string(lineno));
-
-
+        if (offsetVal < prevOffset) throw ParseError("Offsets going backwards (" + hexVal(prevOffset) + "->" + hexVal(offsetVal) + ") on line " + to_string(lineno));
+        globalPos += offsetVal - prevOffset;
         prevOffset = offsetVal;
     } // iterate over listing lines
 }

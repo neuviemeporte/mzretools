@@ -18,9 +18,11 @@ OUTPUT_CONF(LOG_SYSTEM)
 
 void usage() {
     output("mzmap v" + VERSION + "\n"
-           "usage: mzmap [options] [<file.exe[:entrypoint]>] <output.map>\n"
-           "Scans a DOS MZ executable and tries to find routine boundaries, saves output into an editable map file\n"
+           "usage: mzmap [options] [file.exe[:entrypoint]] file.map\n"
+           "Scans a DOS MZ executable trying to find routines and variables, saves output into an editable map file\n"
            "Without an exe file, prints a summary of an existing map file\n"
+           "There is limited support for using an IDA .lst file as a map file,\n"
+           "and printing a .lst file will also convert and save it as a .map file\n"
            "Options:\n"
            "--verbose:      show more detailed information, including compared instructions\n"
            "--debug:        show additional debug information\n"
@@ -75,6 +77,7 @@ void loadAndPrintMap(const string &mapfile, const bool verbose, const bool brief
     if (!fs.exists) fatal("Mapfile does not exist: " + mapfile);
     RoutineMap map(mapfile);
     cout << map.dump(verbose, brief, format);
+    if (map.isIda()) map.save(mapfile + ".map");
 }
 
 int main(int argc, char *argv[]) {
