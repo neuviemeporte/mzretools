@@ -821,7 +821,7 @@ void RoutineMap::loadFromIdaFile(const std::string &path, const Word reloc) {
             else if (clsStr == "'STACK'") segType = Segment::SEG_STACK;
             else throw ParseError("Unrecognized segment class " + clsStr + " on line " + to_string(lineno));
             // XXX: figuring out the exact position where the new segment starts from the IDA listing alone is hard to impossible - would need to keep a running count of data sizes from db/dup/struc etc. strings, and instruction sizes from asm mnemonics, which are ambiguous due to multiple possible encodings of some instructions. So this is going to be just a rough guess by padding the segment boundary up to paragraph size and the user will probably need to tweak segment addresses manually
-            globalPos += PARAGRAPH_SIZE - (globalPos % PARAGRAPH_SIZE);
+            if (globalPos != 0) globalPos += PARAGRAPH_SIZE - (globalPos % PARAGRAPH_SIZE);
             Address segAddr{globalPos};
             segAddr.normalize();
             curSegment = Segment{nameStr, segType, segAddr.segment};
