@@ -514,6 +514,8 @@ string RoutineMap::dump(const bool verbose, const bool brief, const bool format)
             }
         }
     }
+    // consistency check
+    if (codeSize > mapSize) throw LogicError("Accumulated code size " + sizeStr(codeSize) + " exceeds total map size of " + sizeStr(mapSize));
 
     // print statistics
     const Size 
@@ -588,7 +590,7 @@ void RoutineMap::buildUnclaimed() {
         b = Block(r.extents.end + Offset(1));
         debug("Opening potential unclaimed block past routine end: " + b.toString());
     }
-    Address mapEnd{mapSize};
+    Address mapEnd{mapSize - 1};
     // check last block, create unclaimed if it does not match the end of the load module
     if (b.begin < mapEnd) {
         b.end = mapEnd;
