@@ -95,7 +95,7 @@ public:
     std::vector<Block> getUnclaimed() const { return unclaimed; }
     Routine findByEntrypoint(const Address &ep) const;
     bool empty() const { return routines.empty(); }
-    Size match(const RoutineMap &other) const;
+    Size match(const RoutineMap &other, const bool onlyEntry) const;
     bool isIda() const { return ida; }
     Routine colidesBlock(const Block &b) const;
     void order();

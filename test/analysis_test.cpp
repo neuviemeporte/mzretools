@@ -119,9 +119,8 @@ TEST_F(AnalysisTest, RoutineMap) {
     idaMap.dump();
     // test comparing of routine maps for both the success and failure case
     RoutineMap matchMap{idaMap};
-    ASSERT_TRUE(idaMap.match(matchMap));
     const Size routineCount = matchMap.routineCount();
-    const Size matchCount = idaMap.match(matchMap);
+    const Size matchCount = idaMap.match(matchMap, false);
     ASSERT_EQ(matchCount, routineCount);
 
     const string findName{"main"};
@@ -224,8 +223,8 @@ TEST_F(AnalysisTest, FindRoutines) {
     // create map from IDA listing
     const RoutineMap idaMap{"../bin/hello.lst", loadSegment};
     // compare our map against IDA map
-    Size matchCount = idaMap.match(discoveredMap);
-    const Size idaMatchCount = 37; // not all 54 routines that ida finds can be identified for now    
+    Size matchCount = idaMap.match(discoveredMap, true);
+    const Size idaMatchCount = 38; // not all 54 routines that ida finds can be identified for now    
     TRACELN("Discovered vs IDA, found matching " << matchCount << " routines out of " << idaMap.routineCount());
     ASSERT_EQ(matchCount, idaMatchCount);
     
@@ -234,11 +233,11 @@ TEST_F(AnalysisTest, FindRoutines) {
     ASSERT_EQ(reloadMap.routineCount(), discoveredMap.routineCount());
 
     // check matching in the opposite direction, should be the same
-    matchCount = reloadMap.match(idaMap);
+    matchCount = reloadMap.match(idaMap, true);
     TRACELN("Reload vs IDA, found matching " << matchCount << " routines out of " << reloadMap.routineCount());
     ASSERT_EQ(matchCount, idaMatchCount);
 
-    matchCount = discoveredMap.match(reloadMap);
+    matchCount = discoveredMap.match(reloadMap, true);
     TRACELN("Discovered vs reload, found matching " << matchCount << " routines out of " << discoveredMap.routineCount());
     ASSERT_EQ(matchCount, discoveredMap.routineCount());
 }

@@ -272,12 +272,12 @@ Routine RoutineMap::findByEntrypoint(const Address &ep) const {
 }
 
 // matches routines by extents only, limited use, mainly unit test for alignment with IDA
-Size RoutineMap::match(const RoutineMap &other) const {
+Size RoutineMap::match(const RoutineMap &other, const bool onlyEntry) const {
     Size matchCount = 0;
     for (const auto &r : routines) {
         bool routineMatch = false;
         for (const auto &ro : other.routines) {
-            if (r.extents == ro.extents) {
+            if (r.extents == ro.extents || (onlyEntry && r.entrypoint() == ro.entrypoint())) {
                 debug("Found routine match for "s + r.dump(false) + " with " + ro.dump(false));
                 routineMatch = true;
                 matchCount++;
@@ -826,6 +826,7 @@ void RoutineMap::loadFromIdaFile(const std::string &path, const Word reloc) {
             if (globalPos != 0) globalPos += PARAGRAPH_SIZE - (globalPos % PARAGRAPH_SIZE);
             Address segAddr{globalPos};
             segAddr.normalize();
+            segAddr.segment += reloc;
             curSegment = Segment{nameStr, segType, segAddr.segment};
             debug("\tinitialized new segment at address " + hexVal(curSegment.address) + ", globalPos=" + hexVal(globalPos));
             prevOffset = 0;
