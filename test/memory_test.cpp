@@ -209,6 +209,15 @@ TEST_F(MemoryTest, BlockCut) {
     split = b1.cut(b2);
     for (const auto &b : split) TRACELN("split: " + b.toString());
     ASSERT_TRUE(split.empty());
+
+    // we are contained
+    b1 = {Address{0x1f88,0x58a}, Address{0x1f88,0x5db}};
+    b2 = {Address{0x1f88,0x58a}, Address{0x1f88,0x5c0}};
+    TRACELN("-- Splitting " + b1.toString() + " with " + b2.toString());
+    split = b1.cut(b2);
+    for (const auto &b : split) TRACELN("split: " + b.toString());
+    ASSERT_EQ(split.size(), 1);
+    ASSERT_EQ(split.front(), Block(Address{0x1f88,0x5c1}, Address{0x1f88, 0x5db}));
 }
 
 TEST_F(MemoryTest, BlockSplit) {

@@ -195,17 +195,24 @@ std::vector<Block> Block::splitSegments() const {
 
 // given an another, potentially intersecting block, cut this one into 0/1/2 parts, so that the blocks don't intersect anymore (essentially an exclusive-or)
 std::vector<Block> Block::cut(const Block &other) const {
+    if (!isValid() || !other.isValid()) return {};    
     vector<Block> ret;
-        // no intersection, just return this block as is
-        if (!intersects(other)) ret.push_back(*this);
-        // this block completely contains the other one, need to split this block into two
-        else if (contains(other)) {
-            ret.push_back(Block{begin, other.begin - 1});
-            ret.push_back(Block{other.end + Offset(1), end});
-        }
-        // the blocks partially intersect, nneed to subtract the other one from this one
-        else if (!other.contains(*this)) ret.push_back(Block{begin, other.begin - 1});
-        // otherwise the other block contains this one so the result is an empty block
+    // other starts before begin of this
+    if (other.begin < begin) {
+        // disjoint before
+        if (other.end < begin) ret.push_back(*this);
+        // other intersects without enclosing
+        else if (other.end < end) ret.push_back(Block{other.end + Offset(1), end});
+        // other encloses, empty set as output
+    }
+    // other starts inside of this
+    else if (other.begin < end) {
+        if (other.begin > begin) ret.push_back(Block{begin, other.begin - 1});
+        if (other.end < end) ret.push_back(Block{other.end + Offset(1), end});
+    }
+    // other stats after end of this, disjoint after
+    else ret.push_back(*this);
+
     return ret;
 }
 
