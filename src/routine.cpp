@@ -4,6 +4,7 @@
 #include <regex>
 #include <fstream>
 #include <iostream>
+#include <queue>
 
 #include "dos/routine.h"
 #include "dos/output.h"
@@ -268,6 +269,15 @@ Routine RoutineMap::findByEntrypoint(const Address &ep) const {
     for (const Routine &r : routines)
         if (r.entrypoint() == ep) return r;
     
+    return {};
+}
+
+// given a block, go over all routines in the map and check if it does not colide (meaning cross over even partially) with any blocks claimed by those routines
+Block RoutineMap::findCollision(const Block &b) const {
+    for (const Routine &r : routines) {
+        for (const Block &rb : r.reachable) if (rb.intersects(b)) return rb;
+        for (const Block &ub : r.unreachable) if (ub.intersects(b)) return ub;
+    }
     return {};
 }
 
@@ -550,6 +560,34 @@ void RoutineMap::setSegments(const std::vector<Segment> &seg) {
     std::sort(segments.begin(), segments.end());
 }
 
+void RoutineMap::closeUnclaimedBlock(const Block &ub) {
+    if (!ub.isValid()) return;
+    debug("Closing unclaimed block: " + ub.toString());
+    queue<Block> q;
+    q.push(ub);
+    while (!q.empty()) {
+        const Block &curBlock = q.front();
+        q.pop();
+        // check for collision with a block of a routine, get the block the current block collides with
+        const Block collideBlock = findCollision(curBlock);
+        if (!collideBlock.isValid()) {
+            debug("Non-coliding unclaimed block: " + curBlock.toString() + ", splitting into segments");
+            for (const auto &sb : curBlock.splitSegments()) {
+                debug("Adding after split: " + sb.toString());
+                unclaimed.push_back(sb);
+            }
+            continue;
+        }
+        // collsion detected, cut into non-colliding pieces and add to processing queue for reasessment (pieces could still collide with other blocks)
+        debug("Detected collision of " + curBlock.toString() + " with " + collideBlock.toString());
+        for (const Block &b : curBlock.cut(collideBlock)) {
+            debug("Cut down colliding block to " + b.toString());
+            q.push(b);
+        }
+    }
+    debug("Finished processing unclaimed block");
+}
+
 // recreate list of unclaimed blocks (lost after map is saved to file) from holes in the map coverage after loading the map back from a file
 void RoutineMap::buildUnclaimed() {
     if (mapSize == 0) {
@@ -571,21 +609,18 @@ void RoutineMap::buildUnclaimed() {
             debug("Gap between the start of this routine and the end of the previous one, potentially unclaimed");
             // check if the potential unclaimed block does not really belong to any routine,
             // it could be a detached chunk outside the main extents
-            // TODO: this just checks if the beginning of the potential unclaimed block belongs to a routine, need to check the whole block before closing
+            // caveat: this is just a rough check to see if the beginning of the potential unclaimed block belongs to a routine, need to check the whole block before closing
             const auto chunkRoutine = getRoutine(b.begin);
             if (chunkRoutine.isValid()) {
                 const auto chunkBlock = chunkRoutine.blockContaining(b.begin);
-                // the found chunk could cover only a part of the potential unclaimed block,
-                // so just advance the potential block's beginning past the chunk
+                // the found chunk could cover only a part of the potential unclaimed block, so just advance the potential block's beginning past the chunk,
+                // mind that this could push the block into the current routine, but that will make the block invalid which we check for before closing
                 b.begin = chunkBlock.end + Offset(1);
                 debug("Block belongs to chunk " + chunkBlock.toString() + " of routine " + chunkRoutine.name + ", advanced block to " + b.begin.toString());
             }
             // create unclaimed block(s) between the last claimed position and the beginning of this routine
             b.end = r.extents.begin - 1;
-            if (b.isValid()) { // could have been pushed into the routine by the chunk advance
-                debug("Closing unclaimed block: " + b.toString());
-                for (const auto &sb : b.splitSegments()) unclaimed.push_back(sb);
-            }
+            closeUnclaimedBlock(b);
         }
         // start next potential unclaimed block past the end of the current routine
         b = Block(r.extents.end + Offset(1));
@@ -597,7 +632,7 @@ void RoutineMap::buildUnclaimed() {
         b.end = mapEnd;
         b.end.move(b.begin.segment);
         debug("Last block before map end: " + b.toString());
-        unclaimed.push_back(b);
+        closeUnclaimedBlock(b);
     }
 }
 

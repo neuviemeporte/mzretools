@@ -94,6 +94,7 @@ public:
     Routine& getMutableRoutine(const std::string &name);
     std::vector<Block> getUnclaimed() const { return unclaimed; }
     Routine findByEntrypoint(const Address &ep) const;
+    Block findCollision(const Block &b) const;
     bool empty() const { return routines.empty(); }
     Size match(const RoutineMap &other, const bool onlyEntry) const;
     bool isIda() const { return ida; }
@@ -112,6 +113,7 @@ public:
     
 private:
     void closeBlock(Block &b, const Address &next, const ScanQueue &sq);
+    void closeUnclaimedBlock(const Block &ub);
     Block moveBlock(const Block &b, const Word segment) const;
     void sort();
     void loadFromMapFile(const std::string &path, const Word reloc);

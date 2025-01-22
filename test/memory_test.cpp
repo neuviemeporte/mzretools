@@ -177,6 +177,40 @@ TEST_F(MemoryTest, Block) {
     ASSERT_EQ(s1, s5);    
 }
 
+TEST_F(MemoryTest, BlockCut) {
+    // disjoint
+    Block b1{1, 4}, b2{6, 10};
+    TRACELN("-- Splitting " + b1.toString() + " with " + b2.toString());
+    auto split = b1.cut(b2);
+    for (const auto &b : split) TRACELN("split: " + b.toString());
+    ASSERT_EQ(split.size(), 1);
+    ASSERT_EQ(split.front(), b1);
+    // intersect
+    b1 = {1, 6};
+    b2 = {4, 10};
+    TRACELN("-- Splitting " + b1.toString() + " with " + b2.toString());
+    split = b1.cut(b2);
+    for (const auto &b : split) TRACELN("split: " + b.toString());
+    ASSERT_EQ(split.size(), 1);
+    ASSERT_EQ(split.front(), Block(1, 3));
+    // contain other
+    b1 = {1, 8};
+    b2 = {3, 6};
+    TRACELN("-- Splitting " + b1.toString() + " with " + b2.toString());
+    split = b1.cut(b2);
+    for (const auto &b : split) TRACELN("split: " + b.toString());
+    ASSERT_EQ(split.size(), 2);
+    ASSERT_EQ(split.front(), Block(1, 2));
+    ASSERT_EQ(split.back(), Block(7, 8));
+    // we are contained
+    b1 = {6, 8};
+    b2 = {3, 10};
+    TRACELN("-- Splitting " + b1.toString() + " with " + b2.toString());
+    split = b1.cut(b2);
+    for (const auto &b : split) TRACELN("split: " + b.toString());
+    ASSERT_TRUE(split.empty());
+}
+
 TEST_F(MemoryTest, BlockSplit) {
     Block b{Address{0x2274, 0x70}, Address{0x628b, 0xebe}};
     size_t splitCount = (b.size() / 0x10000) + 1;
