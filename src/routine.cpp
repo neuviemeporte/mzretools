@@ -571,6 +571,7 @@ void RoutineMap::buildUnclaimed() {
             debug("Gap between the start of this routine and the end of the previous one, potentially unclaimed");
             // check if the potential unclaimed block does not really belong to any routine,
             // it could be a detached chunk outside the main extents
+            // TODO: this just checks if the beginning of the potential unclaimed block belongs to a routine, need to check the whole block before closing
             const auto chunkRoutine = getRoutine(b.begin);
             if (chunkRoutine.isValid()) {
                 const auto chunkBlock = chunkRoutine.blockContaining(b.begin);

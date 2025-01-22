@@ -23,7 +23,7 @@ protected:
     auto& sqVisited(ScanQueue &sq) { return sq.visited; }
     auto& sqEntrypoints(ScanQueue &sq) { return sq.entrypoints; }
     void mapSetSegments(RoutineMap &rm, const vector<Segment> &segments) { rm.setSegments(segments); }
-    vector<Block>& mapUnclaimed(RoutineMap &rm) { return rm.unclaimed; }
+    const vector<Block>& getUnclaimed(const RoutineMap &rm) { return rm.unclaimed; }
     auto analyzerInstructionMatch(Analyzer &a, const Executable &ref, const Executable &tgt, const Instruction &refInstr, const Instruction &tgtInstr) { 
         return a.instructionsMatch(ref, tgt, refInstr, tgtInstr); 
     }
@@ -178,7 +178,7 @@ TEST_F(AnalysisTest, RoutineMapFromQueue) {
     ASSERT_EQ(r2.extents, Block(0xc, 0xd));
     ASSERT_EQ(r2.reachable.size(), 2);
     ASSERT_EQ(r2.reachable.at(0), Block(0xc, 0xd));
-    ASSERT_EQ(r2.reachable.at(1), Block(0x1d, 0x1f));    
+    ASSERT_EQ(r2.reachable.at(1), Block(0x1d, 0x1f));
     ASSERT_EQ(r2.unreachable.size(), 0);
 
     Routine r3 = queueMap.getRoutine(2);
@@ -189,7 +189,7 @@ TEST_F(AnalysisTest, RoutineMapFromQueue) {
     ASSERT_EQ(r3.reachable.at(1), Block(0x20, 0x22));
     ASSERT_EQ(r3.unreachable.size(), 0);
 
-    const auto &unclaimed = mapUnclaimed(queueMap);
+    const auto &unclaimed = getUnclaimed(queueMap);
     ASSERT_EQ(unclaimed.size(), 6);
     ASSERT_EQ(unclaimed.at(0), Block(0x0, 0x1));
     ASSERT_EQ(unclaimed.at(1), Block(0xe, 0xf));
@@ -231,13 +231,25 @@ TEST_F(AnalysisTest, FindRoutines) {
     // reload from file
     RoutineMap reloadMap("hello.map", loadSegment);
     ASSERT_EQ(reloadMap.routineCount(), discoveredMap.routineCount());
+    TRACE(reloadMap.dump());
+
+    // test the rebuilding of unclaimed blocks lost in a save to a file
+    const auto &discoveredUnclaimed = getUnclaimed(discoveredMap);
+    Size i = 0;
+    TRACELN("Cross-checking unclaimed blocks between discovered and reloaded map");
+    for (const auto &rub : getUnclaimed(reloadMap)) {
+        const auto &dub = discoveredUnclaimed[i++];
+        TRACELN(dub.toString() << " == " << rub.toString());
+        // rub a dub
+        ASSERT_EQ(dub, rub);
+    }
 
     // check matching in the opposite direction, should be the same
     matchCount = reloadMap.match(idaMap, true);
     TRACELN("Reload vs IDA, found matching " << matchCount << " routines out of " << reloadMap.routineCount());
     ASSERT_EQ(matchCount, idaMatchCount);
 
-    matchCount = discoveredMap.match(reloadMap, true);
+    matchCount = discoveredMap.match(reloadMap, false);
     TRACELN("Discovered vs reload, found matching " << matchCount << " routines out of " << discoveredMap.routineCount());
     ASSERT_EQ(matchCount, discoveredMap.routineCount());
 }
