@@ -445,6 +445,8 @@ void RoutineMap::save(const std::string &path, const Word reloc, const bool over
     ofstream file{path};
     file << "# Size of the executable's load module covered by the map" << endl << "Size " << hexVal(mapSize, false) << endl;
     file << "# Discovered segments, one per line, syntax is \"SegmentName Type(CODE/DATA/STACK) Address\"" << endl;
+    if (ida) file << "# WARNING: these segments have been deduced from loading an IDA listing, which is not 100% reliable." << endl
+                  << "# Please verify these values and tweak manually if needed before using this mapfile in other tooling." << endl;
     for (auto s: segments) {
         s.address -= reloc;
         file << s.toString() << endl;
