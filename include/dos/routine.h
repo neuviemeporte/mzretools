@@ -68,6 +68,19 @@ struct Variable {
 // A map of an executable, records which areas have been claimed by routines, and which have not, serializable to a file
 // TODO: name no longer fits since it also keeps track of data
 class RoutineMap {
+public:
+    struct Summary {
+        std::string text;
+        Size codeSize, ignoredSize, completedSize, unclaimedSize, externalSize, dataCodeSize, detachedSize, assemblySize;
+        Size ignoreCount, completeCount, unclaimedCount, externalCount, dataCodeCount, detachedCount, assemblyCount;
+        Size dataSize, otherSize, otherCount, ignoredReachableSize, ignoredReachableCount, uncompleteSize, uncompleteCount, unaccountedSize, unaccountedCount;
+        Summary() {
+            codeSize = ignoredSize = completedSize = unclaimedSize = externalSize = dataCodeSize = detachedSize = assemblySize = 0;
+            ignoreCount = completeCount = unclaimedCount = externalCount = dataCodeCount = detachedCount = assemblyCount = 0;
+            dataSize = otherSize = otherCount = ignoredReachableSize = ignoredReachableCount = uncompleteSize = uncompleteCount = unaccountedSize = unaccountedCount = 0;
+        }
+    };
+private:
     friend class AnalysisTest;
     Word loadSegment;
     Size mapSize;
@@ -101,7 +114,7 @@ public:
     Routine colidesBlock(const Block &b) const;
     void order();
     void save(const std::string &path, const Word reloc = 0, const bool overwrite = false) const;
-    std::string dump(const bool verbose = true, const bool hide = false, const bool format = false) const;
+    Summary getSummary(const bool verbose = true, const bool hide = false, const bool format = false) const;
     const auto& getSegments() const { return segments; }
     Size segmentCount(const Segment::Type type) const;
     Segment findSegment(const Word addr) const;

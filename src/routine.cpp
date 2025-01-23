@@ -443,39 +443,48 @@ void RoutineMap::save(const std::string &path, const Word reloc, const bool over
     if (checkFile(path).exists && !overwrite) throw AnalysisError("Map file already exists: " + path);
     info("Saving routine map (routines = " + to_string(routineCount()) + ") to "s + path + ", reversing relocation by " + hexVal(reloc));
     ofstream file{path};
-    file << "# Size of the executable's load module covered by the map" << endl << "Size " << hexVal(mapSize, false) << endl;
-    file << "# Discovered segments, one per line, syntax is \"SegmentName Type(CODE/DATA/STACK) Address\"" << endl;
-    if (ida) file << "# WARNING: these segments have been deduced from loading an IDA listing, which is not 100% reliable." << endl
-                  << "# Please verify these values and tweak manually if needed before using this mapfile in other tooling." << endl;
+    if (ida) file << "# ================== !!! WARNING !!! ================== " << endl 
+        << "# The content of this mapfile has been deduced from loading an IDA listing, which is not 100% reliable." << endl
+        << "# Please verify these values (particularly the load module size and segment addresses), and tweak manually if needed" << endl
+        << "# before using this mapfile for further processing by the tooling." << endl;
+    file << "#" << endl
+         << "# Size of the executable's load module covered by the map" << endl 
+         << "#" << endl
+         << "Size " << hexVal(mapSize, false) << endl;
+    file << "#" << endl
+         << "# Discovered segments, one per line, syntax is \"SegmentName Type(CODE/DATA/STACK) Address\"" << endl
+         << "#" << endl;
     for (auto s: segments) {
         s.address -= reloc;
         file << s.toString() << endl;
     }
-    file << "# ========" << endl
+    file << "#" << endl
          << "# Discovered routines, one per line, syntax is \"RoutineName: Segment Type(NEAR/FAR) Extents [R/U]Block1 [R/U]Block2...\"" << endl
          << "# The routine extents is the largest continuous block of instructions attributed to this routine and originating" << endl 
          << "# at the location determined to be the routine's entrypoint." << endl
          << "# Blocks are offset ranges relative to the segment that the routine belongs to, specifying address as belonging to the routine." << endl 
          << "# Blocks starting with R contain code that was determined reachable, U were unreachable but still likely belong to the routine." << endl
          << "# The routine blocks may cover a greater area than the extents if the routine has disconected chunks it jumps into." << endl
-         << "# ========" << endl;
+         << "#" << endl;
     for (const auto &r : routines) {
         file << routineString(r, reloc) << endl;
     }
-    file << "# ========" << endl
+    file << "#" << endl
          << "# Discovered variables, one per line, syntax is \"VariableName: Segment VAR OffsetWithinSegment\"" << endl
-         << "# ========" << endl;
+         << "#" << endl;
     for (const auto &v: vars) {
         file << varString(v, reloc) << endl;
     }
 }
 
 // TODO: implement a print mode of all blocks (reachable, unreachable, unclaimed) printed linearly, not grouped under routines
-string RoutineMap::dump(const bool verbose, const bool brief, const bool format) const {
+RoutineMap::Summary RoutineMap::getSummary(const bool verbose, const bool brief, const bool format) const {
     ostringstream str;
+    Summary sum;
     if (empty()) {
         str << "--- Empty routine map" << endl;
-        return str.str();;
+        sum.text = str.str();
+        return sum;
     }
 
     vector<Routine> printRoutines = routines;
@@ -495,24 +504,22 @@ string RoutineMap::dump(const bool verbose, const bool brief, const bool format)
     }
 
     // display routines, gather statistics
-    Size codeSize = 0, ignoredSize = 0, completedSize = 0, unclaimedSize = 0, externalSize = 0, dataCodeSize = 0, detachedSize = 0, assemblySize = 0;
-    Size ignoreCount = 0, completeCount = 0, unclaimedCount = 0, externalCount = 0, dataCodeCount = 0, detachedCount = 0, assemblyCount = 0;
     for (const auto &r : printRoutines) {
         const auto seg = findSegment(r.extents.begin.segment);
         if (seg.type == Segment::SEG_CODE) {
-            codeSize += r.size();
+            sum.codeSize += r.size();
             // TODO: f15 does not have meaningful routines in the data segment other than the jump trampolines, 
             // but what about other projects?
-            if (r.ignore) { ignoredSize += r.size(); ignoreCount++; }
-            if (r.complete) { completedSize += r.size(); completeCount++; }
-            if (r.unclaimed) { unclaimedSize += r.size(); unclaimedCount++; }
-            if (r.external) { externalSize += r.size(); externalCount++; }
-            if (r.detached) { detachedSize += r.size(); detachedCount++; }
-            if (r.assembly) { assemblySize += r.size(); assemblyCount++; }
+            if (r.ignore) { sum.ignoredSize += r.size(); sum.ignoreCount++; }
+            if (r.complete) { sum.completedSize += r.size(); sum.completeCount++; }
+            if (r.unclaimed) { sum.unclaimedSize += r.size(); sum.unclaimedCount++; }
+            if (r.external) { sum.externalSize += r.size(); sum.externalCount++; }
+            if (r.detached) { sum.detachedSize += r.size(); sum.detachedCount++; }
+            if (r.assembly) { sum.assemblySize += r.size(); sum.assemblyCount++; }
         }
         else if (!r.unclaimed) {
-            dataCodeSize += r.size();
-            dataCodeCount++;
+            sum.dataCodeSize += r.size();
+            sum.dataCodeCount++;
         }
         // print routine unless hide mode enabled and it's not important - show only uncompleted routines and big enough unclaimed blocks within code segments
         if (!(brief && (r.ignore || r.complete || r.external || r.assembly || r.size() < 3 || seg.type != Segment::SEG_CODE))) {
@@ -527,34 +534,36 @@ string RoutineMap::dump(const bool verbose, const bool brief, const bool format)
         }
     }
     // consistency check
-    if (codeSize > mapSize) throw LogicError("Accumulated code size " + sizeStr(codeSize) + " exceeds total map size of " + sizeStr(mapSize));
+    if (sum.codeSize > mapSize) throw LogicError("Accumulated code size " + sizeStr(sum.codeSize) + " exceeds total map size of " + sizeStr(mapSize));
 
     // print statistics
-    const Size 
-        dataSize = mapSize - codeSize,
-        otherSize = ignoredSize - externalSize,
-        otherCount = ignoreCount - externalCount,
-        ignoredReachableSize = otherSize - detachedSize,
-        ignoredReachableCount = otherCount - detachedCount,
-        uncompleteSize = codeSize - (completedSize + ignoredSize + assemblySize + unclaimedSize),
-        uncompleteCount = mapCount - (completeCount + ignoreCount + dataCodeCount + assemblyCount),
-        unaccountedSize = codeSize - (completedSize + uncompleteSize + assemblySize + externalSize + ignoredReachableSize + detachedSize + unclaimedSize),
-        unaccountedCount = mapCount - (completeCount + uncompleteCount + assemblyCount + externalCount + ignoredReachableCount + detachedCount + dataCodeCount);
+    sum.dataSize = mapSize - sum.codeSize;
+    sum.otherSize = sum.ignoredSize - sum.externalSize;
+    sum.otherCount = sum.ignoreCount - sum.externalCount;
+    sum.ignoredReachableSize = sum.otherSize - sum.detachedSize;
+    sum.ignoredReachableCount = sum.otherCount - sum.detachedCount;
+    sum.uncompleteSize = sum.codeSize - (sum.completedSize + sum.ignoredSize + sum.assemblySize + sum.unclaimedSize);
+    sum.uncompleteCount = mapCount - (sum.completeCount + sum.ignoreCount + sum.dataCodeCount + sum.assemblyCount);
+    sum.unaccountedSize = sum.codeSize - (sum.completedSize + sum.uncompleteSize + sum.assemblySize + sum.externalSize 
+        + sum.ignoredReachableSize + sum.detachedSize + sum.unclaimedSize);
+    sum.unaccountedCount = mapCount - (sum.completeCount + sum.uncompleteCount + sum.assemblyCount + sum.externalCount 
+        + sum.ignoredReachableCount + sum.detachedCount + sum.dataCodeCount);
     str << "--- Summary:" << endl
-        << "Code size: " << sizeStr(codeSize) << " (" << ratioStr(codeSize, mapSize) << " of load module)" << endl
-        << "  Completed: " << sizeStr(completedSize) << " (" << completeCount << " routines, " << ratioStr(completedSize, codeSize) << " of code) - 1:1 rewritten to high level language" << endl
-        << "  Uncompleted: " << sizeStr(uncompleteSize) << " (" << uncompleteCount << " routines, " << ratioStr(uncompleteSize, codeSize) << " of code) - routines not yet rewritten which can be" << endl
-        << "  Assembly: " << sizeStr(assemblySize) << " (" << assemblyCount << " routines, " << ratioStr(assemblySize, codeSize) << " of code) - impossible to rewrite 1:1" << endl
-        << "  Ignored: " << sizeStr(ignoredSize) << " (" << ignoreCount << " routines, " << ratioStr(ignoredSize, codeSize) << " of code) - excluded from comparison" << endl
-        << "    External: " << sizeStr(externalSize) << " (" << externalCount << " routines, " << ratioStr(externalSize, ignoredSize) << " of ignored) - e.g. libc library code" << endl
-        << "    Other: " << sizeStr(otherSize) << " (" << otherCount << " routines, " << ratioStr(otherSize, ignoredSize) << " of ignored) - code ignored for other reasons" << endl
-        << "      Reachable: " << sizeStr(ignoredReachableSize) << " (" << ignoredReachableCount << " routines, " << ratioStr(ignoredReachableSize, otherSize) << " of other) - code which has callers" << endl        
-        << "      Unreachable: " << sizeStr(detachedSize) << " (" << detachedCount << " routines, " << ratioStr(detachedSize, otherSize) << " of other) - code which appears unreachable" << endl
-        << "  Unclaimed: " << sizeStr(unclaimedSize) << " (" << unclaimedCount << " blocks, " << ratioStr(unclaimedSize, codeSize) << " of code) - holes between routines not covered by map" << endl
-        << "  Unaccounted: " << sizeStr(unaccountedSize) << " (" << unaccountedCount << " routines) - consistency check, should be zero" << endl
-        << "Data size: " << sizeStr(dataSize) << " (" <<ratioStr(dataSize, mapSize) << " of load module)" << endl
-        << "  Routines in data segment: " << sizeStr(dataCodeSize) << ", " << dataCodeCount << " routines" << endl;
-    return str.str();
+        << "Code size: " << sizeStr(sum.codeSize) << " (" << ratioStr(sum.codeSize, mapSize) << " of load module)" << endl
+        << "  Completed: " << sizeStr(sum.completedSize) << " (" << sum.completeCount << " routines, " << ratioStr(sum.completedSize, sum.codeSize) << " of code) - 1:1 rewritten to high level language" << endl
+        << "  Uncompleted: " << sizeStr(sum.uncompleteSize) << " (" << sum.uncompleteCount << " routines, " << ratioStr(sum.uncompleteSize, sum.codeSize) << " of code) - routines not yet rewritten which can be" << endl
+        << "  Assembly: " << sizeStr(sum.assemblySize) << " (" << sum.assemblyCount << " routines, " << ratioStr(sum.assemblySize, sum.codeSize) << " of code) - impossible to rewrite 1:1" << endl
+        << "  Ignored: " << sizeStr(sum.ignoredSize) << " (" << sum.ignoreCount << " routines, " << ratioStr(sum.ignoredSize, sum.codeSize) << " of code) - excluded from comparison" << endl
+        << "    External: " << sizeStr(sum.externalSize) << " (" << sum.externalCount << " routines, " << ratioStr(sum.externalSize, sum.ignoredSize) << " of ignored) - e.g. libc library code" << endl
+        << "    Other: " << sizeStr(sum.otherSize) << " (" << sum.otherCount << " routines, " << ratioStr(sum.otherSize, sum.ignoredSize) << " of ignored) - code ignored for other reasons" << endl
+        << "      Reachable: " << sizeStr(sum.ignoredReachableSize) << " (" << sum.ignoredReachableCount << " routines, " << ratioStr(sum.ignoredReachableSize, sum.otherSize) << " of other) - code which has callers" << endl        
+        << "      Unreachable: " << sizeStr(sum.detachedSize) << " (" << sum.detachedCount << " routines, " << ratioStr(sum.detachedSize, sum.otherSize) << " of other) - code which appears unreachable" << endl
+        << "  Unclaimed: " << sizeStr(sum.unclaimedSize) << " (" << sum.unclaimedCount << " blocks, " << ratioStr(sum.unclaimedSize, sum.codeSize) << " of code) - holes between routines not covered by map" << endl
+        << "  Unaccounted: " << sizeStr(sum.unaccountedSize) << " (" << sum.unaccountedCount << " routines) - consistency check, should be zero" << endl
+        << "Data size: " << sizeStr(sum.dataSize) << " (" <<ratioStr(sum.dataSize, mapSize) << " of load module)" << endl
+        << "  Routines in data segment: " << sizeStr(sum.dataCodeSize) << ", " << sum.dataCodeCount << " routines" << endl;
+    sum.text = str.str();
+    return sum;
 }
 
 void RoutineMap::setSegments(const std::vector<Segment> &seg) {

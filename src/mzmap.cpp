@@ -76,7 +76,8 @@ void loadAndPrintMap(const string &mapfile, const bool verbose, const bool brief
     auto fs = checkFile(mapfile);
     if (!fs.exists) fatal("Mapfile does not exist: " + mapfile);
     RoutineMap map(mapfile);
-    cout << map.dump(verbose, brief, format);
+    const auto sum = map.getSummary(verbose, brief, format);
+    cout << sum.text << endl;
     if (map.isIda()) map.save(mapfile + ".map");
 }
 
@@ -125,7 +126,7 @@ int main(int argc, char *argv[]) {
                 fatal("Unable to find any routines");
                 return 1;
             }
-            if (verbose) cout << map.dump(verbose, brief);
+            if (verbose) cout << map.getSummary(verbose, brief).text;
             map.save(file2, loadSegment);
             info("Please review the output file (" + file2 + "), assign names to routines/segments\nYou may need to resolve inaccuracies with routine block ranges manually; this tool is not perfect");
         }

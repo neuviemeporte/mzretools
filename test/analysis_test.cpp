@@ -116,7 +116,7 @@ TEST_F(AnalysisTest, RegisterState) {
 TEST_F(AnalysisTest, RoutineMap) {
     // test loading of routine map from ida file
     const RoutineMap idaMap{"../bin/hello.lst"};
-    idaMap.dump();
+    TRACE(idaMap.getSummary().text);
     // test comparing of routine maps for both the success and failure case
     RoutineMap matchMap{idaMap};
     const Size routineCount = matchMap.routineCount();
@@ -160,7 +160,7 @@ TEST_F(AnalysisTest, RoutineMapFromQueue) {
     visited.insert(visited.end(), 70000, 0);
     entrypoints = { {0x8, 1}, {0xc, 2}, {0x13, 3} };
     RoutineMap queueMap{sq, segments, loadSegment, visited.size()};
-    queueMap.dump();
+    TRACE(queueMap.getSummary().text);
     ASSERT_EQ(queueMap.routineCount(), 3);
 
     Routine r1 = queueMap.getRoutine(0);
@@ -198,7 +198,7 @@ TEST_F(AnalysisTest, RoutineMapFromQueue) {
     ASSERT_EQ(unclaimed.at(4), Block(0x23, 0x2f));
     ASSERT_EQ(unclaimed.at(5), Block(0x30, 0x30 + 0xffff));
 
-    TRACELN(queueMap.dump());
+    TRACE(queueMap.getSummary().text);
 }
 
 TEST_F(AnalysisTest, BigRoutineMap) {
@@ -215,7 +215,7 @@ TEST_F(AnalysisTest, FindRoutines) {
     Executable exe{mz};
     Analyzer a{Analyzer::Options()};
     const RoutineMap discoveredMap = a.findRoutines(exe);
-    TRACE(discoveredMap.dump());
+    TRACE(discoveredMap.getSummary().text);
     ASSERT_FALSE(discoveredMap.empty());
     discoveredMap.save("hello.map", loadSegment, true);    
     ASSERT_EQ(discoveredMap.routineCount(), expectedFound);
@@ -231,7 +231,7 @@ TEST_F(AnalysisTest, FindRoutines) {
     // reload from file
     RoutineMap reloadMap("hello.map", loadSegment);
     ASSERT_EQ(reloadMap.routineCount(), discoveredMap.routineCount());
-    TRACE(reloadMap.dump());
+    TRACE(reloadMap.getSummary().text);
 
     // test the rebuilding of unclaimed blocks lost in a save to a file
     const auto &discoveredUnclaimed = getUnclaimed(discoveredMap);
@@ -262,7 +262,7 @@ TEST_F(AnalysisTest, FindFarRoutines) {
     Executable exe{mz};
     Analyzer a{Analyzer::Options()};
     const RoutineMap discoveredMap = a.findRoutines(exe);
-    TRACE(discoveredMap.dump());
+    TRACE(discoveredMap.getSummary().text);
     ASSERT_FALSE(discoveredMap.empty());
 
     Address ep1{loadSegment, 0};
@@ -290,7 +290,7 @@ TEST_F(AnalysisTest, FindWithRollback) {
     Executable exe{mz};
     Analyzer a{Analyzer::Options()};
     const RoutineMap discoveredMap = a.findRoutines(exe);
-    TRACE(discoveredMap.dump());
+    TRACE(discoveredMap.getSummary().text);
     ASSERT_FALSE(discoveredMap.empty());
     ASSERT_GE(discoveredMap.routineCount(), 5);
     const auto segments = discoveredMap.getSegments();
@@ -312,20 +312,20 @@ TEST_F(AnalysisTest, RoutineMapCollision) {
 
     TRACELN("--- testing coliding routine extents");
     rv = { r1, r2 };
-    TRACE(rm.dump());
+    TRACE(rm.getSummary().text);
     rm.save(path, 0, true);
     ASSERT_THROW(rm = RoutineMap{path}, ParseError);
 
     TRACELN("--- testing coliding routine extent with chunk");
     rv = { r1, r3 };
     rv.back().reachable.push_back(b2);
-    TRACE(rm.dump());
+    TRACE(rm.getSummary().text);
     rm.save(path, 0, true);
     ASSERT_THROW(rm = RoutineMap{path}, ParseError);
 
     TRACELN("--- testing no colision");
     rv = { r1, r3 };
-    TRACE(rm.dump());
+    TRACE(rm.getSummary().text);
     rm.save(path, 0, true);
     rm = RoutineMap{path};
     ASSERT_EQ(rm.routineCount(), 2);
