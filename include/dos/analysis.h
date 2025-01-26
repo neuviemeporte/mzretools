@@ -12,69 +12,14 @@
 #include "dos/registers.h"
 #include "dos/instruction.h"
 #include "dos/routine.h"
+#include "dos/scanq.h"
+#include "dos/map.h"
 
 class Executable;
 
 // TODO: 
 // - implement calculation of memory offsets based on register values from instruction operand type enum, allow for unknown values, see jump @ 0xab3 in hello.exe
 
-// A destination (jump or call location) inside an analyzed executable
-struct Destination {
-    Address address;
-    RoutineId routineId;
-    bool isCall;
-    RegisterState regs;
-
-    Destination() : routineId(NULL_ROUTINE), isCall(false) {}
-    Destination(const Address address, const RoutineId id, const bool call, const RegisterState &regs) : address(address), routineId(id), isCall(call), regs(regs) {}
-    bool match(const Destination &other) const { return address == other.address && isCall == other.isCall; }
-    bool isNull() const { return address.isNull(); }
-    std::string toString() const;
-};
-
-struct Branch {
-    Address source, destination;
-    bool isCall, isConditional, isNear;
-    Branch() : isCall(false), isConditional(false), isNear(true) {}
-    std::string toString() const;
-};
-
-// utility class for keeping track of the queue of potentially interesting Destinations, and which bytes in the executable have been visited already
-class ScanQueue {
-    friend class AnalysisTest;
-    // memory map for marking which locations belong to which routines, value of 0 is undiscovered
-    // TODO: store addresses from loaded exe in map, otherwise they don't match after analysis done if exe loaded at segment other than 0
-    std::vector<RoutineId> visited;
-    Address origin;
-    Destination curSearch;
-    std::list<Destination> queue;
-    std::vector<RoutineEntrypoint> entrypoints;
-
-public:
-    ScanQueue(const Address &origin, const Size codeSize, const Destination &seed, const std::string name = {});
-    ScanQueue() : origin(0, 0) {}
-    // search point queue operations
-    Size size() const { return queue.size(); }
-    bool empty() const { return queue.empty(); }
-    Address originAddress() const { return origin; }
-    Destination nextPoint();
-    bool hasPoint(const Address &dest, const bool call) const;
-    bool saveCall(const Address &dest, const RegisterState &regs, const bool near, const std::string name = {});
-    bool saveJump(const Address &dest, const RegisterState &regs);
-    bool saveBranch(const Branch &branch, const RegisterState &regs, const Block &codeExtents);
-    // discovered locations operations
-    Size routineCount() const { return entrypoints.size(); }
-    std::string statusString() const;
-    RoutineId getRoutineId(Offset off) const;
-    void setRoutineId(Offset off, const Size length, RoutineId id = NULL_ROUTINE);
-    void clearRoutineId(Offset off);
-    RoutineId isEntrypoint(const Address &addr) const;
-    RoutineEntrypoint getEntrypoint(const std::string &name);
-    std::vector<Routine> getRoutines() const;
-    std::vector<Block> getUnvisited() const;
-    void dumpVisited(const std::string &path) const;
-    void dumpEntrypoints() const;
-};
 
 // utility class used in code analysis routines, keeps mappings of equivalent offsets between two executables for code (calls, jumps), data (global vars) and stack (local vars)
 // to make sure they are consistent. This is particulary important in the code comparison routines to know if there is a problem with the executable layout other than just the instructions themselves.
@@ -176,24 +121,24 @@ private:
 
 public:
     Analyzer(const Options &options, const Size maxData = 0) : options(options), offMap(maxData), comparedSize(0) {}
-    RoutineMap findRoutines(Executable &exe);
-    bool compareCode(const Executable &ref, Executable &tgt, const RoutineMap &refMap);
-    bool findDuplicates(const Executable &ref, Executable &tgt, const RoutineMap &refMap, RoutineMap &tgtMap);
+    CodeMap exploreCode(Executable &exe);
+    bool compareCode(const Executable &ref, Executable &tgt, const CodeMap &refMap);
+    bool findDuplicates(const Executable &ref, Executable &tgt, const CodeMap &refMap, CodeMap &tgtMap);
 
 private:
     bool skipAllowed(const Instruction &refInstr, Instruction tgtInstr);
     bool compareInstructions(const Executable &ref, const Executable &tgt, const Instruction &refInstr, Instruction tgtInstr);
     void advanceComparison(const Instruction &refInstr, Instruction tgtInstr);
     bool checkComparisonStop();
-    void checkMissedRoutines(const RoutineMap &refMap);
+    void checkMissedRoutines(const CodeMap &refMap);
     Address findTargetLocation(const Executable &ref, const Executable &tgt);
-    bool comparisonLoop(const Executable &ref, Executable &tgt, const RoutineMap &refMap);
+    bool comparisonLoop(const Executable &ref, Executable &tgt, const CodeMap &refMap);
     Branch getBranch(const Executable &exe, const Instruction &i, const RegisterState &regs) const;
     ComparisonResult instructionsMatch(const Executable &ref, const Executable &tgt, const Instruction &refInstr, Instruction tgtInstr);
     void diffContext(const Executable &ref, const Executable &tgt) const;
     void skipContext(const Executable &ref, const Executable &tgt) const;
-    void calculateStats(const RoutineMap &routineMap);
-    void comparisonSummary(const Executable &ref, const RoutineMap &routineMap, const bool showMissed);
+    void calculateStats(const CodeMap &routineMap);
+    void comparisonSummary(const Executable &ref, const CodeMap &routineMap, const bool showMissed);
     void processDataReference(const Executable &exe, const Instruction i, const RegisterState &regs);
 };
 

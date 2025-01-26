@@ -75,9 +75,9 @@ void loadAndPrintMap(const string &mapfile, const bool verbose, const bool brief
     info("Single parameter specified, printing existing mapfile");
     auto fs = checkFile(mapfile);
     if (!fs.exists) fatal("Mapfile does not exist: " + mapfile);
-    RoutineMap map(mapfile);
+    CodeMap map(mapfile);
     const auto sum = map.getSummary(verbose, brief, format);
-    cout << sum.text << endl;
+    cout << sum.text;
     if (map.isIda()) map.save(mapfile + ".map");
 }
 
@@ -121,7 +121,7 @@ int main(int argc, char *argv[]) {
             }
             Executable exe = loadExe(file1, loadSegment);
             Analyzer a = Analyzer(Analyzer::Options());
-            RoutineMap map = a.findRoutines(exe);
+            CodeMap map = a.exploreCode(exe);
             if (map.empty()) {
                 fatal("Unable to find any routines");
                 return 1;

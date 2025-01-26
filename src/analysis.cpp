@@ -24,227 +24,6 @@ void searchMessage(const Address &addr, const string &msg) {
     output(addr.toString() + ": " + msg, LOG_ANALYSIS, LOG_DEBUG);
 }
 
-string Destination::toString() const {
-    ostringstream str;
-    str << "[" << address.toString() << " / " << routineId << " / " << (isCall ? "call" : "jump") << "]";
-    return str.str();
-}
-
-string Branch::toString() const {
-    ostringstream str;
-    str << source.toString() << " -> " << destination.toString() << " [";
-    if (isCall) str << "call";
-    else str << "jump";
-    if (isConditional) str << ",cond";
-    else str << ",nocond";
-    if (isNear) str << ",near]";
-    else str << ",far]";
-    return str.str();
-}
-
-ScanQueue::ScanQueue(const Address &origin, const Size codeSize, const Destination &seed, const std::string name) :
-    visited(codeSize, NULL_ROUTINE),
-    origin(origin)
-{
-    debug("Initializing queue, origin: " + origin.toString() + ", size = " + to_string(codeSize) + ", seed: " + seed.toString() + ", name: '" + name + "'");
-    queue.push_front(seed);
-    RoutineEntrypoint ep{seed.address, seed.routineId, true};
-    if (!name.empty()) ep.name = name;
-    entrypoints.push_back(ep);
-}
-
-string ScanQueue::statusString() const { 
-    return "[r"s + to_string(curSearch.routineId) + "/q" + to_string(size()) + "]"; 
-} 
-
-RoutineId ScanQueue::getRoutineId(Offset off) const {
-    assert(off >= origin.toLinear());
-    off -= origin.toLinear();
-    assert(off < visited.size());
-    return visited.at(off); 
-}
-
-void ScanQueue::setRoutineId(Offset off, const Size length, RoutineId id) {
-    if (id == NULL_ROUTINE) id = curSearch.routineId;
-    assert(off >= origin.toLinear());
-    off -= origin.toLinear();
-    assert(off < visited.size());
-    fill(visited.begin() + off, visited.begin() + off + length, id);
-}
-
-void ScanQueue::clearRoutineId(Offset off) {
-    assert(off >= origin.toLinear());
-    off -= origin.toLinear();
-    assert(off < visited.size());
-    auto it = visited.begin() + off;
-    const auto clearId = *it;
-    if (clearId == NULL_ROUTINE) return;
-    while (it != visited.end() && *it == clearId) {
-        *it = NULL_ROUTINE;
-        ++it;
-    }
-}
-
-Destination ScanQueue::nextPoint() {
-    if (!empty()) {
-        curSearch = queue.front();
-        queue.pop_front();
-    }
-    return curSearch;
-}
-
-bool ScanQueue::hasPoint(const Address &dest, const bool call) const {
-    Destination findme(dest, 0, call, RegisterState());
-    const auto &it = std::find_if(queue.begin(), queue.end(), [&](const Destination &p){
-        return p.match(findme);
-    });
-    return it != queue.end();
-};
-
-RoutineId ScanQueue::isEntrypoint(const Address &addr) const {
-    const auto &found = std::find(entrypoints.begin(), entrypoints.end(), addr);
-    if (found != entrypoints.end()) return found->id;
-    else return NULL_ROUTINE;
-}
-
-RoutineEntrypoint ScanQueue::getEntrypoint(const std::string &name) {
-    const auto &found = std::find_if(entrypoints.begin(), entrypoints.end(), [&](const RoutineEntrypoint &ep){
-        return ep.name == name;
-    });
-    if (found != entrypoints.end()) return *found;
-    return {};
-}
-
-// return the set of routines found by the queue, these will only have the entrypoint set and an automatic name generated
-vector<Routine> ScanQueue::getRoutines() const {
-    auto routines = vector<Routine>{routineCount()};
-    for (const auto &ep : entrypoints) {
-        auto &r = routines.at(ep.id - 1);
-        // initialize routine extents with entrypoint address
-        r.extents = Block(ep.addr);
-        r.near = ep.near;
-        if (!ep.name.empty()) r.name = ep.name;
-        // assign automatic names to routines
-        else if (ep.addr == originAddress()) r.name = "start";
-        else r.name = "routine_"s + to_string(ep.id);
-    }
-    return routines;
-}
-
-// TODO: proper segments
-vector<Block> ScanQueue::getUnvisited() const {
-    vector<Block> ret;
-    Offset off = 0;
-    Block curBlock;
-    // iterate over contents of visited map
-    for (const RoutineId id : visited) {
-        if (id == NULL_ROUTINE && !curBlock.begin.isValid()) { 
-            // switching to unvisited, open new block
-            curBlock.begin = Address{off};
-        }
-        else if (id != NULL_ROUTINE && curBlock.begin.isValid()) { 
-            // switching to visited, close current block if open
-            curBlock.end = Address{off - 1};
-            curBlock.relocate(origin.segment);
-            ret.push_back(curBlock);
-            curBlock = Block();
-        }
-        off += 1;
-    }
-    return ret;
-}
-
-// function call, create new routine at destination if either not visited, 
-// or visited but destination was not yet discovered as a routine entrypoint and this call now takes precedence and will replace it
-bool ScanQueue::saveCall(const Address &dest, const RegisterState &regs, const bool near, const std::string name) {
-    if (!dest.isValid()) return false;
-    RoutineId destId = isEntrypoint(dest);
-    if (destId != NULL_ROUTINE) 
-        debug("Address "s + dest.toString() + " already registered as entrypoint for routine " + to_string(destId));
-    else if (hasPoint(dest, true)) 
-        debug("Search queue already contains call to address "s + dest.toString());
-    else { // not a known entrypoint and not yet in queue
-        destId = getRoutineId(dest.toLinear());
-        RoutineId newRoutineId = routineCount() + 1;
-        queue.emplace_back(Destination(dest, newRoutineId, true, regs));
-        if (destId == NULL_ROUTINE)
-            debug("Call destination not belonging to any routine, claiming as entrypoint for new routine, id " + to_string(newRoutineId) + ", queue size = " + to_string(size()));
-        else 
-            debug("Call destination belonging to routine " + to_string(destId) + ", reclaiming as entrypoint for new routine, id " + to_string(newRoutineId) + ", queue size = " + to_string(size()));
-        RoutineEntrypoint ep{dest, newRoutineId, near};
-        if (!name.empty()) ep.name = name;
-        entrypoints.push_back(ep);
-        return true;
-    }
-    return false;
-}
-
-// conditional jump, save as destination to be investigated, belonging to current routine
-bool ScanQueue::saveJump(const Address &dest, const RegisterState &regs) {
-    const RoutineId destId = getRoutineId(dest.toLinear());
-    if (destId != NULL_ROUTINE) 
-        debug("Jump destination already visited from routine "s + to_string(destId));
-    else if (hasPoint(dest, false))
-        debug("Queue already contains jump to address "s + dest.toString());
-    else { // not claimed by any routine and not yet in queue
-        queue.emplace_front(Destination(dest, curSearch.routineId, false, regs));
-        debug("Jump destination not yet visited, scheduled visit from routine " + to_string(curSearch.routineId) + ", queue size = " + to_string(size()));
-        return true;
-    }
-    return false;
-}
-
-bool ScanQueue::saveBranch(const Branch &branch, const RegisterState &regs, const Block &codeExtents) {
-    if (!branch.destination.isValid())
-        return false;
-
-    if (codeExtents.contains(branch.destination)) {
-        bool ret;
-        if (branch.isCall) 
-            ret = saveCall(branch.destination, regs, branch.isNear); 
-        else 
-            ret = saveJump(branch.destination, regs);
-        return ret;
-    }
-    else {
-        searchMessage(branch.source, "Branch destination outside code boundaries: "s + branch.destination.toString());
-    }
-    return false; 
-}
-
-// This is very slow!
-void ScanQueue::dumpVisited(const string &path) const {
-    // dump map to file for debugging
-    ofstream mapFile(path);
-    mapFile << "      ";
-    for (int i = 0; i < 16; ++i) mapFile << hex << setw(5) << setfill(' ') << i << " ";
-    mapFile << endl;
-    const Offset start = origin.toLinear();
-    const Size size = visited.size();
-    info("DEBUG: Dumping visited map of size "s + hexVal(size) + " starting at " + hexVal(start) + " to " + path);
-    for (Offset mapOffset = start; mapOffset < start + size; ++mapOffset) {
-        const auto id = getRoutineId(mapOffset);
-        //debug(hexVal(mapOffset) + ": " + to_string(m));
-        const Offset printOffset = mapOffset - start;
-        if (printOffset % 16 == 0) {
-            if (printOffset != 0) mapFile << endl;
-            mapFile << hex << setw(5) << setfill('0') << printOffset << " ";
-        }
-        switch (id) {
-        // case BAD_ROUTINE: mapFile << " !!! "; break;
-        // case NULL_ROUTINE: mapFile << "     "; break;
-        default: mapFile << dec << setw(5) << setfill(' ') << id << " "; break;
-        }
-    }
-}
-
-void ScanQueue::dumpEntrypoints() const {
-    debug("Scan queue contains " + to_string(entrypoints.size()) + " entrypoints");
-    for (const auto &ep : entrypoints) {
-        debug(ep.toString());
-    }
-}
-
 bool OffsetMap::codeMatch(const Address from, const Address to) {
     if (!(from.isValid() && to.isValid()))
         return false;
@@ -499,7 +278,7 @@ static string compareStatus(const Instruction &i1, const Instruction &i2, const 
 // TODO: identify routines through signatures generated from OMF libraries
 // TODO: trace usage of bp register (sub/add) to determine stack frame size of routines
 // TODO: store references to potential jump tables (e.g. jmp cs:[bx+0xc08]), if unclaimed after initial search, try treating entries as pointers and run second search before coalescing blocks?
-RoutineMap Analyzer::findRoutines(Executable &exe) {
+CodeMap Analyzer::exploreCode(Executable &exe) {
     RegisterState initRegs{exe.entrypoint(), exe.stackAddr()};
     
     debug("initial register values:\n"s + initRegs.toString());
@@ -618,14 +397,14 @@ RoutineMap Analyzer::findRoutines(Executable &exe) {
 #endif
 
     // create routine map from contents of search queue
-    auto ret = RoutineMap{scanQueue, exe.getSegments(), exe.getLoadSegment(), exe.size()};
+    auto ret = CodeMap{scanQueue, exe.getSegments(), exe.getLoadSegment(), exe.size()};
     // yes, this was an afterthought, why you ask? ;)
     for (const auto &dr : dataRefs) ret.storeDataRef(dr);
     // TODO: stats like for compare
     return ret;
 }
 
-void Analyzer::checkMissedRoutines(const RoutineMap &refMap) {
+void Analyzer::checkMissedRoutines(const CodeMap &refMap) {
     // update set of missed routines
     calculateStats(refMap);
     const Size missedCount = missedNames.size();
@@ -706,10 +485,8 @@ Address Analyzer::findTargetLocation(const Executable &ref, const Executable &tg
     return ret;
 }
 
-static constexpr RoutineId VISITED_ID = 1;
-
-// TODO: implement register value tracing like in findRoutines
-bool Analyzer::compareCode(const Executable &ref, Executable &tgt, const RoutineMap &refMap) {
+// TODO: implement register value tracing like in exploreCode
+bool Analyzer::compareCode(const Executable &ref, Executable &tgt, const CodeMap &refMap) {
     verbose("Comparing code between reference (entrypoint "s + ref.entrypoint().toString() + ") and target (entrypoint " + tgt.entrypoint().toString() + ") executables");
     debug("Routine map of reference binary has " + to_string(refMap.routineCount()) + " entries");
     // find name of reference entrypoint routine for seeding queues
@@ -807,11 +584,11 @@ bool Analyzer::compareCode(const Executable &ref, Executable &tgt, const Routine
     const string tgtMapPath = replaceExtension(options.mapPath, "tgt");
     if (!tgtMapPath.empty()) {
         debug("Constructing target map from target queue contents");
-        RoutineMap tgtMap{tgtQueue, tgt.getSegments(), tgt.getLoadSegment(), tgt.size()};
+        CodeMap tgtMap{tgtQueue, tgt.getSegments(), tgt.getLoadSegment(), tgt.size()};
         //tgtMap.setSegments(tgt.getSegments());
         //tgtMap.order();
         info("Saving target map to " + tgtMapPath);
-        tgtMap.save(tgtMapPath, 0, true);
+        tgtMap.save(tgtMapPath, tgt.loadAddr().segment, true);
     }
 
     if (success) {
@@ -957,7 +734,7 @@ bool Analyzer::checkComparisonStop() {
 }
 
 // compare instructions between two executables over a contiguous block
-bool Analyzer::comparisonLoop(const Executable &ref, Executable &tgt, const RoutineMap &refMap) {
+bool Analyzer::comparisonLoop(const Executable &ref, Executable &tgt, const CodeMap &refMap) {
     refSkipCount = tgtSkipCount = 0;
     const RoutineEntrypoint tgtEp = tgtQueue.getEntrypoint(routine.name);
     if (!tgtEp.addr.isValid()) {
@@ -1329,7 +1106,7 @@ void Analyzer::skipContext(const Executable &ref, const Executable &tgt) const {
     }
 }
 
-void Analyzer::calculateStats(const RoutineMap &routineMap) {
+void Analyzer::calculateStats(const CodeMap &routineMap) {
     if (routineMap.empty()) return;
     routineSumSize = reachableSize = unreachableSize = excludedSize = excludedCount = excludedReachableSize = missedSize = ignoredSize = 0;
     missedNames.clear();
@@ -1359,7 +1136,7 @@ void Analyzer::calculateStats(const RoutineMap &routineMap) {
 }
 
 // display comparison statistics
-void Analyzer::comparisonSummary(const Executable &ref, const RoutineMap &routineMap, const bool showMissed) {
+void Analyzer::comparisonSummary(const Executable &ref, const CodeMap &routineMap, const bool showMissed) {
     // TODO: display total size of code segments between load module and routine map size
     if (routineMap.empty()) return;
     const Size 
@@ -1453,7 +1230,7 @@ struct Duplicate {
     }
 };
 
-bool Analyzer::findDuplicates(const Executable &ref, Executable &tgt, const RoutineMap &refMap, RoutineMap &tgtMap) {
+bool Analyzer::findDuplicates(const Executable &ref, Executable &tgt, const CodeMap &refMap, CodeMap &tgtMap) {
     if (refMap.empty() || tgtMap.empty()) throw ArgError("Empty routine map provided for duplicate search");
     info("Searching for duplicates of " + to_string(refMap.routineCount()) + " routines among " + to_string(tgtMap.routineCount()) + " candidates, minimum instructions: " + to_string(options.routineSizeThresh) + ", maximum distance: " + to_string(options.routineDistanceThresh));
     // store relationship between reference routines and their duplicates

@@ -15,20 +15,20 @@ using namespace std;
 class AnalysisTest : public ::testing::Test {
 protected:
     // wrappers for access to private members, no this is not a black box test, why you ask?
-    auto& getRoutines(RoutineMap &rm) { return rm.routines; }
-    void setMapSize(RoutineMap &rm, const Size size) { rm.mapSize = size; }
-    auto emptyRoutineMap() { return RoutineMap(); }
+    auto& getRoutines(CodeMap &rm) { return rm.routines; }
+    void setMapSize(CodeMap &rm, const Size size) { rm.mapSize = size; }
+    auto emptyCodeMap() { return CodeMap(); }
     auto emptyScanQueue() { return ScanQueue(); }
     auto& sqOrigin(ScanQueue &sq) { return sq.origin; }
     auto& sqVisited(ScanQueue &sq) { return sq.visited; }
     auto& sqEntrypoints(ScanQueue &sq) { return sq.entrypoints; }
-    void mapSetSegments(RoutineMap &rm, const vector<Segment> &segments) { rm.setSegments(segments); }
-    const vector<Block>& getUnclaimed(const RoutineMap &rm) { return rm.unclaimed; }
+    void mapSetSegments(CodeMap &rm, const vector<Segment> &segments) { rm.setSegments(segments); }
+    const vector<Block>& getUnclaimed(const CodeMap &rm) { return rm.unclaimed; }
     auto analyzerInstructionMatch(Analyzer &a, const Executable &ref, const Executable &tgt, const Instruction &refInstr, const Instruction &tgtInstr) { 
         return a.instructionsMatch(ref, tgt, refInstr, tgtInstr); 
     }
     auto analyzerDiffVal() { return Analyzer::CMP_DIFFVAL; }
-    bool crossCheck(const RoutineMap &map1, const RoutineMap &map2, const Size maxMiss) {
+    bool crossCheck(const CodeMap &map1, const CodeMap &map2, const Size maxMiss) {
         TRACELN("Cross-checking map 1 (" + to_string(map1.routineCount()) + " routines) with map 2 (" + to_string(map2.routineCount()) + " routines)");
         Size missCount = 0;
         for (Size idx = 0; idx < map1.routineCount(); ++idx) {
@@ -99,7 +99,7 @@ TEST_F(AnalysisTest, RegisterState) {
     ASSERT_EQ(rs.getValue(REG_BL), 0);
     ASSERT_EQ(rs.regString(REG_BX), "BX = ab??"s);
     ASSERT_EQ(rs.regString(REG_BH), "BH = ab"s);
-    ASSERT_EQ(rs.regString(REG_BL), "BL = ??"s);    
+    ASSERT_EQ(rs.regString(REG_BL), "BL = ??"s);
     TRACELN(rs.toString());
 
     TRACELN("Setting BL to 0xcd");
@@ -109,16 +109,18 @@ TEST_F(AnalysisTest, RegisterState) {
     ASSERT_EQ(rs.getValue(REG_BL), 0xcd);
     ASSERT_EQ(rs.regString(REG_BX), "BX = abcd"s);
     ASSERT_EQ(rs.regString(REG_BH), "BH = ab"s);
-    ASSERT_EQ(rs.regString(REG_BL), "BL = cd"s);    
+    ASSERT_EQ(rs.regString(REG_BL), "BL = cd"s);
     TRACELN(rs.toString());    
 }
 
-TEST_F(AnalysisTest, RoutineMap) {
+TEST_F(AnalysisTest, CodeMap) {
     // test loading of routine map from ida file
-    const RoutineMap idaMap{"../bin/hello.lst"};
-    TRACE(idaMap.getSummary().text);
+    const CodeMap idaMap{"../bin/hello.lst"};
+    const auto sum = idaMap.getSummary();
+    TRACE(sum.text);
+    ASSERT_NE(sum.dataSize, 0);
     // test comparing of routine maps for both the success and failure case
-    RoutineMap matchMap{idaMap};
+    CodeMap matchMap{idaMap};
     const Size routineCount = matchMap.routineCount();
     const Size matchCount = idaMap.match(matchMap, false);
     ASSERT_EQ(matchCount, routineCount);
@@ -136,7 +138,7 @@ TEST_F(AnalysisTest, RoutineMap) {
     ASSERT_EQ(r1.entrypoint(), r2.entrypoint());
 }
 
-TEST_F(AnalysisTest, RoutineMapFromQueue) {
+TEST_F(AnalysisTest, CodeMapFromQueue) {
     // test routine map generation from contents of a search queue
     ScanQueue sq = emptyScanQueue();
     vector<RoutineId> &visited = sqVisited(sq);
@@ -159,7 +161,7 @@ TEST_F(AnalysisTest, RoutineMapFromQueue) {
     // where the last (unreachable) block starts
     visited.insert(visited.end(), 70000, 0);
     entrypoints = { {0x8, 1}, {0xc, 2}, {0x13, 3} };
-    RoutineMap queueMap{sq, segments, loadSegment, visited.size()};
+    CodeMap queueMap{sq, segments, loadSegment, visited.size()};
     TRACE(queueMap.getSummary().text);
     ASSERT_EQ(queueMap.routineCount(), 3);
 
@@ -201,8 +203,8 @@ TEST_F(AnalysisTest, RoutineMapFromQueue) {
     TRACE(queueMap.getSummary().text);
 }
 
-TEST_F(AnalysisTest, BigRoutineMap) {
-    RoutineMap rm{"../bin/egame.map", 0x1000};
+TEST_F(AnalysisTest, BigCodeMap) {
+    CodeMap rm{"../bin/egame.map", 0x1000};
     ASSERT_EQ(rm.routineCount(), 398);
 }
 
@@ -214,14 +216,14 @@ TEST_F(AnalysisTest, FindRoutines) {
     mz.load(loadSegment);
     Executable exe{mz};
     Analyzer a{Analyzer::Options()};
-    const RoutineMap discoveredMap = a.findRoutines(exe);
+    const CodeMap discoveredMap = a.exploreCode(exe);
     TRACE(discoveredMap.getSummary().text);
     ASSERT_FALSE(discoveredMap.empty());
     discoveredMap.save("hello.map", loadSegment, true);    
     ASSERT_EQ(discoveredMap.routineCount(), expectedFound);
 
     // create map from IDA listing
-    const RoutineMap idaMap{"../bin/hello.lst", loadSegment};
+    const CodeMap idaMap{"../bin/hello.lst", loadSegment};
     // compare our map against IDA map
     Size matchCount = idaMap.match(discoveredMap, true);
     const Size idaMatchCount = 38; // not all 54 routines that ida finds can be identified for now    
@@ -229,7 +231,7 @@ TEST_F(AnalysisTest, FindRoutines) {
     ASSERT_EQ(matchCount, idaMatchCount);
     
     // reload from file
-    RoutineMap reloadMap("hello.map", loadSegment);
+    CodeMap reloadMap("hello.map", loadSegment);
     ASSERT_EQ(reloadMap.routineCount(), discoveredMap.routineCount());
     TRACE(reloadMap.getSummary().text);
 
@@ -261,7 +263,7 @@ TEST_F(AnalysisTest, FindFarRoutines) {
     mz.load(loadSegment);
     Executable exe{mz};
     Analyzer a{Analyzer::Options()};
-    const RoutineMap discoveredMap = a.findRoutines(exe);
+    const CodeMap discoveredMap = a.exploreCode(exe);
     TRACE(discoveredMap.getSummary().text);
     ASSERT_FALSE(discoveredMap.empty());
 
@@ -289,7 +291,7 @@ TEST_F(AnalysisTest, FindWithRollback) {
     MzImage mz{code};
     Executable exe{mz};
     Analyzer a{Analyzer::Options()};
-    const RoutineMap discoveredMap = a.findRoutines(exe);
+    const CodeMap discoveredMap = a.exploreCode(exe);
     TRACE(discoveredMap.getSummary().text);
     ASSERT_FALSE(discoveredMap.empty());
     ASSERT_GE(discoveredMap.routineCount(), 5);
@@ -299,9 +301,9 @@ TEST_F(AnalysisTest, FindWithRollback) {
     ASSERT_EQ(s.type, Segment::SEG_CODE);
 }
 
-TEST_F(AnalysisTest, RoutineMapCollision) {
+TEST_F(AnalysisTest, CodeMapCollision) {
     const string path = "bad.map";
-    RoutineMap rm = emptyRoutineMap();
+    CodeMap rm = emptyCodeMap();
     mapSetSegments(rm, {
         {"Code1", Segment::SEG_CODE, 0},
     });
@@ -314,20 +316,20 @@ TEST_F(AnalysisTest, RoutineMapCollision) {
     rv = { r1, r2 };
     TRACE(rm.getSummary().text);
     rm.save(path, 0, true);
-    ASSERT_THROW(rm = RoutineMap{path}, ParseError);
+    ASSERT_THROW(rm = CodeMap{path}, ParseError);
 
     TRACELN("--- testing coliding routine extent with chunk");
     rv = { r1, r3 };
     rv.back().reachable.push_back(b2);
     TRACE(rm.getSummary().text);
     rm.save(path, 0, true);
-    ASSERT_THROW(rm = RoutineMap{path}, ParseError);
+    ASSERT_THROW(rm = CodeMap{path}, ParseError);
 
     TRACELN("--- testing no colision");
     rv = { r1, r3 };
     TRACE(rm.getSummary().text);
     rm.save(path, 0, true);
-    rm = RoutineMap{path};
+    rm = CodeMap{path};
     ASSERT_EQ(rm.routineCount(), 2);
 }
 
@@ -337,7 +339,7 @@ TEST_F(AnalysisTest, CodeCompare) {
     mz.load(loadSegment);
     Executable e1{mz}, e2{mz};
     const string mapPath = "hello.map";
-    auto map = RoutineMap{mapPath, loadSegment};
+    auto map = CodeMap{mapPath, loadSegment};
     Analyzer::Options opt;
     opt.mapPath = mapPath;
     Analyzer a{opt};
@@ -346,7 +348,7 @@ TEST_F(AnalysisTest, CodeCompare) {
     TRACELN("Test #1, comparison match");
     ASSERT_TRUE(a.compareCode(e1, e2, map));
     // cross-check target map
-    RoutineMap tgtMap("hello.tgt");
+    CodeMap tgtMap("hello.tgt");
     ASSERT_TRUE(crossCheck(map, tgtMap, 0));
 
     // compare different
@@ -420,7 +422,7 @@ TEST_F(AnalysisTest, CodeCompareUnreachable) {
     r1.unreachable.push_back({3, 3});
     r1.reachable.push_back({4, 5});
     // construct routine map for code
-    RoutineMap map1;
+    CodeMap map1;
     auto &rv1 = getRoutines(map1);
     rv1.push_back(r1);
     Analyzer a1(opt);
@@ -436,7 +438,7 @@ TEST_F(AnalysisTest, CodeCompareUnreachable) {
     r2.unreachable.push_back({4, 4});
     r2.reachable.push_back({5, 6});
     // construct routine map for code
-    RoutineMap map2;
+    CodeMap map2;
     auto &rv2 = getRoutines(map2);
     rv2.push_back(r2);
     ASSERT_TRUE(a1.compareCode(e3, e4, map2));
@@ -451,7 +453,7 @@ TEST_F(AnalysisTest, CodeCompareUnreachable) {
     r3.unreachable.push_back({3, 3});
     r3.reachable.push_back({4, 5});
     // construct routine map for code
-    RoutineMap map3;
+    CodeMap map3;
     auto &rv3 = getRoutines(map3);
     rv3.push_back(r3);
     ASSERT_FALSE(a1.compareCode(e5, e6, map3));
@@ -548,13 +550,13 @@ TEST_F(AnalysisTest, FindDuplicates) {
     opt.routineSizeThresh = 20;
     opt.routineDistanceThresh = 10;
     Analyzer a{opt};
-    RoutineMap rm = a.findRoutines(exe);
+    CodeMap rm = a.exploreCode(exe);
     TRACELN("Found routines: " + to_string(rm.routineCount()));
     for (int i = 0; i < rm.routineCount(); ++i) {
         ASSERT_FALSE(rm.getRoutine(i).duplicate);
     }
     ASSERT_EQ(rm.routineCount(), expectedRoutines);
-    RoutineMap rmdup{rm};
+    CodeMap rmdup{rm};
     ASSERT_EQ(rmdup.routineCount(), rm.routineCount());
     ASSERT_TRUE(a.findDuplicates(exe, exe, rm, rmdup));
     rmdup.save("hello.map.dup", loadSegment, true);

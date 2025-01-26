@@ -64,7 +64,7 @@ int main(int argc, char *argv[]) {
         MzImage tgtMz{tgtExePath};
         tgtMz.load(loadSegment);
         Executable ref{refMz}, tgt{tgtMz};
-        RoutineMap refMap{refMapPath, loadSegment}, tgtMap{tgtMapPath, loadSegment};
+        CodeMap refMap{refMapPath, loadSegment}, tgtMap{tgtMapPath, loadSegment};
         Analyzer a{options};
         // search for duplicates, write updated target map if any found
         if (a.findDuplicates(ref, tgt, refMap, tgtMap)) tgtMap.save(tgtMapPath + ".dup", loadSegment, true);
