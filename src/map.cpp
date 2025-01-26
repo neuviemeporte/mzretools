@@ -19,7 +19,7 @@ void CodeMap::blocksFromQueue(const ScanQueue &sq, const bool unclaimedOnly) {
 
     debug("Starting at " + hexVal(startOffset) + ", ending at " + hexVal(endOffset) + ", map size: " + sizeStr(mapSize));
     for (Offset mapOffset = startOffset; mapOffset < endOffset; ++mapOffset) {
-        curId = sq.getRoutineId(mapOffset);
+        curId = sq.getRoutineIdx(mapOffset);
         // find segment matching currently processed offset
         Segment newSeg = findSegment(mapOffset);
         if (newSeg.type == Segment::SEG_NONE) {
@@ -94,8 +94,8 @@ CodeMap::CodeMap(const std::string &path, const Word loadSegment) : CodeMap(load
     ScanQueue sq{Address{loadSegment, 0}, mapSize, {}};
     // mark all code locations
     for (const Routine &r : routines) {
-        for (const Block &rb : r.reachable) sq.setRoutineId(rb.begin.toLinear(), rb.size(), VISITED_ID);
-        for (const Block &ub : r.unreachable) sq.setRoutineId(ub.begin.toLinear(), ub.size(), VISITED_ID);
+        for (const Block &rb : r.reachable) sq.setRoutineIdx(rb.begin.toLinear(), rb.size(), VISITED_ID);
+        for (const Block &ub : r.unreachable) sq.setRoutineIdx(ub.begin.toLinear(), ub.size(), VISITED_ID);
     }
     // rebuild the unclaimed blocks
     blocksFromQueue(sq, true);
@@ -591,7 +591,7 @@ void CodeMap::loadFromMapFile(const std::string &path, const Word reloc) {
         } // iterate over tokens in a routine definition
         if (r.extents.isValid()) {
             debug("routine: "s + r.dump());
-            r.id = routines.size() + 1;
+            r.idx = routines.size() + 1;
             routines.push_back(r);
         }
         else throw ParseError("Line " + to_string(lineno) + ": invalid routine extents " + r.extents.toString());

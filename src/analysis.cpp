@@ -294,7 +294,7 @@ CodeMap Analyzer::exploreCode(Executable &exe) {
         const Destination search = scanQueue.nextPoint();
         locations++;
         Address csip = search.address;
-        searchMessage(csip, "--- Scanning at new location from routine " + to_string(search.routineId) + ", call: "s + to_string(search.isCall) + ", queue = " + to_string(scanQueue.size()));
+        searchMessage(csip, "--- Scanning at new location from routine " + to_string(search.routineIdx) + ", call: "s + to_string(search.isCall) + ", queue = " + to_string(scanQueue.size()));
         RegisterState regs = search.regs;
         regs.setValue(REG_CS, csip.segment);
         exe.storeSegment(Segment::SEG_CODE, csip.segment);
@@ -304,7 +304,7 @@ CodeMap Analyzer::exploreCode(Executable &exe) {
                 if (!exe.contains(csip))
                     throw AnalysisError("Advanced past loaded code extents: "s + csip.toString());
                 // check if this location was visited before
-                const auto rid = scanQueue.getRoutineId(csip.toLinear());
+                const auto rid = scanQueue.getRoutineIdx(csip.toLinear());
                 if (rid == BAD_ROUTINE) {
                     searchMessage(csip, "Location previously marked as bad, ignoring");
                     break;
@@ -316,15 +316,15 @@ CodeMap Analyzer::exploreCode(Executable &exe) {
                 }
                 const auto atEntrypoint = scanQueue.isEntrypoint(csip);
                 // similarly, protect yet univisited locations which are however recognized as routine entrypoints, unless visiting from a matching routine id
-                if (atEntrypoint != NULL_ROUTINE && atEntrypoint != search.routineId) {
-                    searchMessage(csip, "Location marked as entrypoint for routine "s + to_string(atEntrypoint) + " while scanning from " + to_string(search.routineId) + ", halting scan");
+                if (atEntrypoint != NULL_ROUTINE && atEntrypoint != search.routineIdx) {
+                    searchMessage(csip, "Location marked as entrypoint for routine "s + to_string(atEntrypoint) + " while scanning from " + to_string(search.routineIdx) + ", halting scan");
                     break;
                 }
                 Instruction i(csip, exe.codePointer(csip));
                 regs.setValue(REG_IP, csip.offset);
                 // mark memory map items corresponding to the current instruction as belonging to the current routine 
                 // (routine id is tracked by the queue, no need to provide)
-                scanQueue.setRoutineId(csip.toLinear(), i.length);
+                scanQueue.setRoutineIdx(csip.toLinear(), i.length);
                 // if the instruction references memory, save the location as a potential data item
                 processDataReference(exe, i, regs);
                 // interpret the instruction
@@ -338,14 +338,14 @@ CodeMap Analyzer::exploreCode(Executable &exe) {
                     if (branch.isCall || branch.isConditional) {
                         branch.destination = csip + static_cast<Offset>(i.length);
                         const Offset destOffset = branch.destination.toLinear();
-                        const RoutineId destId = scanQueue.getRoutineId(destOffset);
-                        if (destId != search.routineId) {
+                        const RoutineIdx destId = scanQueue.getRoutineIdx(destOffset);
+                        if (destId != search.routineIdx) {
                             branch.isCall = false;
                             branch.isNear = true;
                             branch.isConditional = false;
                             debug("Saving fall-through branch: " + branch.toString() + " over id " + to_string(destId));
                             // make the destination of this fake "branch" undiscovered in the queue, wipe any claiming routine id run
-                            scanQueue.clearRoutineId(destOffset);
+                            scanQueue.clearRoutineIdx(destOffset);
                             scanQueue.saveBranch(branch, regs, exe.extents());
                         }
                         break;
@@ -388,7 +388,7 @@ CodeMap Analyzer::exploreCode(Executable &exe) {
             assert(start <= csip);
             const Size rollbackSize = csip.toLinear() - start.toLinear() + 1;
             debug("Search started at " + start.toString() + ", rolling back " + sizeStr(rollbackSize) + " bytes, marking bad");
-            scanQueue.setRoutineId(start.toLinear(), rollbackSize, BAD_ROUTINE);
+            scanQueue.setRoutineIdx(start.toLinear(), rollbackSize, BAD_ROUTINE);
         }
     } // next search location from search queue
     info("Done analyzing code, examined " + to_string(locations) + " locations");
@@ -519,7 +519,7 @@ bool Analyzer::compareCode(const Executable &ref, Executable &tgt, const CodeMap
             verbose("Reached stop address: " + refCsip.toString());
             break;
         }        
-        if (scanQueue.getRoutineId(refCsip.toLinear()) != NULL_ROUTINE) {
+        if (scanQueue.getRoutineIdx(refCsip.toLinear()) != NULL_ROUTINE) {
             debug("Location already compared, skipping");
             continue;
         }
@@ -758,8 +758,8 @@ bool Analyzer::comparisonLoop(const Executable &ref, Executable &tgt, const Code
             tgtInstr{tgtCsip, tgt.codePointer(tgtCsip)};
         
         // mark this instruction as visited
-        scanQueue.setRoutineId(refCsip.toLinear(), refInstr.length, VISITED_ID);
-        tgtQueue.setRoutineId(tgtCsip.toLinear(), tgtInstr.length, tgtEp.id);
+        scanQueue.setRoutineIdx(refCsip.toLinear(), refInstr.length, VISITED_ID);
+        tgtQueue.setRoutineIdx(tgtCsip.toLinear(), tgtInstr.length, tgtEp.idx);
 
         // compare instructions
         if (!compareInstructions(ref, tgt, refInstr, tgtInstr)) {
@@ -1234,7 +1234,7 @@ bool Analyzer::findDuplicates(const Executable &ref, Executable &tgt, const Code
     if (refMap.empty() || tgtMap.empty()) throw ArgError("Empty routine map provided for duplicate search");
     info("Searching for duplicates of " + to_string(refMap.routineCount()) + " routines among " + to_string(tgtMap.routineCount()) + " candidates, minimum instructions: " + to_string(options.routineSizeThresh) + ", maximum distance: " + to_string(options.routineDistanceThresh));
     // store relationship between reference routines and their duplicates
-    map<RoutineId, Duplicate> duplicates;
+    map<RoutineIdx, Duplicate> duplicates;
     Size ignoreCount = 0;
     bool collision = false;
     // iterate over routines to find duplicates for

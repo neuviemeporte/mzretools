@@ -11,7 +11,7 @@ OUTPUT_CONF(LOG_ANALYSIS)
 
 string Destination::toString() const {
     ostringstream str;
-    str << "[" << address.toString() << " / " << routineId << " / " << (isCall ? "call" : "jump") << "]";
+    str << "[" << address.toString() << " / " << routineIdx << " / " << (isCall ? "call" : "jump") << "]";
     return str.str();
 }
 
@@ -33,32 +33,32 @@ ScanQueue::ScanQueue(const Address &origin, const Size codeSize, const Destinati
 {
     debug("Initializing queue, origin: " + origin.toString() + ", size = " + to_string(codeSize) + ", seed: " + seed.toString() + ", name: '" + name + "'");
     queue.push_front(seed);
-    RoutineEntrypoint ep{seed.address, seed.routineId, true};
+    RoutineEntrypoint ep{seed.address, seed.routineIdx, true};
     if (!name.empty()) ep.name = name;
     entrypoints.push_back(ep);
 }
 
 string ScanQueue::statusString() const { 
-    return "[r"s + to_string(curSearch.routineId) + "/q" + to_string(size()) + "]"; 
+    return "[r"s + to_string(curSearch.routineIdx) + "/q" + to_string(size()) + "]"; 
 } 
 
-RoutineId ScanQueue::getRoutineId(Offset off) const {
+RoutineIdx ScanQueue::getRoutineIdx(Offset off) const {
     assert(off >= origin.toLinear());
     off -= origin.toLinear();
     assert(off < visited.size());
     return visited.at(off); 
 }
 
-void ScanQueue::setRoutineId(Offset off, const Size length, RoutineId id) {
-    if (id == NULL_ROUTINE) id = curSearch.routineId;
+void ScanQueue::setRoutineIdx(Offset off, const Size length, RoutineIdx idx) {
+    if (idx == NULL_ROUTINE) idx = curSearch.routineIdx;
     if (off < origin.toLinear()) throw ArgError("Unable to mark visited location at offset " + hexVal(off) + " before origin: " + origin.toString());
     off -= origin.toLinear();
     if (off >= visited.size() || off + length > visited.size()) 
         throw ArgError("Unable to mark visited location at offset " + hexVal(off) + " with length " + sizeStr(length) + " past array of size " + hexVal(visited.size()));
-    fill(visited.begin() + off, visited.begin() + off + length, id);
+    fill(visited.begin() + off, visited.begin() + off + length, idx);
 }
 
-void ScanQueue::clearRoutineId(Offset off) {
+void ScanQueue::clearRoutineIdx(Offset off) {
     assert(off >= origin.toLinear());
     off -= origin.toLinear();
     assert(off < visited.size());
@@ -87,9 +87,9 @@ bool ScanQueue::hasPoint(const Address &dest, const bool call) const {
     return it != queue.end();
 };
 
-RoutineId ScanQueue::isEntrypoint(const Address &addr) const {
+RoutineIdx ScanQueue::isEntrypoint(const Address &addr) const {
     const auto &found = std::find(entrypoints.begin(), entrypoints.end(), addr);
-    if (found != entrypoints.end()) return found->id;
+    if (found != entrypoints.end()) return found->idx;
     else return NULL_ROUTINE;
 }
 
@@ -105,14 +105,14 @@ RoutineEntrypoint ScanQueue::getEntrypoint(const std::string &name) {
 vector<Routine> ScanQueue::getRoutines() const {
     auto routines = vector<Routine>{routineCount()};
     for (const auto &ep : entrypoints) {
-        auto &r = routines.at(ep.id - 1);
+        auto &r = routines.at(ep.idx - 1);
         // initialize routine extents with entrypoint address
         r.extents = Block(ep.addr);
         r.near = ep.near;
         if (!ep.name.empty()) r.name = ep.name;
         // assign automatic names to routines
         else if (ep.addr == originAddress()) r.name = "start";
-        else r.name = "routine_"s + to_string(ep.id);
+        else r.name = "routine_"s + to_string(ep.idx);
     }
     return routines;
 }
@@ -123,12 +123,12 @@ vector<Block> ScanQueue::getUnvisited() const {
     Offset off = 0;
     Block curBlock;
     // iterate over contents of visited map
-    for (const RoutineId id : visited) {
-        if (id == NULL_ROUTINE && !curBlock.begin.isValid()) { 
+    for (const RoutineIdx idx : visited) {
+        if (idx == NULL_ROUTINE && !curBlock.begin.isValid()) { 
             // switching to unvisited, open new block
             curBlock.begin = Address{off};
         }
-        else if (id != NULL_ROUTINE && curBlock.begin.isValid()) { 
+        else if (idx != NULL_ROUTINE && curBlock.begin.isValid()) { 
             // switching to visited, close current block if open
             curBlock.end = Address{off - 1};
             curBlock.relocate(origin.segment);
@@ -144,20 +144,20 @@ vector<Block> ScanQueue::getUnvisited() const {
 // or visited but destination was not yet discovered as a routine entrypoint and this call now takes precedence and will replace it
 bool ScanQueue::saveCall(const Address &dest, const RegisterState &regs, const bool near, const std::string name) {
     if (!dest.isValid()) return false;
-    RoutineId destId = isEntrypoint(dest);
+    RoutineIdx destId = isEntrypoint(dest);
     if (destId != NULL_ROUTINE) 
         debug("Address "s + dest.toString() + " already registered as entrypoint for routine " + to_string(destId));
     else if (hasPoint(dest, true)) 
         debug("Search queue already contains call to address "s + dest.toString());
     else { // not a known entrypoint and not yet in queue
-        destId = getRoutineId(dest.toLinear());
-        RoutineId newRoutineId = routineCount() + 1;
-        queue.emplace_back(Destination(dest, newRoutineId, true, regs));
+        destId = getRoutineIdx(dest.toLinear());
+        RoutineIdx newRoutineIdx = routineCount() + 1;
+        queue.emplace_back(Destination(dest, newRoutineIdx, true, regs));
         if (destId == NULL_ROUTINE)
-            debug("Call destination not belonging to any routine, claiming as entrypoint for new routine, id " + to_string(newRoutineId) + ", queue size = " + to_string(size()));
+            debug("Call destination not belonging to any routine, claiming as entrypoint for new routine, id " + to_string(newRoutineIdx) + ", queue size = " + to_string(size()));
         else 
-            debug("Call destination belonging to routine " + to_string(destId) + ", reclaiming as entrypoint for new routine, id " + to_string(newRoutineId) + ", queue size = " + to_string(size()));
-        RoutineEntrypoint ep{dest, newRoutineId, near};
+            debug("Call destination belonging to routine " + to_string(destId) + ", reclaiming as entrypoint for new routine, id " + to_string(newRoutineIdx) + ", queue size = " + to_string(size()));
+        RoutineEntrypoint ep{dest, newRoutineIdx, near};
         if (!name.empty()) ep.name = name;
         entrypoints.push_back(ep);
         return true;
@@ -167,14 +167,14 @@ bool ScanQueue::saveCall(const Address &dest, const RegisterState &regs, const b
 
 // conditional jump, save as destination to be investigated, belonging to current routine
 bool ScanQueue::saveJump(const Address &dest, const RegisterState &regs) {
-    const RoutineId destId = getRoutineId(dest.toLinear());
+    const RoutineIdx destId = getRoutineIdx(dest.toLinear());
     if (destId != NULL_ROUTINE) 
         debug("Jump destination already visited from routine "s + to_string(destId));
     else if (hasPoint(dest, false))
         debug("Queue already contains jump to address "s + dest.toString());
     else { // not claimed by any routine and not yet in queue
-        queue.emplace_front(Destination(dest, curSearch.routineId, false, regs));
-        debug("Jump destination not yet visited, scheduled visit from routine " + to_string(curSearch.routineId) + ", queue size = " + to_string(size()));
+        queue.emplace_front(Destination(dest, curSearch.routineIdx, false, regs));
+        debug("Jump destination not yet visited, scheduled visit from routine " + to_string(curSearch.routineIdx) + ", queue size = " + to_string(size()));
         return true;
     }
     return false;
@@ -209,7 +209,7 @@ void ScanQueue::dumpVisited(const string &path) const {
     const Size size = visited.size();
     info("DEBUG: Dumping visited map of size "s + hexVal(size) + " starting at " + hexVal(start) + " to " + path);
     for (Offset mapOffset = start; mapOffset < start + size; ++mapOffset) {
-        const auto id = getRoutineId(mapOffset);
+        const auto id = getRoutineIdx(mapOffset);
         //debug(hexVal(mapOffset) + ": " + to_string(m));
         const Offset printOffset = mapOffset - start;
         if (printOffset % 16 == 0) {

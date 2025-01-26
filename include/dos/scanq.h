@@ -10,12 +10,12 @@
 // A destination (jump or call location) inside an analyzed executable
 struct Destination {
     Address address;
-    RoutineId routineId;
+    RoutineIdx routineIdx;
     bool isCall;
     RegisterState regs;
 
-    Destination() : routineId(NULL_ROUTINE), isCall(false) {}
-    Destination(const Address address, const RoutineId id, const bool call, const RegisterState &regs) : address(address), routineId(id), isCall(call), regs(regs) {}
+    Destination() : routineIdx(NULL_ROUTINE), isCall(false) {}
+    Destination(const Address address, const RoutineIdx idx, const bool call, const RegisterState &regs) : address(address), routineIdx(idx), isCall(call), regs(regs) {}
     bool match(const Destination &other) const { return address == other.address && isCall == other.isCall; }
     bool isNull() const { return address.isNull(); }
     std::string toString() const;
@@ -33,7 +33,7 @@ class ScanQueue {
     friend class AnalysisTest;
     // memory map for marking which locations belong to which routines, value of 0 is undiscovered
     // TODO: store addresses from loaded exe in map, otherwise they don't match after analysis done if exe loaded at segment other than 0
-    std::vector<RoutineId> visited;
+    std::vector<RoutineIdx> visited;
     Address origin;
     Destination curSearch;
     std::list<Destination> queue;
@@ -54,10 +54,10 @@ public:
     // discovered locations operations
     Size routineCount() const { return entrypoints.size(); }
     std::string statusString() const;
-    RoutineId getRoutineId(Offset off) const;
-    void setRoutineId(Offset off, const Size length, RoutineId id = NULL_ROUTINE);
-    void clearRoutineId(Offset off);
-    RoutineId isEntrypoint(const Address &addr) const;
+    RoutineIdx getRoutineIdx(Offset off) const;
+    void setRoutineIdx(Offset off, const Size length, RoutineIdx idx = NULL_ROUTINE);
+    void clearRoutineIdx(Offset off);
+    RoutineIdx isEntrypoint(const Address &addr) const;
     RoutineEntrypoint getEntrypoint(const std::string &name);
     std::vector<Routine> getRoutines() const;
     std::vector<Block> getUnvisited() const;

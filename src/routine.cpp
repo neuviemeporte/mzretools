@@ -18,7 +18,7 @@ OUTPUT_CONF(LOG_ANALYSIS)
 
 std::string RoutineEntrypoint::toString() const {
     ostringstream str;
-    str << "id " << id << ": " << addr.toString();
+    str << "idx " << idx << ": " << addr.toString();
     if (near) str << " [near]";
     if (!name.empty()) str << " " << name;
     return str.str();

@@ -39,7 +39,7 @@ private:
     std::vector<Segment> segments;
     std::vector<Variable> vars;
     // TODO: turn these into a context struct, pass around instead of members
-    RoutineId curId, prevId, curBlockId, prevBlockId;
+    RoutineIdx curId, prevId, curBlockId, prevBlockId;
     bool ida;
 
 public:

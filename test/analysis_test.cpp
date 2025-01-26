@@ -141,7 +141,7 @@ TEST_F(AnalysisTest, CodeMap) {
 TEST_F(AnalysisTest, CodeMapFromQueue) {
     // test routine map generation from contents of a search queue
     ScanQueue sq = emptyScanQueue();
-    vector<RoutineId> &visited = sqVisited(sq);
+    vector<RoutineIdx> &visited = sqVisited(sq);
     vector<RoutineEntrypoint> &entrypoints = sqEntrypoints(sq);
     const Word loadSegment = 0;
     vector<Segment> segments = {
