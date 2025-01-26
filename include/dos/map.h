@@ -14,6 +14,7 @@ struct Variable {
     Address addr;
     static std::smatch stringMatch(const std::string &str);
     Variable(const std::string &name, const Address &addr) : name(name), addr(addr) {}
+    std::string toString() const { return name + "/" + addr.toString(); }
 };
 
 // A map of an executable, records which areas have been claimed by routines, and which have not, serializable to a file
@@ -49,6 +50,8 @@ public:
     CodeMap() : CodeMap(0, 0) {}
 
     Size routineCount() const { return routines.size(); }
+    Size variableCount() const { return vars.size(); }
+
     // TODO: routine.id start at 1, this is zero based, so id != idx, confusing
     Routine getRoutine(const Size idx) const { return routines.at(idx); }
     Routine getRoutine(const Address &addr) const;
@@ -56,6 +59,7 @@ public:
     Routine& getMutableRoutine(const Size idx) { return routines.at(idx); }
     Routine& getMutableRoutine(const std::string &name);
     std::vector<Block> getUnclaimed() const { return unclaimed; }
+    Variable getVariable(const Size idx) const { return vars.at(idx); }
     Routine findByEntrypoint(const Address &ep) const;
     Block findCollision(const Block &b) const;
     bool empty() const { return routines.empty(); }

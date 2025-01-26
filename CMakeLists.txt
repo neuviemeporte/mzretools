@@ -84,8 +84,8 @@ add_custom_target(run_unit_test ALL COMMAND ./runtest DEPENDS runtest)
 add_custom_target(debug_test COMMAND ./runtest --debug DEPENDS runtest)
 
 # utility executables
-add_executable(mzdup src/mzdup.cpp)
-target_link_libraries(mzdup PUBLIC libdos)
+add_executable(mzhdr src/mzhdr.cpp)
+target_link_libraries(mzhdr PUBLIC libdos)
 
 add_executable(mzmap src/mzmap.cpp)
 target_link_libraries(mzmap PUBLIC libdos)
@@ -93,8 +93,11 @@ target_link_libraries(mzmap PUBLIC libdos)
 add_executable(mzdiff src/mzdiff.cpp)
 target_link_libraries(mzdiff PUBLIC libdos)
 
-add_executable(mzhdr src/mzhdr.cpp)
-target_link_libraries(mzhdr PUBLIC libdos)
+add_executable(mzdup src/mzdup.cpp)
+target_link_libraries(mzdup PUBLIC libdos)
+
+add_executable(mzptr src/mzptr.cpp)
+target_link_libraries(mzptr PUBLIC libdos)
 
 add_executable(addrtool src/addrtool.cpp)
 target_link_libraries(addrtool PUBLIC libdos)

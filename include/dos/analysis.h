@@ -124,6 +124,7 @@ public:
     CodeMap exploreCode(Executable &exe);
     bool compareCode(const Executable &ref, Executable &tgt, const CodeMap &refMap);
     bool findDuplicates(const Executable &ref, Executable &tgt, const CodeMap &refMap, CodeMap &tgtMap);
+    void findDataRefs(const Executable &exe, const CodeMap &map);
 
 private:
     bool skipAllowed(const Instruction &refInstr, Instruction tgtInstr);
