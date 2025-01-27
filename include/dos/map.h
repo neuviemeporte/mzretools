@@ -49,6 +49,7 @@ public:
     CodeMap(const std::string &path, const Word loadSegment = 0);
     CodeMap() : CodeMap(0, 0) {}
 
+    Size codeSize() const { return mapSize; }
     Size routineCount() const { return routines.size(); }
     Size variableCount() const { return vars.size(); }
 

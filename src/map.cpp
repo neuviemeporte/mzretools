@@ -88,7 +88,7 @@ CodeMap::CodeMap(const std::string &path, const Word loadSegment) : CodeMap(load
     smatch match;
     if (regex_match(path, match, LSTFILE_RE)) loadFromIdaFile(path, loadSegment);
     else loadFromMapFile(path, loadSegment);
-    debug("Done, found "s + to_string(routines.size()) + " routines");
+    debug("Done, found "s + to_string(routines.size()) + " routines, " + to_string(vars.size()) + " variables");
     // create a bogus scan queue and populate the visited map with markers where the routines are 
     // for building the list of unclaimed blocks between them - these are lost when the map is saved to disk
     ScanQueue sq{Address{loadSegment, 0}, mapSize, {}};
@@ -368,7 +368,7 @@ CodeMap::Summary CodeMap::getSummary(const bool verbose, const bool brief, const
     }
     std::sort(printRoutines.begin(), printRoutines.end());
     Size mapCount = routineCount();
-    str << "--- Routine map containing " << mapCount << " routines" << endl
+    str << "--- Map contains " << mapCount << " routines" << endl
         << "Size " << sizeStr(mapSize) << endl;
     for (const auto &s : segments) {
         str << s.toString() << endl;
@@ -406,6 +406,11 @@ CodeMap::Summary CodeMap::getSummary(const bool verbose, const bool brief, const
     }
     // consistency check
     if (sum.codeSize > mapSize) throw LogicError("Accumulated code size " + sizeStr(sum.codeSize) + " exceeds total map size of " + sizeStr(mapSize));
+
+    if (vars.size()) str << "--- Map contains " << vars.size() << " variables" << endl;
+    for (const auto &v : vars) {
+        str << varString(v, 0) << endl;
+    }
 
     // print statistics
     sum.dataSize = mapSize - sum.codeSize;
@@ -492,7 +497,7 @@ void CodeMap::loadFromMapFile(const std::string &path, const Word reloc) {
         SIZE_RE{"Size\\s+([0-9a-fA-F]+)"};
     debug("Loading routine map from "s + path + ", relocating to " + hexVal(reloc));
     ifstream mapFile{path};
-    string line, token;
+    string line;
     Size lineno = 0;
     smatch match;
     while (safeGetline(mapFile, line)) {
@@ -517,7 +522,7 @@ void CodeMap::loadFromMapFile(const std::string &path, const Word reloc) {
         else if (!(match = Variable::stringMatch(line)).empty()) {
             const string varname = match.str(1), segname = match.str(2), offstr = match.str(3);
             Segment varseg;
-            if ((varseg = findSegment(segname)).type == Segment::SEG_NONE) throw ParseError("Line " + to_string(lineno) + ": unknown segment '" + token + "'");
+            if ((varseg = findSegment(segname)).type == Segment::SEG_NONE) throw ParseError("Line " + to_string(lineno) + ": unknown segment '" + segname + "'");
             Address varaddr{varseg.address, static_cast<Word>(stoi(offstr, nullptr, 16))};
             vars.emplace_back(Variable{varname, varaddr});
             continue;
@@ -528,6 +533,7 @@ void CodeMap::loadFromMapFile(const std::string &path, const Word reloc) {
         Segment rseg;
         smatch match;
         int tokenno = 0;
+        string token;
         while (sstr >> token) {
             BlockType bt = BLOCK_NONE;
             tokenno++;

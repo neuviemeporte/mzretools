@@ -1360,7 +1360,10 @@ void Analyzer::findDataRefs(const Executable &exe, const CodeMap &map) {
         codeSize = exe.size(),
         segCount = segments.size(),
         varCount = map.variableCount();
-    Offset  endOffset = 0;
+    Size refCount = 0;
+    Offset startOffset = 0, endOffset = 0;
+    const Byte *code = exe.codePointer(Address{0});
+    if (varCount == 0) throw AnalysisError("Map does not contain any variable locations");
     for (Size si = 0; si < segCount; ++si) {
         const Segment seg = segments[si];
         // TODO: consider searching for data refs in code segments, maybe just in unclaimed blocks?
@@ -1368,24 +1371,25 @@ void Analyzer::findDataRefs(const Executable &exe, const CodeMap &map) {
             debug("Ignoring non-data segment " + seg.toString());
             continue;
         }
-        Address startAddr{seg.address, 0};
-        if (si < segCount - 1) {
+        startOffset = SEG_TO_OFFSET(seg.address);
+        if (si < segCount - 1) { // not last segment
             const Segment nextSeg = segments[si + 1];
             endOffset = SEG_TO_OFFSET(nextSeg.address);
         }
         else endOffset = codeSize - 1;
-        const Byte *code = exe.codePointer(startAddr);
-        debug("Now searching in segment " + seg.toString() + ", start at " + hexVal(startAddr.toLinear()) + ", end at " + hexVal(endOffset));
-        // TODO: end offset is wrong, not zero-based
-        for (Offset off = 0; off < endOffset - 1; ++off) {
-            const Word val = (code[off] << 8) | code[off];
+        debug("Now searching in segment " + seg.toString() + ", start at " + hexVal(startOffset) + ", end at " + hexVal(endOffset));
+        for (Offset off = startOffset; off < endOffset - 1; ++off) {
+            if (off + 1 >= codeSize) throw AnalysisError("Stepped out of executable load module bounds at " + hexVal(off));
+            const Word val = (code[off + 1] << 8) | code[off];
+            if (val == 0) continue; 
             for (Size vi = 0; vi < varCount; ++vi) {
                 const Variable v = map.getVariable(vi);
                 if (v.addr.offset == val) {
-                    info("Segment " + seg.toString() + ", offset " + hexVal(off - startOffset) + ": potential reference to variable " + v.toString());
+                    info("Segment " + seg.name + ", offset " + hexVal(off - startOffset) + ": potential reference to variable " + v.toString());
+                    refCount++;
                 }
             } // iterate over known variables
         } // iterate over bytes within segment
     } // iterate over segments
-
+    info("Done, found " + to_string(refCount) + " potential references");
 }
