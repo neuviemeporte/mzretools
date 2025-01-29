@@ -65,7 +65,7 @@ Also has some additional switches that make it useful in scripts, like print jus
 
 ## mzmap
 
-Scans and interprets instructions in the executable, traces jump/call destinations and return instructions in order to try and determine the boundaries of subroutines. It can do limited register value tracing to figure out register-dependent calls and jumps. Reachable blocks are either attributed to a subroutine's main body, or it can be marked as a disconnected chunk. The map is saved to a file in a text format.
+Scans and interprets instructions in the executable, traces jump/call destinations and return instructions in order to try and determine the boundaries of subroutines and offsets of potential variables. It can do limited register value tracing to figure out register-dependent calls and jumps. Reachable blocks are either attributed to a subroutine's main body, or it can be marked as a disconnected chunk. The map is saved to a file in a text format.
 
 ```
 usage: mzmap [options] [<file.exe[:entrypoint]>] <output.map>
@@ -169,6 +169,47 @@ Saving routine map (routines = 398) to map/egame.map.dup, reversing relocation b
 ```
 
 Here, I have finished reconstructing one executable from my game (`start.exe`), and have its layout fully documented in the manually tweaked `start.map`, so I am using the tool to look for any similar (or identical) routines in `egame.exe`, providing an uncustomized map, freshly obtained from `mzmap` with `egame.map`. The tool extracts each routine from the first (reference) executable, generates a string of instruction signatures from it, then checks against every routine in the second (target) executable using edit distance. Finally, the target map file is updated with the duplicate information in the form of comments, and the potential duplicates being annotated with the `duplicate` property. The updated map file is saved with a `.dup` suffix.
+
+## mzptr
+
+This tool accepts an executable binary and its map, then it tries to find potential pointers to known variables within the executable's binary image. These are important, because often a numeric value can be overlooked as just that instead of a pointer to an another place. This saves some effort by brute forcing the data references, but still some manual effort is required to look over the obtained results and determine if the found references are genuine pointers.
+
+```
+ninja@RYZEN:f15se2-re$ mzptr
+mzptr v0.9.6
+Usage: mzptr [options] exe_file exe_map
+Searches the executable for locations where offsets to known data objects could potentially be stored.
+Results will be written to standard output; these should be reviewed and changed to references to variables during executable reconstruction.
+Options:
+--verbose:       show more detailed information about processed routines
+--debug:         show additional debug information
+ninja@RYZEN:f15se2-re$ mzptr ../ida/start.exe map/start.map
+Search complete, found 528 potential references, unique: 132
+Printing reference counts per variable, counts higher than 1 or 2 are probably false positives due to a low/non-characteristic offset
+word_16BE2/16b5:0092/016be2: 1 reference @ Data1:0xa8
+page1Num/16b5:0530/017080: 1 reference @ Data1:0x546
+page2Num/16b5:0548/017098: 1 reference @ Data1:0x55e
+unk_170B0/16b5:0560/0170b0: 1 reference @ Data1:0x576
+aLibya/16b5:00c2/016c12: 1 reference @ Data1:0x578
+aVietnam/16b5:00d5/016c25: 1 reference @ Data1:0x57c
+[...]
+aRookie/16b5:016e/016cbe: 1 reference @ Data1:0x58c
+aPilot/16b5:0175/016cc5: 1 reference @ Data1:0x58e
+aVeteran/16b5:017b/016ccb: 1 reference @ Data1:0x590
+aAce/16b5:0183/016cd3: 1 reference @ Data1:0x592
+aDemo/16b5:0187/016cd7: 1 reference @ Data1:0x594
+[...]
+aMsRunTimeLibra/16b5:0008/016b58: 20 references
+unk_16B56/16b5:0006/016b56: 34 references
+aOnc_2/16b5:0700/017250: 39 references
+unk_16B57/16b5:0007/016b57: 45 references
+byte_16B54/16b5:0004/016b54: 87 references
+crt0_16B52/16b5:0002/016b52: 118 references
+```
+
+The results are sorted by the found reference count; items with low reference counts are more plausible than items with a high count, like the `aMsRunTimeLibra` string, whose offset was "found" in 20 places only by virtue of being a small, common value of `0x8`.
+
+Items with the same reference count are further sorted by the offset where the match ocurred, which helps to see adjacent locations forming arrays of pointers, like the array of the difficulty level strings at `0x58c`.
 
 ## lst2ch.py
 
