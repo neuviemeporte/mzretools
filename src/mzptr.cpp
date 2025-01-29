@@ -8,6 +8,7 @@ using namespace std;
 
 OUTPUT_CONF(LOG_SYSTEM)
 
+// TODO: allow to specify address ranges/var name pattern to ignore? could help against finding libc/crt stuff
 void usage() {
     ostringstream str;
     str << "mzptr v" << VERSION << endl

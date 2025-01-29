@@ -123,6 +123,14 @@ Routine& CodeMap::getMutableRoutine(const std::string &name) {
     return routines.emplace_back(Routine(name, {}));
 }
 
+Variable CodeMap::getVariable(const std::string &name) const {
+    auto it = std::find_if(vars.begin(), vars.end(), [&](const Variable &v){
+        return v.name == name;
+    });
+    if (it != vars.end()) return *it;
+    return Variable{"", {}};
+}
+
 Routine CodeMap::findByEntrypoint(const Address &ep) const {
     for (const Routine &r : routines)
         if (r.entrypoint() == ep) return r;

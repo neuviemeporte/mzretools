@@ -13,6 +13,7 @@
 #include <fstream>
 #include <string>
 #include <cstring>
+#include <map>
 
 using namespace std;
 
@@ -1361,12 +1362,18 @@ void Analyzer::findDataRefs(const Executable &exe, const CodeMap &map) {
         segCount = segments.size(),
         varCount = map.variableCount();
     Size refCount = 0;
-    Offset startOffset = 0, endOffset = 0;
+    Offset startOffset = 0, endOffset = 0, finalOffset = exe.loadAddr().toLinear() + codeSize;
     const Byte *code = exe.codePointer(Address{0});
+    struct VarRef {
+        string segname;
+        int count;
+        Offset offset;
+    };
+    std::map<string, VarRef> varRefs;
     if (varCount == 0) throw AnalysisError("Map does not contain any variable locations");
     for (Size si = 0; si < segCount; ++si) {
         const Segment seg = segments[si];
-        // TODO: consider searching for data refs in code segments, maybe just in unclaimed blocks?
+        // TODO: consider searching for data refs in code segments, maybe at least in unclaimed blocks?
         if (seg.type != Segment::SEG_DATA) {
             debug("Ignoring non-data segment " + seg.toString());
             continue;
@@ -1375,21 +1382,49 @@ void Analyzer::findDataRefs(const Executable &exe, const CodeMap &map) {
         if (si < segCount - 1) { // not last segment
             const Segment nextSeg = segments[si + 1];
             endOffset = SEG_TO_OFFSET(nextSeg.address);
+            debug("Obtained end offset from next segment: " + nextSeg.toString() + ": " + hexVal(endOffset));
         }
-        else endOffset = codeSize - 1;
+        else {
+            endOffset = finalOffset - 1;
+            debug("Last segment, obtained end offset from code size: " + hexVal(endOffset));
+        }
+        if (endOffset >= finalOffset)  {
+            endOffset = finalOffset - 1;
+            debug("Corrected end offset to load module end: " + hexVal(endOffset));
+        }
         debug("Now searching in segment " + seg.toString() + ", start at " + hexVal(startOffset) + ", end at " + hexVal(endOffset));
         for (Offset off = startOffset; off < endOffset - 1; ++off) {
-            if (off + 1 >= codeSize) throw AnalysisError("Stepped out of executable load module bounds at " + hexVal(off));
+            if (off + 1 >= finalOffset) throw AnalysisError("Stepped out of executable load module bounds at " + hexVal(off));
             const Word val = (code[off + 1] << 8) | code[off];
-            if (val == 0) continue; 
+            if (val == 0) continue; // no point to find offset zero
+            debug("Value at offset " + hexVal(off) + "/" + hexVal(off - startOffset) + ": " + hexVal(val));
             for (Size vi = 0; vi < varCount; ++vi) {
                 const Variable v = map.getVariable(vi);
                 if (v.addr.offset == val) {
-                    info("Segment " + seg.name + ", offset " + hexVal(off - startOffset) + ": potential reference to variable " + v.toString());
+                    verbose(seg.name + "/" + hexVal(off - startOffset) + ": potential reference to variable " + v.toString());
                     refCount++;
+                    if (varRefs.count(v.name)) varRefs[v.name].count++;
+                    else varRefs[v.name] = { seg.name, 1, off - startOffset };
                 }
             } // iterate over known variables
         } // iterate over bytes within segment
     } // iterate over segments
-    info("Done, found " + to_string(refCount) + " potential references");
+    info("Search complete, found " + to_string(refCount) + " potential references, unique: " + to_string(varRefs.size()));
+    vector<pair<string, VarRef>> sortedRefs(varRefs.size(), pair<string, VarRef>());
+    std::copy(varRefs.begin(), varRefs.end(), sortedRefs.begin());
+    std::sort(sortedRefs.begin(), sortedRefs.end(), [](const auto &p1, const auto &p2){
+        // sort by reference count first, then by reference offset
+        if (p1.second.count == p2.second.count) {
+            return p1.second.offset < p2.second.offset;
+        }
+        return p1.second.count < p2.second.count;
+    });
+    info("Printing reference counts per variable, counts higher than 1 or 2 are probably false positives due to a low/non-characteristic offset");
+    for (const auto &p : sortedRefs) {
+        const auto v = map.getVariable(p.first);
+        if (p.second.count == 1) {
+            info(v.toString() + ": 1 reference @ " + p.second.segname + ":" + hexVal(p.second.offset));
+        }
+        else info(v.toString() + ": " + to_string(p.second.count) + " references");
+    }
 }

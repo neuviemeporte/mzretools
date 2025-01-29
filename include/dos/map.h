@@ -61,6 +61,7 @@ public:
     Routine& getMutableRoutine(const std::string &name);
     std::vector<Block> getUnclaimed() const { return unclaimed; }
     Variable getVariable(const Size idx) const { return vars.at(idx); }
+    Variable getVariable(const std::string &name) const;
     Routine findByEntrypoint(const Address &ep) const;
     Block findCollision(const Block &b) const;
     bool empty() const { return routines.empty(); }
