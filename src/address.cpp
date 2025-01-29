@@ -141,7 +141,7 @@ std::string Block::toHex() const {
 
 // check if blocks overlap each other (by at least one byte)
 bool Block::intersects(const Block &other) const {
-    if (!isValid()) return false;
+    if (!isValid() || !other.isValid()) return false;
     const Address
         maxBegin = std::max(begin, other.begin),
         minEnd   = std::min(end, other.end);
@@ -190,6 +190,29 @@ std::vector<Block> Block::splitSegments() const {
         assert(b.size() <= span);
         span -= b.size();
     }
+    return ret;
+}
+
+// given an another, potentially intersecting block, cut this one into 0/1/2 parts, so that the blocks don't intersect anymore (essentially an exclusive-or)
+std::vector<Block> Block::cut(const Block &other) const {
+    if (!isValid() || !other.isValid()) return {};    
+    vector<Block> ret;
+    // other starts before begin of this
+    if (other.begin < begin) {
+        // disjoint before
+        if (other.end < begin) ret.push_back(*this);
+        // other intersects without enclosing
+        else if (other.end < end) ret.push_back(Block{other.end + Offset(1), end});
+        // other encloses, empty set as output
+    }
+    // other starts inside of this
+    else if (other.begin < end) {
+        if (other.begin > begin) ret.push_back(Block{begin, other.begin - 1});
+        if (other.end < end) ret.push_back(Block{other.end + Offset(1), end});
+    }
+    // other stats after end of this, disjoint after
+    else ret.push_back(*this);
+
     return ret;
 }
 

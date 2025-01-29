@@ -309,3 +309,11 @@ void erasePattern(ByteString &str, const ByteString &pat) {
         *it = -1;
     }
 }
+
+std::vector<std::string> extractRegex(const std::regex &re, const std::string &str) {
+    smatch match;
+    if (!regex_match(str, match, re)) return {};
+    vector<string> ret;
+    for (int i = 1; i < match.size(); ++i) ret.push_back(match.str(i));
+    return ret;
+}

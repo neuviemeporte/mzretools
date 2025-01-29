@@ -94,10 +94,12 @@ struct Block {
     bool isValid() const { return begin.isValid() && end.isValid() && begin <= end; }
     bool inSegment(const Word seg) const { return begin.inSegment(seg) && end.inSegment(seg); }
     bool contains(const Address &addr) const { return addr >= begin && addr <= end; }
+    bool contains(const Block &other) const { return other.begin > begin && other.end < end; }
     bool intersects(const Block &other) const;
     bool adjacent(const Block &other) const;
     bool singleSegment() const;
     std::vector<Block> splitSegments() const;
+    std::vector<Block> cut(const Block &other) const;
     void relocate(const Word reloc) { begin.relocate(reloc); end.relocate(reloc); }
     void rebase(const Word base) { begin.rebase(base); end.rebase(base); }
     void move(const Word seg) { begin.move(seg); end.move(seg); }

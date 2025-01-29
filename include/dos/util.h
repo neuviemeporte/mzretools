@@ -6,6 +6,7 @@
 #include <string>
 #include <iomanip>
 #include <vector>
+#include <regex>
 
 #include "dos/types.h"
 
@@ -64,5 +65,6 @@ std::vector<SWord> hexaToNumeric(const std::string &hexa);
 std::string numericToHexa(const ByteString &pattern);
 std::vector<std::string> splitString(const std::string &str, char delim);
 void erasePattern(ByteString &str, const ByteString &pat);
+std::vector<std::string> extractRegex(const std::regex &re, const std::string &str);
 
 #endif // UTIL_H

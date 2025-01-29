@@ -18,9 +18,11 @@ OUTPUT_CONF(LOG_SYSTEM)
 
 void usage() {
     output("mzmap v" + VERSION + "\n"
-           "usage: mzmap [options] [<file.exe[:entrypoint]>] <output.map>\n"
-           "Scans a DOS MZ executable and tries to find routine boundaries, saves output into an editable map file\n"
+           "usage: mzmap [options] [file.exe[:entrypoint]] file.map\n"
+           "Scans a DOS MZ executable trying to find routines and variables, saves output into an editable map file\n"
            "Without an exe file, prints a summary of an existing map file\n"
+           "There is limited support for using an IDA .lst file as a map file,\n"
+           "and printing a .lst file will also convert and save it as a .map file\n"
            "Options:\n"
            "--verbose:      show more detailed information, including compared instructions\n"
            "--debug:        show additional debug information\n"
@@ -73,8 +75,10 @@ void loadAndPrintMap(const string &mapfile, const bool verbose, const bool brief
     info("Single parameter specified, printing existing mapfile");
     auto fs = checkFile(mapfile);
     if (!fs.exists) fatal("Mapfile does not exist: " + mapfile);
-    RoutineMap map(mapfile);
-    cout << map.dump(verbose, brief, format);
+    CodeMap map(mapfile);
+    const auto sum = map.getSummary(verbose, brief, format);
+    cout << sum.text;
+    if (map.isIda()) map.save(mapfile + ".map");
 }
 
 int main(int argc, char *argv[]) {
@@ -117,12 +121,12 @@ int main(int argc, char *argv[]) {
             }
             Executable exe = loadExe(file1, loadSegment);
             Analyzer a = Analyzer(Analyzer::Options());
-            RoutineMap map = a.findRoutines(exe);
+            CodeMap map = a.exploreCode(exe);
             if (map.empty()) {
                 fatal("Unable to find any routines");
                 return 1;
             }
-            if (verbose) cout << map.dump(verbose, brief);
+            if (verbose) cout << map.getSummary(verbose, brief).text;
             map.save(file2, loadSegment);
             info("Please review the output file (" + file2 + "), assign names to routines/segments\nYou may need to resolve inaccuracies with routine block ranges manually; this tool is not perfect");
         }

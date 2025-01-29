@@ -2,6 +2,7 @@
 #include "dos/analysis.h"
 #include "dos/error.h"
 #include "dos/executable.h"
+#include "dos/util.h"
 
 using namespace std;
 
@@ -59,12 +60,12 @@ int main(int argc, char *argv[]) {
     try {
         options.routineSizeThresh = minSize;
         options.routineDistanceThresh = maxDist;
-        MzImage refMz{refExePath};
-        refMz.load(loadSegment);
-        MzImage tgtMz{tgtExePath};
-        tgtMz.load(loadSegment);
+        MzImage refMz{refExePath, loadSegment};
+        MzImage tgtMz{tgtExePath, loadSegment};
         Executable ref{refMz}, tgt{tgtMz};
-        RoutineMap refMap{refMapPath, loadSegment}, tgtMap{tgtMapPath, loadSegment};
+        CodeMap refMap{refMapPath, loadSegment}, tgtMap{tgtMapPath, loadSegment};
+        if (refMap.codeSize() != refMz.loadModuleSize()) throw LogicError("Reference map size " + sizeStr(refMap.codeSize()) + " does not match size of executable load module: " + sizeStr(refMz.loadModuleSize()));
+        if (tgtMap.codeSize() != tgtMz.loadModuleSize()) throw LogicError("Reference map size " + sizeStr(tgtMap.codeSize()) + " does not match size of executable load module: " + sizeStr(tgtMz.loadModuleSize()));
         Analyzer a{options};
         // search for duplicates, write updated target map if any found
         if (a.findDuplicates(ref, tgt, refMap, tgtMap)) tgtMap.save(tgtMapPath + ".dup", loadSegment, true);
