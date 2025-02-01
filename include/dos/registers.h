@@ -72,6 +72,7 @@ private:
     static constexpr Word BYTE_KNOWN = 0xff;
     Registers regs_;
     Registers known_;
+    std::stack<Word> stack_;
 
 public:
     RegisterState();
@@ -82,6 +83,9 @@ public:
     void setUnknown(const Register r);
     std::string regString(const Register r) const;
     std::string toString() const;
+    void push(const Word val) { stack_.push(val); }
+    Word pop() { Word ret = stack_.top(); stack_.pop(); return ret; }
+    bool stackEmpty() const { return stack_.empty(); }
 
 private:
     void setState(const Register r, const Word value, const bool known);

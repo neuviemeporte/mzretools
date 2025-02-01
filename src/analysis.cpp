@@ -246,7 +246,34 @@ static void applyMov(const Instruction &i, RegisterState &regs, Executable &exe)
         searchMessage(i.addr, "executed move to register: "s + i.toString());
         if (i.op1.type == OPR_REG_DS) exe.storeSegment(Segment::SEG_DATA, regs.getValue(REG_DS));
         else if (i.op1.type == OPR_REG_SS) exe.storeSegment(Segment::SEG_STACK, regs.getValue(REG_SS));
-    }    
+    }
+}
+
+// TODO all this needs to get properly implemented as full cpu instructions instead of these lame approximations
+static void applyPush(const Instruction &i, RegisterState &regs) {
+    if (i.iclass != INS_PUSH) throw CpuError("Attempted to apply invalid push instruction");
+    const Register reg = i.op1.regId();
+    if (reg == REG_NONE) throw CpuError("Attempted to push unknown register");
+    if (!regs.isKnown(reg)) {
+        debug("Attempted push of unknown value, ignoring");
+        return;
+    }
+    const Word pushVal = regs.getValue(reg);
+    debug("Pushing value of " + hexVal(pushVal));
+    regs.push(pushVal);
+}
+
+static void applyPop(const Instruction &i, RegisterState &regs) {
+    if (i.iclass != INS_POP) throw CpuError("Attempted to apply invalid pop instruction");
+    const Register reg = i.op1.regId();
+    if (reg == REG_NONE) throw CpuError("Attempted to pop unknown register");
+    if (regs.stackEmpty()) {
+        debug("Attempted to pop from empty stack, ignoring");
+        return;
+    }
+    const Word popVal = regs.pop();
+    debug("Popping value of " + hexVal(popVal));
+    regs.setValue(reg, popVal);
 }
 
 // TODO: include information of existing address mapping contributing to a match/mismatch in the output
@@ -362,9 +389,9 @@ CodeMap Analyzer::exploreCode(Executable &exe) {
                     searchMessage(csip, "routine scan interrupted by return");
                     break;
                 }
-                else if (i.iclass == INS_MOV) {
-                    applyMov(i, regs, exe);
-                }
+                else if (i.iclass == INS_MOV) applyMov(i, regs, exe);
+                else if (i.iclass == INS_PUSH) applyPush(i, regs);
+                else if (i.iclass == INS_POP) applyPop(i, regs);
                 // interrupts which don't return
                 else if ((i.isInt(0x21) && regs.getValue(REG_AH) == 0x4c) // 21.4c: exit with code
                         || (i.isInt(0x21) && regs.getValue(REG_AH) == 0x31) // 21.31: dos 2+ tsr

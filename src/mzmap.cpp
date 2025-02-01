@@ -26,11 +26,12 @@ void usage() {
            "Options:\n"
            "--verbose:      show more detailed information, including compared instructions\n"
            "--debug:        show additional debug information\n"
+           "--overwrite:    overwrite output file.map if already exists\n"
            "--brief:        only show uncompleted and unclaimed areas in map summary\n"
            "--format:       format printed routines in a way that's directly writable back to the map file\n"
            "--nocpu:        omit CPU-related information like instruction decoding\n"
            "--noanal:       omit analysis-related information\n"
-           "--load segment: overrride default load segment (0x1000)", LOG_OTHER, LOG_ERROR);
+           "--load segment: overrride default load segment (0x0)", LOG_OTHER, LOG_ERROR);
     exit(1);
 }
 
@@ -86,16 +87,17 @@ int main(int argc, char *argv[]) {
     if (argc < 2) {
         usage();
     }
-    Word loadSegment = 0x1000;
+    Word loadSegment = 0x0;
     string file1, file2;
     bool verbose = false;
-    bool brief = false, format = false;
+    bool brief = false, format = false, overwrite = false;
     for (int aidx = 1; aidx < argc; ++aidx) {
         string arg(argv[aidx]);
         if (arg == "--debug") setOutputLevel(LOG_DEBUG);
         else if (arg == "--verbose") { verbose = true; setOutputLevel(LOG_VERBOSE); }
         else if (arg == "--nocpu") setModuleVisibility(LOG_CPU, false);
         else if (arg == "--noanal") setModuleVisibility(LOG_ANALYSIS, false);
+        else if (arg == "--overwrite") overwrite = true;
         else if (arg == "--brief") {
             info("Showing only only uncompleted routines and unclaimed blocks in code segments");
             brief = true;
@@ -115,7 +117,7 @@ int main(int argc, char *argv[]) {
             loadAndPrintMap(file1, verbose, brief, format);
         }
         else { // regular operation, scan executable for routines
-            if (checkFile(file2).exists) {
+            if (!overwrite && checkFile(file2).exists) {
                 fatal("Output file already exists: " + file2);
                 return 1;
             }
@@ -127,7 +129,7 @@ int main(int argc, char *argv[]) {
                 return 1;
             }
             if (verbose) cout << map.getSummary(verbose, brief).text;
-            map.save(file2, loadSegment);
+            map.save(file2, loadSegment, overwrite);
             info("Please review the output file (" + file2 + "), assign names to routines/segments\nYou may need to resolve inaccuracies with routine block ranges manually; this tool is not perfect");
         }
     }

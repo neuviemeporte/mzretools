@@ -124,7 +124,7 @@ Executable loadExe(const string &spec, const Word segment, Analyzer::Options &op
 }
 
 int main(int argc, char *argv[]) {
-    const Word loadSeg = 0x1000;
+    const Word loadSeg = 0x0;
     setOutputLevel(LOG_WARN);
     setModuleVisibility(LOG_CPU, false);
     if (argc < 3) {

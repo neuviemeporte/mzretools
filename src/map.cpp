@@ -23,7 +23,7 @@ void CodeMap::blocksFromQueue(const ScanQueue &sq, const bool unclaimedOnly) {
         // find segment matching currently processed offset
         Segment newSeg = findSegment(mapOffset);
         if (newSeg.type == Segment::SEG_NONE) {
-            error("Unable to find a segment for routine map offset " + hexVal(mapOffset) + ", ignoring remainder");
+            error("Unable to find a segment for offset " + hexVal(mapOffset) + " while generating code map, ignoring remainder of address space");
             endOffset = mapOffset;
             break;
         }
@@ -73,10 +73,10 @@ void CodeMap::blocksFromQueue(const ScanQueue &sq, const bool unclaimedOnly) {
 CodeMap::CodeMap(const ScanQueue &sq, const std::vector<Segment> &segs, const Word loadSegment, const Size mapSize) : loadSegment(loadSegment), mapSize(mapSize), ida(false) {
     const Size routineCount = sq.routineCount();
     if (routineCount == 0)
-        throw AnalysisError("Attempted to create routine map from search queue with no routines");
+        throw AnalysisError("Attempted to create code map from search queue with no routines");
     
     setSegments(segs);
-    info("Building routine map from search queue contents: "s + to_string(routineCount) + " routines over " + to_string(segments.size()) + " segments");
+    info("Building code map from search queue contents: "s + to_string(routineCount) + " routines over " + to_string(segments.size()) + " segments");
     routines = sq.getRoutines();
     blocksFromQueue(sq, false);
 }
@@ -311,6 +311,7 @@ std::string CodeMap::varString(const Variable &v, const Word reloc) const {
 }
 
 void CodeMap::order() {
+    debug("Recalculating routine extents and sorting map");
     // TODO: coalesce adjacent blocks, see routine_35 of hello.exe: 1415-14f7 R1412-1414 R1415-14f7
     for (auto &r : routines) 
         r.recalculateExtents();
@@ -320,7 +321,7 @@ void CodeMap::order() {
 void CodeMap::save(const std::string &path, const Word reloc, const bool overwrite) const {
     if (empty()) return;
     if (checkFile(path).exists && !overwrite) throw AnalysisError("Map file already exists: " + path);
-    info("Saving routine map (routines = " + to_string(routineCount()) + ") to "s + path + ", reversing relocation by " + hexVal(reloc));
+    info("Saving code map (routines = " + to_string(routineCount()) + ") to "s + path + ", reversing relocation by " + hexVal(reloc));
     ofstream file{path};
     if (ida) file << "# ================== !!! WARNING !!! ================== " << endl 
         << "# The content of this mapfile has been deduced from loading an IDA listing, which is not 100% reliable." << endl
@@ -361,7 +362,7 @@ CodeMap::Summary CodeMap::getSummary(const bool verbose, const bool brief, const
     ostringstream str;
     Summary sum;
     if (empty()) {
-        str << "--- Empty routine map" << endl;
+        str << "--- Empty code map" << endl;
         sum.text = str.str();
         return sum;
     }
@@ -503,7 +504,7 @@ void CodeMap::loadFromMapFile(const std::string &path, const Word reloc) {
     static const regex 
         RANGE_RE{"([0-9a-fA-F]{1,4})-([0-9a-fA-F]{1,4})"},
         SIZE_RE{"Size\\s+([0-9a-fA-F]+)"};
-    debug("Loading routine map from "s + path + ", relocating to " + hexVal(reloc));
+    debug("Loading code map from "s + path + ", relocating to " + hexVal(reloc));
     ifstream mapFile{path};
     string line;
     Size lineno = 0;
@@ -614,7 +615,7 @@ void CodeMap::loadFromMapFile(const std::string &path, const Word reloc) {
     if (mapSize == 0) throw ParseError("Invalid or undefined map size");
 }
 
-// create routine map from IDA listing (.lst) file
+// create code map from IDA listing (.lst) file
 // TODO: add collision checks
 void CodeMap::loadFromIdaFile(const std::string &path, const Word reloc) {
     static const string 
@@ -623,7 +624,7 @@ void CodeMap::loadFromIdaFile(const std::string &path, const Word reloc) {
         ADDR_RE_STR{"(" + NAME_RE_STR + "):(" + OFFSET_RE_STR + ")"},
         LOAD_LEN_STR{"Loaded length: ([0-9a-fA-F]+)h"};
     const regex ADDR_RE{ADDR_RE_STR}, LOAD_LEN_RE{LOAD_LEN_STR};
-    debug("Loading IDA routine map from "s + path + ", relocation factor " + hexVal(reloc));
+    debug("Loading IDA code map from "s + path + ", relocation factor " + hexVal(reloc));
     ida = true;
     ifstream fstr{path};
     string line;

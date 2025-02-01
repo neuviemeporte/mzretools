@@ -154,9 +154,9 @@ bool ScanQueue::saveCall(const Address &dest, const RegisterState &regs, const b
         RoutineIdx newRoutineIdx = routineCount() + 1;
         queue.emplace_back(Destination(dest, newRoutineIdx, true, regs));
         if (destId == NULL_ROUTINE)
-            debug("Call destination not belonging to any routine, claiming as entrypoint for new routine, id " + to_string(newRoutineIdx) + ", queue size = " + to_string(size()));
+            debug("Call destination not belonging to any routine, claiming as entrypoint for new routine " + to_string(newRoutineIdx) + ", queue size = " + to_string(size()));
         else 
-            debug("Call destination belonging to routine " + to_string(destId) + ", reclaiming as entrypoint for new routine, id " + to_string(newRoutineIdx) + ", queue size = " + to_string(size()));
+            debug("Call destination belonging to routine " + to_string(destId) + ", reclaiming as entrypoint for new routine " + to_string(newRoutineIdx) + ", queue size = " + to_string(size()));
         RoutineEntrypoint ep{dest, newRoutineIdx, near};
         if (!name.empty()) ep.name = name;
         entrypoints.push_back(ep);
@@ -167,13 +167,25 @@ bool ScanQueue::saveCall(const Address &dest, const RegisterState &regs, const b
 
 // conditional jump, save as destination to be investigated, belonging to current routine
 bool ScanQueue::saveJump(const Address &dest, const RegisterState &regs) {
-    const RoutineIdx destId = getRoutineIdx(dest.toLinear());
-    if (destId != NULL_ROUTINE) 
-        debug("Jump destination already visited from routine "s + to_string(destId));
+    const RoutineIdx 
+        curIdx = curSearch.routineIdx,
+        destIdx = getRoutineIdx(dest.toLinear());
+    if (destIdx != NULL_ROUTINE) 
+        debug("Jump destination already visited from routine "s + to_string(destIdx));
     else if (hasPoint(dest, false))
         debug("Queue already contains jump to address "s + dest.toString());
     else { // not claimed by any routine and not yet in queue
-        queue.emplace_front(Destination(dest, curSearch.routineIdx, false, regs));
+        Address destCopy{dest};
+        assert(curIdx <= entrypoints.size());
+        const RoutineEntrypoint ep = entrypoints[curIdx - 1];
+        if (ep.addr.segment != destCopy.segment) try {
+            destCopy.move(ep.addr.segment);
+        }
+        catch(Error &e) {
+            debug("Unable to move jump destination " + destCopy.toString() + " to segment of routine " + ep.toString() + ", ignoring");
+            return false;
+        }
+        queue.emplace_front(Destination(destCopy, curSearch.routineIdx, false, regs));
         debug("Jump destination not yet visited, scheduled visit from routine " + to_string(curSearch.routineIdx) + ", queue size = " + to_string(size()));
         return true;
     }

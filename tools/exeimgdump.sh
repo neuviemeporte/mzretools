@@ -10,12 +10,11 @@ function fatal() {
 }
 
 exe=$1
-img=$2
-exe_loadseg=$3
+exe_loadseg=$2
+img=$3
 
-[[ "$exe" && "$img" ]] || fatal "Usage: exeimgdump.sh exe_path img_path [exe_loadseg]"
+[ "$exe" ] || fatal "Usage: exeimgdump.sh exe_path [exe_loadseg] [img_path]"
 [ -f "$exe" ] || fatal "Exe file $1 does not exist"
-[ -f "$img" ] || fatal "Memory image file $2 does not exist"
 [ "$exe_loadseg" ] || exe_loadseg=0
 
 exeload=$(mzhdr "$exe" -l)
@@ -28,8 +27,10 @@ rm -f $exebin
 mzhdr $exe -p $exe_loadseg $exebin || fatal "Unable to extract load module"
 [ -f "$exebin" ] || fatal "Patched output file does not exist: $exebin"
 exexxd=$exebin.xxd
-imgxxd=$(basename $img).xxd
 echo "Hexdumping exe to $exexxd"
 xxd -R never $exebin $exexxd || fatal "Unable to dump exe"
+
+[[ "$img" && -f "$img" ]] || exit 0
+imgxxd=$(basename $img).xxd
 echo "Hexdumping img to $imgxxd"
 xxd -R never $img $imgxxd || fatal "Unable to dump image"
