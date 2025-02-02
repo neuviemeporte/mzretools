@@ -69,7 +69,7 @@ void CodeMap::blocksFromQueue(const ScanQueue &sq, const bool unclaimedOnly) {
     closeBlock(b, endOffset, sq, unclaimedOnly);
 }
 
-CodeMap::CodeMap(const ScanQueue &sq, const std::vector<Segment> &segs, const std::vector<Address> &vars, const Word loadSegment, const Size mapSize) : loadSegment(loadSegment), mapSize(mapSize), ida(false) {
+CodeMap::CodeMap(const ScanQueue &sq, const std::vector<Segment> &segs, const std::set<Address> &vars, const Word loadSegment, const Size mapSize) : loadSegment(loadSegment), mapSize(mapSize), ida(false) {
     const Size routineCount = sq.routineCount();
     if (routineCount == 0)
         throw AnalysisError("Attempted to create code map from search queue with no routines");

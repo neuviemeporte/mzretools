@@ -247,6 +247,7 @@ static void applyMov(const Instruction &i, CpuState &regs, Executable &exe) {
         if (i.op1.type == OPR_REG_DS) exe.storeSegment(Segment::SEG_DATA, regs.getValue(REG_DS));
         else if (i.op1.type == OPR_REG_SS) exe.storeSegment(Segment::SEG_STACK, regs.getValue(REG_SS));
     }
+    debug(regs.toString());
 }
 
 // TODO: all this needs to get properly implemented as full cpu instructions instead of these lame approximations
@@ -265,6 +266,7 @@ static void applyPush(const Instruction &i, CpuState &regs) {
     const Word pushVal = regs.getValue(reg);
     debug("Pushing value of " + hexVal(pushVal));
     regs.push(pushVal);
+    debug(regs.toString());
 }
 
 static void applyPop(const Instruction &i, CpuState &regs, Executable &exe) {
@@ -281,6 +283,7 @@ static void applyPop(const Instruction &i, CpuState &regs, Executable &exe) {
     const Word popVal = regs.pop();
     debug("Popping value of " + hexVal(popVal));
     regs.setValue(reg, popVal);
+    debug(regs.toString());
     if (reg == REG_DS) exe.storeSegment(Segment::SEG_DATA, popVal);
     else if (reg == REG_SS) exe.storeSegment(Segment::SEG_STACK, popVal);
 }
@@ -376,6 +379,17 @@ CodeMap Analyzer::exploreCode(Executable &exe) {
                         branch.destination = csip + static_cast<Offset>(i.length);
                         const Offset destOffset = branch.destination.toLinear();
                         const RoutineIdx destId = scanQueue.getRoutineIdx(destOffset);
+                        if (branch.isCall) {
+                            // pessimistically, every register can be modified after returning from a call, except for CS, but let's be generous with DS and SS, otherwise we break too much stuff
+                            const Word 
+                                cs = regs.getValue(REG_CS),
+                                ds = regs.getValue(REG_DS),
+                                ss = regs.getValue(REG_SS);
+                            regs.reset();
+                            regs.setValue(REG_CS, cs);
+                            regs.setValue(REG_DS, ds);
+                            regs.setValue(REG_SS, ss);
+                        }
                         if (destId != search.routineIdx) {
                             branch.isCall = false;
                             branch.isNear = true;
@@ -387,7 +401,7 @@ CodeMap Analyzer::exploreCode(Executable &exe) {
                         }
                         break;
                     }
-                    // if the branch is an unconditional jump, we cannot keep scanning here, regardless of the destination resolution
+                    // if the branch is an unconditional jump, we cannot keep scanning past it, regardless of the destination resolution
                     else {
                         searchMessage(csip, "routine scan interrupted by unconditional branch");
                         break;
@@ -398,6 +412,7 @@ CodeMap Analyzer::exploreCode(Executable &exe) {
                     searchMessage(csip, "routine scan interrupted by return");
                     break;
                 }
+                // limited register value tracing to enable data/stack segment deduction
                 else if (i.iclass == INS_MOV) applyMov(i, regs, exe);
                 else if (i.iclass == INS_PUSH) applyPush(i, regs);
                 else if (i.iclass == INS_POP) applyPop(i, regs, exe);
@@ -1228,6 +1243,7 @@ void Analyzer::comparisonSummary(const Executable &ref, const CodeMap &routineMa
 
 void Analyzer::processDataReference(const Executable &exe, const Instruction i, const CpuState &regs) {
     const SOffset off = i.memOffset();
+    // ignore NULL
     if (off == 0) return;
     assert(off <= WORD_MAX);
     Word offVal = static_cast<Word>(off);
@@ -1246,7 +1262,7 @@ void Analyzer::processDataReference(const Executable &exe, const Instruction i, 
     }
     const Word dsAddr = regs.getValue(segReg);
     Address dataAddr{dsAddr, offVal};
-    dataRefs.push_back(dataAddr);
+    dataRefs.insert(dataAddr);
     debug("Storing data reference: " + dataAddr.toString());
 }
 

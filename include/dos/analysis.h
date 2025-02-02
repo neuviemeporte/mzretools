@@ -117,7 +117,7 @@ private:
     std::set<std::string> routineNames, excludedNames, missedNames;
     Size refSkipCount, tgtSkipCount;
     Address refSkipOrigin, tgtSkipOrigin;
-    std::vector<Address> dataRefs;
+    std::set<Address> dataRefs;
 
 public:
     Analyzer(const Options &options, const Size maxData = 0) : options(options), offMap(maxData), comparedSize(0) {}

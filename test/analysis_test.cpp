@@ -211,6 +211,7 @@ TEST_F(AnalysisTest, BigCodeMap) {
 TEST_F(AnalysisTest, FindRoutines) {
     const Word loadSegment = 0x1234;
     const Size expectedFound = 40;
+    const Size expectedVars = 68;
     // discover routines inside an executable
     MzImage mz{"../bin/hello.exe"};
     mz.load(loadSegment);
@@ -221,6 +222,7 @@ TEST_F(AnalysisTest, FindRoutines) {
     ASSERT_FALSE(discoveredMap.empty());
     discoveredMap.save("hello.map", loadSegment, true);
     ASSERT_EQ(discoveredMap.routineCount(), expectedFound);
+    ASSERT_EQ(discoveredMap.variableCount(), expectedVars);
 
     // create map from IDA listing
     const CodeMap idaMap{"../bin/hello.lst", loadSegment};

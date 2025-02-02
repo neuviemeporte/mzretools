@@ -8,7 +8,7 @@
 
 enum Register { 
     REG_NONE, 
-    REG_AL, REG_AH, REG_BL, REG_BH, REG_CL, REG_CH, REG_DL,REG_DH,
+    REG_AL, REG_AH, REG_BL, REG_BH, REG_CL, REG_CH, REG_DL, REG_DH,
     REG_AX, REG_BX, REG_CX, REG_DX,
     REG_SI, REG_DI, REG_BP, REG_SP,
     REG_CS, REG_DS, REG_ES, REG_SS,
@@ -87,6 +87,7 @@ public:
     void push(const Word val) { stack_.push_front(val); }
     Word pop() { Word ret = stack_.front(); stack_.pop_front(); return ret; }
     bool stackEmpty() const { return stack_.empty(); }
+    void reset() { regs_.reset(); known_.reset(); stack_.clear(); }
 
 private:
     void setState(const Register r, const Word value, const bool known);

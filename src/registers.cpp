@@ -62,7 +62,7 @@ void Registers::reset() {
     setFlag(FLAG_B12, true); 
     setFlag(FLAG_B13, true);
     setFlag(FLAG_B14, true); 
-    setFlag(FLAG_B15, true);    
+    setFlag(FLAG_B15, true);
 }
 
 Word Registers::get(const Register r) const {
@@ -187,8 +187,9 @@ string CpuState::toString() const {
         << regString(REG_CS) << ", " << regString(REG_DS) << ", "
         << regString(REG_SS) << ", " << regString(REG_ES) << endl
         << regString(REG_IP) << ", " << regString(REG_FLAGS) << endl;
-    str << "stack:";
-    for (const Word &v : stack_) str << " " << hexVal(v);
+    str << "stack: <";
+    for (const Word &v : stack_) str << " " << hexVal(v, false);
+    str << ">";
     return str.str();
 }  
 

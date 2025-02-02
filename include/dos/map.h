@@ -4,6 +4,7 @@
 #include <string>
 #include <regex>
 #include <vector>
+#include <set>
 
 #include "dos/types.h"
 #include "dos/address.h"
@@ -46,7 +47,7 @@ private:
 
 public:
     CodeMap(const Word loadSegment, const Size mapSize) : loadSegment(loadSegment), mapSize(mapSize), curId(0), prevId(0), curBlockId(0), prevBlockId(0), ida(false) {}
-    CodeMap(const ScanQueue &sq, const std::vector<Segment> &segs, const std::vector<Address> &vars, const Word loadSegment, const Size mapSize);
+    CodeMap(const ScanQueue &sq, const std::vector<Segment> &segs, const std::set<Address> &vars, const Word loadSegment, const Size mapSize);
     CodeMap(const std::string &path, const Word loadSegment = 0);
     CodeMap() : CodeMap(0, 0) {}
 
