@@ -15,6 +15,7 @@ struct Variable {
     static std::smatch stringMatch(const std::string &str);
     Variable(const std::string &name, const Address &addr) : name(name), addr(addr) {}
     std::string toString() const { return name + "/" + addr.toString(); }
+    bool operator<(const Variable &other) const { return addr < other.addr; }
 };
 
 // A map of an executable, records which areas have been claimed by routines, and which have not, serializable to a file
@@ -45,7 +46,7 @@ private:
 
 public:
     CodeMap(const Word loadSegment, const Size mapSize) : loadSegment(loadSegment), mapSize(mapSize), curId(0), prevId(0), curBlockId(0), prevBlockId(0), ida(false) {}
-    CodeMap(const ScanQueue &sq, const std::vector<Segment> &segs, const Word loadSegment, const Size mapSize);
+    CodeMap(const ScanQueue &sq, const std::vector<Segment> &segs, const std::vector<Address> &vars, const Word loadSegment, const Size mapSize);
     CodeMap(const std::string &path, const Word loadSegment = 0);
     CodeMap() : CodeMap(0, 0) {}
 
@@ -77,9 +78,9 @@ public:
     Segment findSegment(const std::string &name) const;
     Segment findSegment(const Offset off) const;
     void setSegments(const std::vector<Segment> &seg);
-    void storeDataRef(const Address &dr);
     
 private:
+    void storeDataRef(const Address &dr);
     void closeBlock(Block &b, const Address &next, const ScanQueue &sq, const bool unclaimedOnly);
     Block moveBlock(const Block &b, const Word segment) const;
     void sort();

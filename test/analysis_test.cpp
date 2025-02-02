@@ -50,8 +50,8 @@ protected:
 };
 
 // TODO: divest tests of analysis.cpp as distinct test suite
-TEST_F(AnalysisTest, RegisterState) {
-    RegisterState rs;
+TEST_F(AnalysisTest, CpuState) {
+    CpuState rs;
 
     TRACELN("Setting AX to 0x1234");
     rs.setValue(REG_AX, 0x1234);
@@ -161,7 +161,7 @@ TEST_F(AnalysisTest, CodeMapFromQueue) {
     // where the last (unreachable) block starts
     visited.insert(visited.end(), 70000, 0);
     entrypoints = { {0x8, 1}, {0xc, 2}, {0x13, 3} };
-    CodeMap queueMap{sq, segments, loadSegment, visited.size()};
+    CodeMap queueMap{sq, segments, {}, loadSegment, visited.size()};
     TRACE(queueMap.getSummary().text);
     ASSERT_EQ(queueMap.routineCount(), 3);
 

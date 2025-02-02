@@ -12,10 +12,10 @@ struct Destination {
     Address address;
     RoutineIdx routineIdx;
     bool isCall;
-    RegisterState regs;
+    CpuState regs;
 
     Destination() : routineIdx(NULL_ROUTINE), isCall(false) {}
-    Destination(const Address address, const RoutineIdx idx, const bool call, const RegisterState &regs) : address(address), routineIdx(idx), isCall(call), regs(regs) {}
+    Destination(const Address address, const RoutineIdx idx, const bool call, const CpuState &regs) : address(address), routineIdx(idx), isCall(call), regs(regs) {}
     bool match(const Destination &other) const { return address == other.address && isCall == other.isCall; }
     bool isNull() const { return address.isNull(); }
     std::string toString() const;
@@ -48,9 +48,9 @@ public:
     Address originAddress() const { return origin; }
     Destination nextPoint();
     bool hasPoint(const Address &dest, const bool call) const;
-    bool saveCall(const Address &dest, const RegisterState &regs, const bool near, const std::string name = {});
-    bool saveJump(const Address &dest, const RegisterState &regs);
-    bool saveBranch(const Branch &branch, const RegisterState &regs, const Block &codeExtents);
+    bool saveCall(const Address &dest, const CpuState &regs, const bool near, const std::string name = {});
+    bool saveJump(const Address &dest, const CpuState &regs);
+    bool saveBranch(const Branch &branch, const CpuState &regs, const Block &codeExtents);
     // discovered locations operations
     Size routineCount() const { return entrypoints.size(); }
     std::string statusString() const;

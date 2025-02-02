@@ -188,7 +188,7 @@ void VariantMap::loadFromStream(std::istream &str) {
     maxDepth_ = maxDepth;
 }
 
-static void applyMov(const Instruction &i, RegisterState &regs, Executable &exe) {
+static void applyMov(const Instruction &i, CpuState &regs, Executable &exe) {
     // we only care about mov-s into registers
     if (i.iclass != INS_MOV || !operandIsReg(i.op1.type)) return;
 
@@ -250,7 +250,7 @@ static void applyMov(const Instruction &i, RegisterState &regs, Executable &exe)
 }
 
 // TODO: all this needs to get properly implemented as full cpu instructions instead of these lame approximations
-static void applyPush(const Instruction &i, RegisterState &regs) {
+static void applyPush(const Instruction &i, CpuState &regs) {
     if (i.iclass != INS_PUSH) throw AnalysisError("Attempted to apply invalid push instruction");
     const Register reg = i.op1.regId();
     if (reg == REG_NONE) {
@@ -267,7 +267,7 @@ static void applyPush(const Instruction &i, RegisterState &regs) {
     regs.push(pushVal);
 }
 
-static void applyPop(const Instruction &i, RegisterState &regs, Executable &exe) {
+static void applyPop(const Instruction &i, CpuState &regs, Executable &exe) {
     if (i.iclass != INS_POP) throw AnalysisError("Attempted to apply invalid pop instruction");
     const Register reg = i.op1.regId();
     if (reg == REG_NONE) {
@@ -316,7 +316,7 @@ static string compareStatus(const Instruction &i1, const Instruction &i2, const 
 // TODO: trace usage of bp register (sub/add) to determine stack frame size of routines
 // TODO: store references to potential jump tables (e.g. jmp cs:[bx+0xc08]), if unclaimed after initial search, try treating entries as pointers and run second search before coalescing blocks?
 CodeMap Analyzer::exploreCode(Executable &exe) {
-    RegisterState initRegs{exe.entrypoint(), exe.stackAddr()};
+    CpuState initRegs{exe.entrypoint(), exe.stackAddr()};
     
     debug("initial register values:\n"s + initRegs.toString());
     // queue for BFS search
@@ -332,7 +332,7 @@ CodeMap Analyzer::exploreCode(Executable &exe) {
         locations++;
         Address csip = search.address;
         searchMessage(csip, "--- Scanning at new location from routine " + to_string(search.routineIdx) + ", call: "s + to_string(search.isCall) + ", queue = " + to_string(scanQueue.size()));
-        RegisterState regs = search.regs;
+        CpuState regs = search.regs;
         regs.setValue(REG_CS, csip.segment);
         exe.storeSegment(Segment::SEG_CODE, csip.segment);
         try {
@@ -434,9 +434,7 @@ CodeMap Analyzer::exploreCode(Executable &exe) {
 #endif
 
     // create routine map from contents of search queue
-    auto ret = CodeMap{scanQueue, exe.getSegments(), exe.getLoadSegment(), exe.size()};
-    // yes, this was an afterthought, why you ask? ;)
-    for (const auto &dr : dataRefs) ret.storeDataRef(dr);
+    auto ret = CodeMap{scanQueue, exe.getSegments(), dataRefs, exe.getLoadSegment(), exe.size()};
     // TODO: stats like for compare
     return ret;
 }
@@ -621,7 +619,8 @@ bool Analyzer::compareCode(const Executable &ref, Executable &tgt, const CodeMap
     const string tgtMapPath = replaceExtension(options.mapPath, "tgt");
     if (!tgtMapPath.empty()) {
         debug("Constructing target map from target queue contents");
-        CodeMap tgtMap{tgtQueue, tgt.getSegments(), tgt.getLoadSegment(), tgt.size()};
+        // TODO: generate variables for target
+        CodeMap tgtMap{tgtQueue, tgt.getSegments(), {}, tgt.getLoadSegment(), tgt.size()};
         //tgtMap.setSegments(tgt.getSegments());
         //tgtMap.order();
         info("Saving target map to " + tgtMapPath);
@@ -855,7 +854,7 @@ bool Analyzer::comparisonLoop(const Executable &ref, Executable &tgt, const Code
     return true;
 }
 
-Branch Analyzer::getBranch(const Executable &exe, const Instruction &i, const RegisterState &regs) const {
+Branch Analyzer::getBranch(const Executable &exe, const Instruction &i, const CpuState &regs) const {
     const Address addr = i.addr;
     Branch branch;
     branch.source = addr;
@@ -1227,7 +1226,7 @@ void Analyzer::comparisonSummary(const Executable &ref, const CodeMap &routineMa
     verbose(msg.str());
 }
 
-void Analyzer::processDataReference(const Executable &exe, const Instruction i, const RegisterState &regs) {
+void Analyzer::processDataReference(const Executable &exe, const Instruction i, const CpuState &regs) {
     const SOffset off = i.memOffset();
     if (off == 0) return;
     assert(off <= WORD_MAX);

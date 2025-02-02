@@ -80,7 +80,7 @@ Destination ScanQueue::nextPoint() {
 }
 
 bool ScanQueue::hasPoint(const Address &dest, const bool call) const {
-    Destination findme(dest, 0, call, RegisterState());
+    Destination findme(dest, 0, call, CpuState());
     const auto &it = std::find_if(queue.begin(), queue.end(), [&](const Destination &p){
         return p.match(findme);
     });
@@ -142,7 +142,7 @@ vector<Block> ScanQueue::getUnvisited() const {
 
 // function call, create new routine at destination if either not visited, 
 // or visited but destination was not yet discovered as a routine entrypoint and this call now takes precedence and will replace it
-bool ScanQueue::saveCall(const Address &dest, const RegisterState &regs, const bool near, const std::string name) {
+bool ScanQueue::saveCall(const Address &dest, const CpuState &regs, const bool near, const std::string name) {
     if (!dest.isValid()) return false;
     RoutineIdx destId = isEntrypoint(dest);
     if (destId != NULL_ROUTINE) 
@@ -166,7 +166,7 @@ bool ScanQueue::saveCall(const Address &dest, const RegisterState &regs, const b
 }
 
 // conditional jump, save as destination to be investigated, belonging to current routine
-bool ScanQueue::saveJump(const Address &dest, const RegisterState &regs) {
+bool ScanQueue::saveJump(const Address &dest, const CpuState &regs) {
     const RoutineIdx 
         curIdx = curSearch.routineIdx,
         destIdx = getRoutineIdx(dest.toLinear());
@@ -192,7 +192,7 @@ bool ScanQueue::saveJump(const Address &dest, const RegisterState &regs) {
     return false;
 }
 
-bool ScanQueue::saveBranch(const Branch &branch, const RegisterState &regs, const Block &codeExtents) {
+bool ScanQueue::saveBranch(const Branch &branch, const CpuState &regs, const Block &codeExtents) {
     if (!branch.destination.isValid())
         return false;
 

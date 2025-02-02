@@ -118,7 +118,7 @@ string Registers::dump() const {
     return str.str();    
 }
 
-RegisterState::RegisterState() {
+CpuState::CpuState() {
     for (int i = REG_AL; i <= REG_FLAGS; ++i) {
         Register r = (Register)i;
         regs_.set(r, 0);
@@ -127,7 +127,7 @@ RegisterState::RegisterState() {
 }
 
 // TODO: set other known register types
-RegisterState::RegisterState(const Address &code, const Address &stack) : RegisterState() {
+CpuState::CpuState(const Address &code, const Address &stack) : CpuState() {
     setValue(REG_CS, code.segment);
     setValue(REG_IP, code.offset);
     // some test cases load code from binary files and cs:ip == ss:sp == 0:0 which leads to trouble
@@ -137,34 +137,34 @@ RegisterState::RegisterState(const Address &code, const Address &stack) : Regist
     }
 }
 
-bool RegisterState::isKnown(const Register r) const {
+bool CpuState::isKnown(const Register r) const {
     if (regIsWord(r)) return known_.get(r) == WORD_KNOWN;
     else return known_.get(r) == BYTE_KNOWN;
 }
 
-Word RegisterState::getValue(const Register r) const {
+Word CpuState::getValue(const Register r) const {
     if (isKnown(r)) return regs_.get(r);
     else return 0;
 }
 
-void RegisterState::setValue(const Register r, const Word value) {
+void CpuState::setValue(const Register r, const Word value) {
     setState(r, value, true);
 }
 
-void RegisterState::setUnknown(const Register r) {
+void CpuState::setUnknown(const Register r) {
     setState(r, 0, false);
 }
 
 
 
-string RegisterState::stateString(const Register r) const {
+string CpuState::stateString(const Register r) const {
     if (regIsWord(r))
         return (isKnown(r) ? hexVal(regs_.get(r), false, true) : "????");
     else
         return (isKnown(r) ? hexVal(static_cast<Byte>(regs_.get(r)), false, true) : "??");
 }
 
-string RegisterState::regString(const Register r) const {
+string CpuState::regString(const Register r) const {
     string ret = regName(r) + " = ";
     if (regIsGeneral(r)) {
         if (isKnown(r)) ret += hexVal(regs_.get(r), false, true);
@@ -177,7 +177,7 @@ string RegisterState::regString(const Register r) const {
     return ret;
 }
 
-string RegisterState::toString() const {
+string CpuState::toString() const {
     ostringstream str;
     str << std::hex 
         << regString(REG_AX) << ", " << regString(REG_BX) << ", "
@@ -186,11 +186,13 @@ string RegisterState::toString() const {
         << regString(REG_BP) << ", " << regString(REG_SP) << endl
         << regString(REG_CS) << ", " << regString(REG_DS) << ", "
         << regString(REG_SS) << ", " << regString(REG_ES) << endl
-        << regString(REG_IP) << ", " << regString(REG_FLAGS);
+        << regString(REG_IP) << ", " << regString(REG_FLAGS) << endl;
+    str << "stack:";
+    for (const Word &v : stack_) str << " " << hexVal(v);
     return str.str();
 }  
 
-void RegisterState::setState(const Register r, const Word value, const bool known) {
+void CpuState::setState(const Register r, const Word value, const bool known) {
     if (regIsWord(r)) {
         regs_.set(r, value);
         known_.set(r, known ? WORD_KNOWN : 0);

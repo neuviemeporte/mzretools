@@ -67,10 +67,9 @@ void CodeMap::blocksFromQueue(const ScanQueue &sq, const bool unclaimedOnly) {
     // close last block finishing on the last byte of the memory map
     debug("Closing final block: " + b.toString() + " at offset " + hexVal(endOffset));
     closeBlock(b, endOffset, sq, unclaimedOnly);
-    order();
 }
 
-CodeMap::CodeMap(const ScanQueue &sq, const std::vector<Segment> &segs, const Word loadSegment, const Size mapSize) : loadSegment(loadSegment), mapSize(mapSize), ida(false) {
+CodeMap::CodeMap(const ScanQueue &sq, const std::vector<Segment> &segs, const std::vector<Address> &vars, const Word loadSegment, const Size mapSize) : loadSegment(loadSegment), mapSize(mapSize), ida(false) {
     const Size routineCount = sq.routineCount();
     if (routineCount == 0)
         throw AnalysisError("Attempted to create code map from search queue with no routines");
@@ -79,6 +78,8 @@ CodeMap::CodeMap(const ScanQueue &sq, const std::vector<Segment> &segs, const Wo
     info("Building code map from search queue contents: "s + to_string(routineCount) + " routines over " + to_string(segments.size()) + " segments");
     routines = sq.getRoutines();
     blocksFromQueue(sq, false);
+    for (const auto &v : vars) storeDataRef(v);
+    order();
 }
 
 CodeMap::CodeMap(const std::string &path, const Word loadSegment) : CodeMap(loadSegment, 0) {
@@ -99,6 +100,7 @@ CodeMap::CodeMap(const std::string &path, const Word loadSegment) : CodeMap(load
     }
     // rebuild the unclaimed blocks
     blocksFromQueue(sq, true);
+    order();
 }
 
 Routine CodeMap::getRoutine(const Address &addr) const {
@@ -257,8 +259,9 @@ void CodeMap::sort() {
         std::sort(r.reachable.begin(), r.reachable.end());
         std::sort(r.unreachable.begin(), r.unreachable.end());
     }
-    // sort segments
+    // sort segments and variables
     std::sort(segments.begin(), segments.end());
+    std::sort(vars.begin(), vars.end());
 }
 
 // this is the string representation written to the mapfile, while Routine::toString() is the stdout representation for info/debugging

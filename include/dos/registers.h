@@ -2,6 +2,7 @@
 #define REGISTERS_H
 
 #include <string>
+#include <list>
 #include "dos/types.h"
 #include "dos/address.h"
 
@@ -66,25 +67,25 @@ private:
 };
 
 // TODO: implement CPU logic, execute arithmetic instructions and update register state in a more complete way than what is done now
-class RegisterState {
+class CpuState {
 private:
     static constexpr Word WORD_KNOWN = 0xffff;
     static constexpr Word BYTE_KNOWN = 0xff;
     Registers regs_;
     Registers known_;
-    std::stack<Word> stack_;
+    std::list<Word> stack_;
 
 public:
-    RegisterState();
-    RegisterState(const Address &code, const Address &stack);
+    CpuState();
+    CpuState(const Address &code, const Address &stack);
     bool isKnown(const Register r) const;
     Word getValue(const Register r) const;
     void setValue(const Register r, const Word value);
     void setUnknown(const Register r);
     std::string regString(const Register r) const;
     std::string toString() const;
-    void push(const Word val) { stack_.push(val); }
-    Word pop() { Word ret = stack_.top(); stack_.pop(); return ret; }
+    void push(const Word val) { stack_.push_front(val); }
+    Word pop() { Word ret = stack_.front(); stack_.pop_front(); return ret; }
     bool stackEmpty() const { return stack_.empty(); }
 
 private:

@@ -134,13 +134,13 @@ private:
     void checkMissedRoutines(const CodeMap &refMap);
     Address findTargetLocation(const Executable &ref, const Executable &tgt);
     bool comparisonLoop(const Executable &ref, Executable &tgt, const CodeMap &refMap);
-    Branch getBranch(const Executable &exe, const Instruction &i, const RegisterState &regs) const;
+    Branch getBranch(const Executable &exe, const Instruction &i, const CpuState &regs) const;
     ComparisonResult instructionsMatch(const Executable &ref, const Executable &tgt, const Instruction &refInstr, Instruction tgtInstr);
     void diffContext(const Executable &ref, const Executable &tgt) const;
     void skipContext(const Executable &ref, const Executable &tgt) const;
     void calculateStats(const CodeMap &routineMap);
     void comparisonSummary(const Executable &ref, const CodeMap &routineMap, const bool showMissed);
-    void processDataReference(const Executable &exe, const Instruction i, const RegisterState &regs);
+    void processDataReference(const Executable &exe, const Instruction i, const CpuState &regs);
 };
 
 #endif // ANALYSIS_H
