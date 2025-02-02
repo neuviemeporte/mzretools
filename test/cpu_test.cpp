@@ -408,6 +408,7 @@ TEST_F(CpuTest, Instruction) {
         0xff, 0xe1, // jmp cx
         0x26, 0x8e, 0x06, 0x2c, 0x00, // mov es, es:[0x2c]
         0xa2, 0xce, 0x00, // mov [0xce],al
+        0x8f, 0x06, 0xfe, 0x00, // pop word [0xfe]
     };
     const std::string instructions[] = {
         "push es",
@@ -426,6 +427,7 @@ TEST_F(CpuTest, Instruction) {
         "jmp cx",
         "mov es, es:[0x2c]",
         "mov [0xce], al",
+        "pop word [0xfe]",
     };
     const std::string patterns[] = {
         "06", // push es
@@ -444,6 +446,7 @@ TEST_F(CpuTest, Instruction) {
         "ffe1", // jmp cx
         "268e06????", // mov es, es:[0x2c]
         "a2????", // mov [0xce],al
+        "8f06????", // pop word [0xfe]
     };
     const DWord signatures[] = {
         //PRF|CLASS  |OP1TYP|OP2TYP|
@@ -463,9 +466,10 @@ TEST_F(CpuTest, Instruction) {
         0b000'0010001'001000'000001, // none|jmp|reg_cx|none
         0b001'0010110'010100'100110, // es|mov|reg_es|mem_off16
         0b000'0010110'100110'000011, // none|mov|mem_off16|reg_al
+        0b000'0000011'100110'000001, // none|pop|mem_off16|none
     };
     const Size lengths[] = {
-        1, 1, 3, 2, 5, 5, 2, 2, 4, 3, 2, 2, 4, 2, 5, 3,
+        1, 1, 3, 2, 5, 5, 2, 2, 4, 3, 2, 2, 4, 2, 5, 3, 4
     };
     const int icount = sizeof(lengths) / sizeof(Size);
 

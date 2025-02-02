@@ -157,7 +157,7 @@ TEST_F(AnalysisTest, CodeMapFromQueue) {
         3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 2
         0, 0                                            // 3
     };
-    // force the end of the routine map to overflow the segment 
+    // force the end of the routine map to overflow the segment
     // where the last (unreachable) block starts
     visited.insert(visited.end(), 70000, 0);
     entrypoints = { {0x8, 1}, {0xc, 2}, {0x13, 3} };
@@ -210,7 +210,7 @@ TEST_F(AnalysisTest, BigCodeMap) {
 
 TEST_F(AnalysisTest, FindRoutines) {
     const Word loadSegment = 0x1234;
-    const Size expectedFound = 39;
+    const Size expectedFound = 40;
     // discover routines inside an executable
     MzImage mz{"../bin/hello.exe"};
     mz.load(loadSegment);
@@ -219,14 +219,14 @@ TEST_F(AnalysisTest, FindRoutines) {
     const CodeMap discoveredMap = a.exploreCode(exe);
     TRACE(discoveredMap.getSummary().text);
     ASSERT_FALSE(discoveredMap.empty());
-    discoveredMap.save("hello.map", loadSegment, true);    
+    discoveredMap.save("hello.map", loadSegment, true);
     ASSERT_EQ(discoveredMap.routineCount(), expectedFound);
 
     // create map from IDA listing
     const CodeMap idaMap{"../bin/hello.lst", loadSegment};
     // compare our map against IDA map
     Size matchCount = idaMap.match(discoveredMap, true);
-    const Size idaMatchCount = 38; // not all 54 routines that ida finds can be identified for now    
+    const Size idaMatchCount = 38; // not all 54 routines that ida finds can be identified for now
     TRACELN("Discovered vs IDA, found matching " << matchCount << " routines out of " << idaMap.routineCount());
     ASSERT_EQ(matchCount, idaMatchCount);
     
@@ -275,11 +275,11 @@ TEST_F(AnalysisTest, FindFarRoutines) {
     Address ep2{loadSegment+1, 4};
     Routine far2 = discoveredMap.findByEntrypoint(ep2);
     ASSERT_TRUE(far2.isValid());
-    ASSERT_EQ(far2.entrypoint().segment, loadSegment+1);    
+    ASSERT_EQ(far2.entrypoint().segment, loadSegment+1);
 }
 
 TEST_F(AnalysisTest, FindWithRollback) {
-    // Sample of code where control goes into the weeds, 
+    // Sample of code where control goes into the weeds,
     // data within code after a far call which is not supposed to return.
     // This is supposed to test the capability of rolling back after encountering
     // an instruction error while scanning an executable.
@@ -463,7 +463,7 @@ TEST_F(AnalysisTest, CodeCompareUnreachable) {
 
 TEST_F(AnalysisTest, SignedHex) {
     SWord pos16val = 0x1234;
-    ASSERT_EQ(signedHexVal(pos16val), "+0x1234");    
+    ASSERT_EQ(signedHexVal(pos16val), "+0x1234");
     SWord neg16val = -31989;
     ASSERT_EQ(signedHexVal(neg16val), "-0x7cf5");
     SByte pos8val = 0x10;
@@ -543,7 +543,7 @@ TEST_F(AnalysisTest, DiffMemAndImm) {
 
 TEST_F(AnalysisTest, FindDuplicates) {
     const Word loadSegment = 0x1234;
-    const Size expectedRoutines = 39, expectedDuplicates = 23;
+    const Size expectedRoutines = 40, expectedDuplicates = 23;
     MzImage mz{"../bin/hello.exe", loadSegment};
     Executable exe{mz};
     Analyzer::Options opt;

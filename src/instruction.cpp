@@ -593,7 +593,7 @@ std::string Instruction::toString(const bool extended) const {
     if (op1.type != OPR_NONE) {
         str << " ";
         // show size prefix if not implicit from operands
-        if (operandIsMem(op1.type) && operandIsImmediate(op2.type)) {
+        if ((operandIsMem(op1.type) && operandIsImmediate(op2.type)) || opcode == OP_POP_Ev) {
             OperandSize immSize = op1.size;
             if (immSize == OPRSZ_UNK) immSize = op2.size;
             switch(immSize) {

@@ -249,11 +249,15 @@ static void applyMov(const Instruction &i, RegisterState &regs, Executable &exe)
     }
 }
 
-// TODO all this needs to get properly implemented as full cpu instructions instead of these lame approximations
+// TODO: all this needs to get properly implemented as full cpu instructions instead of these lame approximations
 static void applyPush(const Instruction &i, RegisterState &regs) {
-    if (i.iclass != INS_PUSH) throw CpuError("Attempted to apply invalid push instruction");
+    if (i.iclass != INS_PUSH) throw AnalysisError("Attempted to apply invalid push instruction");
     const Register reg = i.op1.regId();
-    if (reg == REG_NONE) throw CpuError("Attempted to push unknown register");
+    if (reg == REG_NONE) {
+        // TODO: could try supporting pushes from mem, not sure if it would really improve discovery
+        debug("Ignoring non-register push");
+        return;
+    }
     if (!regs.isKnown(reg)) {
         debug("Attempted push of unknown value, ignoring");
         return;
@@ -263,10 +267,13 @@ static void applyPush(const Instruction &i, RegisterState &regs) {
     regs.push(pushVal);
 }
 
-static void applyPop(const Instruction &i, RegisterState &regs) {
-    if (i.iclass != INS_POP) throw CpuError("Attempted to apply invalid pop instruction");
+static void applyPop(const Instruction &i, RegisterState &regs, Executable &exe) {
+    if (i.iclass != INS_POP) throw AnalysisError("Attempted to apply invalid pop instruction");
     const Register reg = i.op1.regId();
-    if (reg == REG_NONE) throw CpuError("Attempted to pop unknown register");
+    if (reg == REG_NONE) {
+        debug("Ignoring non-register pop");
+        return;
+    }
     if (regs.stackEmpty()) {
         debug("Attempted to pop from empty stack, ignoring");
         return;
@@ -274,6 +281,8 @@ static void applyPop(const Instruction &i, RegisterState &regs) {
     const Word popVal = regs.pop();
     debug("Popping value of " + hexVal(popVal));
     regs.setValue(reg, popVal);
+    if (reg == REG_DS) exe.storeSegment(Segment::SEG_DATA, popVal);
+    else if (reg == REG_SS) exe.storeSegment(Segment::SEG_STACK, popVal);
 }
 
 // TODO: include information of existing address mapping contributing to a match/mismatch in the output
@@ -391,7 +400,7 @@ CodeMap Analyzer::exploreCode(Executable &exe) {
                 }
                 else if (i.iclass == INS_MOV) applyMov(i, regs, exe);
                 else if (i.iclass == INS_PUSH) applyPush(i, regs);
-                else if (i.iclass == INS_POP) applyPop(i, regs);
+                else if (i.iclass == INS_POP) applyPop(i, regs, exe);
                 // interrupts which don't return
                 else if ((i.isInt(0x21) && regs.getValue(REG_AH) == 0x4c) // 21.4c: exit with code
                         || (i.isInt(0x21) && regs.getValue(REG_AH) == 0x31) // 21.31: dos 2+ tsr
@@ -410,8 +419,8 @@ CodeMap Analyzer::exploreCode(Executable &exe) {
                 csip += i.length;
             } // next instruction at current search location
         } // try block
-        catch (Error &e) {
-            debug("Routine discovery encountered exception at " + csip.toString() + ": " + e.why());
+        catch (CpuError &e) {
+            debug("Routine discovery encountered CPU exception at " + csip.toString() + ": " + e.why());
             const Address start = search.address;
             assert(start <= csip);
             const Size rollbackSize = csip.toLinear() - start.toLinear() + 1;
