@@ -256,11 +256,13 @@ static void applyPush(const Instruction &i, CpuState &regs) {
     const Register reg = i.op1.regId();
     if (reg == REG_NONE) {
         // TODO: could try supporting pushes from mem, not sure if it would really improve discovery
-        debug("Ignoring non-register push");
+        debug("Ignoring non-register push, wiping simulated stack");
+        regs.clearStack();
         return;
     }
     if (!regs.isKnown(reg)) {
-        debug("Attempted push of unknown value, ignoring");
+        debug("Attempted push of unknown value, ignoring and wiping simulated stack");
+        regs.clearStack();
         return;
     }
     const Word pushVal = regs.getValue(reg);
@@ -272,20 +274,18 @@ static void applyPush(const Instruction &i, CpuState &regs) {
 static void applyPop(const Instruction &i, CpuState &regs, Executable &exe) {
     if (i.iclass != INS_POP) throw AnalysisError("Attempted to apply invalid pop instruction");
     const Register reg = i.op1.regId();
-    if (reg == REG_NONE) {
-        debug("Ignoring non-register pop");
-        return;
-    }
     if (regs.stackEmpty()) {
         debug("Attempted to pop from empty stack, ignoring");
         return;
     }
     const Word popVal = regs.pop();
     debug("Popping value of " + hexVal(popVal));
-    regs.setValue(reg, popVal);
-    debug(regs.toString());
-    if (reg == REG_DS) exe.storeSegment(Segment::SEG_DATA, popVal);
-    else if (reg == REG_SS) exe.storeSegment(Segment::SEG_STACK, popVal);
+    if (reg != REG_NONE) {
+        regs.setValue(reg, popVal);
+        debug(regs.toString());
+        if (reg == REG_DS) exe.storeSegment(Segment::SEG_DATA, popVal);
+        else if (reg == REG_SS) exe.storeSegment(Segment::SEG_STACK, popVal);
+    }
 }
 
 // TODO: include information of existing address mapping contributing to a match/mismatch in the output

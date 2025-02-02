@@ -188,7 +188,8 @@ string CpuState::toString() const {
         << regString(REG_SS) << ", " << regString(REG_ES) << endl
         << regString(REG_IP) << ", " << regString(REG_FLAGS) << endl;
     str << "stack: <";
-    for (const Word &v : stack_) str << " " << hexVal(v, false);
+    for (const Word &v : stack_) str << hexVal(v, false) << " ";
+    if (!stack_.empty()) str.seekp(-1, std::ios_base::end);
     str << ">";
     return str.str();
 }  

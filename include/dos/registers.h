@@ -87,7 +87,8 @@ public:
     void push(const Word val) { stack_.push_front(val); }
     Word pop() { Word ret = stack_.front(); stack_.pop_front(); return ret; }
     bool stackEmpty() const { return stack_.empty(); }
-    void reset() { regs_.reset(); known_.reset(); stack_.clear(); }
+    void clearStack() { stack_.clear(); }
+    void reset() { regs_.reset(); known_.reset(); clearStack(); }
 
 private:
     void setState(const Register r, const Word value, const bool known);
