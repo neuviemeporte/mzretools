@@ -54,24 +54,46 @@ bool OffsetMap::dataMatch(const SOffset from, const SOffset to) {
     }
     // mapping does not exist, but still room left, so save it and carry on
     else if (mappings.size() < maxData) {
+        // ensure uniqueness in other direction (duplicate "to"s across all mappings don't exceed the max data segment count)
+        Size toCount = 0;
+        for (const auto& [f, tv] : dataMap) {
+            if (std::find(begin(tv), end(tv), to) != tv.end()) {
+                toCount++;
+                if (toCount < maxData) {
+                    debug("Data offset mapping " + hexVal(from) + "->" + hexVal(to) + " colides with existing " + hexVal(f) + "->" + dataStr(tv) 
+                        + ", allowed " + to_string(toCount) + "/" + to_string(maxData));
+                }
+                else {
+                    error("Data offset mapping " + hexVal(from) + "->" + hexVal(to) + " colides with existing " + hexVal(f) + "->" + dataStr(tv));
+                    return false;
+                }
+            }
+        }
         debug("Registering new data offset mapping: " + hexVal(from) + " -> " + hexVal(to));
         mappings.push_back(to);
         return true;
     }
     // no matching mapping and limit already reached
     else {
-        debug("Existing data offset mapping " + hexVal(from) + " -> " + dataStr(mappings) + " conflicts with " + hexVal(to));
+        debug("Data offset mapping " + hexVal(from) + "->" + hexVal(to) + " colides with existing " + hexVal(from) + "->" + dataStr(mappings));
         return false;
     }
 }
 
 bool OffsetMap::stackMatch(const SOffset from, const SOffset to) {
-    // mapping already exists
+    // check if mapping already exists
     if (stackMap.count(from) > 0) {
-        if (stackMap[from] == to) {
+        const SOffset existing = stackMap[from];
+        if (existing == to) {
             debug("Existing stack offset mapping " + hexVal(from) + " -> " + hexVal(to) + " matches");
             return true;
         }
+        error("Stack offset mapping " + hexVal(from) + "->" + hexVal(to) + " collides with existing: " + hexVal(from) + "->" + hexVal(existing));
+        return false;
+    }
+    // ensure uniqueness in other direction (no duplicate "to"s across all mappings)
+    for (const auto& [f,t] : stackMap) if (t == to) {
+        error("Stack offset mapping " + hexVal(from) + "->" + hexVal(to) + " collides with existing: " + hexVal(f) + "->" + hexVal(t));
         return false;
     }
     // otherwise save new mapping

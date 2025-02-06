@@ -1,3 +1,4 @@
+- output ida .pat files for flirt?
 - detect and erase bogus data segments cutting across code segments, e.g. Data2/3 in egame.exe, notice when walking over code which is in the data segment
 - mark null blocks as bad/unreachable in mzmap - runs of 0000/add [bx+si],al probably don't make sense in legitimate code
 - after making compare blocks more granular, probably stack offsets mapping within routine is lost when jumping to new queue item? need to preserve those

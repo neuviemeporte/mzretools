@@ -335,6 +335,30 @@ TEST_F(AnalysisTest, CodeMapCollision) {
     ASSERT_EQ(rm.routineCount(), 2);
 }
 
+TEST_F(AnalysisTest, OffsetMap) {
+    OffsetMap om(2);
+    ASSERT_TRUE(om.stackMatch(0xc, 0xa));
+    ASSERT_TRUE(om.stackMatch(0xa, 0x2));
+    ASSERT_TRUE(om.stackMatch(0xe, 0x6));
+    ASSERT_TRUE(om.stackMatch(0x2, 0x8));
+    ASSERT_TRUE(om.stackMatch(0x4, 0xc));
+    ASSERT_TRUE(om.stackMatch(0x10, 0x4));
+    ASSERT_TRUE(om.stackMatch(0x6, 0xe));
+    // conflicts with mapping 4->c
+    ASSERT_FALSE(om.stackMatch(0x3, 0xc));
+    om.resetStack();
+    ASSERT_TRUE(om.dataMatch(0x123, 0x456));
+    // conflicts with previous but we have 2 data segments, still allowed
+    ASSERT_TRUE(om.dataMatch(0x123, 0x567));
+    // 3rd's the charm
+    ASSERT_FALSE(om.dataMatch(0x123, 0x89a));
+    // likewise the other way, 2nd ->567 allowed
+    ASSERT_TRUE(om.dataMatch(0x456, 0x567));
+    // 3rd mismatch fails
+    ASSERT_FALSE(om.dataMatch(0x789, 0x567));
+    
+}
+
 TEST_F(AnalysisTest, CodeCompare) {
     const Word loadSegment = 0x1000;
     MzImage mz{"../bin/hello.exe"};
