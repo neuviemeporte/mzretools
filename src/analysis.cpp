@@ -33,14 +33,19 @@ bool OffsetMap::codeMatch(const Address from, const Address to) {
     if (codeMap.count(from) > 0) {
         auto &found = codeMap[from];
         if (found == to) {
-            debug("Existing code address mapping " + from.toString() + " -> " + to.toString() + " matches");
+            debug("Existing code address mapping " + from.toString() + "->" + to.toString() + " matches");
             return true;
         }
-        debug("Existing code address mapping " + from.toString() + " -> " + found.toString() + " conflicts with " + to.toString());
+        error("Code address mapping " + from.toString() + "->" + to.toString() + " collides with existing " + from.toString() + "->" + found.toString());
+        return false;
+    }
+    // ensure uniqueness in other direction (no duplicate "to"s across all mappings)
+    for (const auto& [f, t] : codeMap) if (t == to) {
+        error("Code address mapping " + from.toString() + "->" + to.toString() + " collides with existing " + f.toString() + "->" + t.toString());
         return false;
     }
     // otherwise save new mapping
-    debug("Registering new code address mapping: " + from.toString() + " -> " + to.toString());
+    debug("Registering new code address mapping: " + from.toString() + "->" + to.toString());
     codeMap[from] = to;
     return true;
 }
@@ -88,7 +93,7 @@ bool OffsetMap::stackMatch(const SOffset from, const SOffset to) {
     if (stackMap.count(from) > 0) {
         const SOffset existing = stackMap[from];
         if (existing == to) {
-            debug("Existing stack offset mapping " + hexVal(from) + " -> " + hexVal(to) + " matches");
+            debug("Existing stack offset mapping " + hexVal(from) + "->" + hexVal(to) + " matches");
             return true;
         }
         error("Stack offset mapping " + hexVal(from) + "->" + hexVal(to) + " collides with existing: " + hexVal(from) + "->" + hexVal(existing));

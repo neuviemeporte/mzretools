@@ -357,7 +357,9 @@ TEST_F(AnalysisTest, OffsetMap) {
     ASSERT_TRUE(om.dataMatch(0x456, 0x567));
     // 3rd mismatch fails
     ASSERT_FALSE(om.dataMatch(0x789, 0x567));
-    
+    ASSERT_TRUE(om.codeMatch({0x1000, 0xabc}, {0x1000, 0xcde}));
+    ASSERT_FALSE(om.codeMatch({0x1000, 0xabc}, {0x1000, 0xdef}));
+    ASSERT_FALSE(om.codeMatch({0x1000, 0x123}, {0x1000, 0xcde}));
 }
 
 TEST_F(AnalysisTest, CodeCompare) {
