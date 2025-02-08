@@ -55,6 +55,9 @@ bool OffsetMap::dataMatch(const SOffset from, const SOffset to) {
     // mapping does not exist, but still room left, so save it and carry on
     else if (mappings.size() < maxData) {
         // ensure uniqueness in other direction (duplicate "to"s across all mappings don't exceed the max data segment count)
+        // TODO: come up with something better for multiple data segments than just Nx possible matches, these still could be wrong between segments.
+        // Essentially we need to know the current data segment for every comparison location, put entire ds:off addresses into the map and compare accordingly,
+        // perhaps store this information from the mzmap run?
         Size toCount = 0;
         for (const auto& [f, tv] : dataMap) {
             if (std::find(begin(tv), end(tv), to) != tv.end()) {
@@ -75,7 +78,7 @@ bool OffsetMap::dataMatch(const SOffset from, const SOffset to) {
     }
     // no matching mapping and limit already reached
     else {
-        debug("Data offset mapping " + hexVal(from) + "->" + hexVal(to) + " colides with existing " + hexVal(from) + "->" + dataStr(mappings));
+        error("Data offset mapping " + hexVal(from) + "->" + hexVal(to) + " colides with existing " + hexVal(from) + "->" + dataStr(mappings));
         return false;
     }
 }
@@ -1009,96 +1012,10 @@ static const map<string, vector<vector<string>>> INSTR_VARIANT = {
     },    
 };
 
-
-Analyzer::ComparisonResult Analyzer::instructionsMatch(const Executable &ref, const Executable &tgt, const Instruction &refInstr, Instruction tgtInstr) {
-    if (options.ignoreDiff) return CMP_MATCH;
-
-    auto insResult = refInstr.match(tgtInstr);
-    if (insResult == INS_MATCH_FULL) return CMP_MATCH;
-
+Analyzer::ComparisonResult Analyzer::variantMatch(const Executable &tgt, const Instruction &refInstr, Instruction tgtInstr) {
     bool match = false;
-    // instructions differ in value of immediate or memory offset
-    if (insResult == INS_MATCH_DIFF || insResult == INS_MATCH_DIFFOP1 || insResult == INS_MATCH_DIFFOP2) {
-        if (refInstr.isBranch()) { // call or jump (conditional/unconditional)
-            const Branch 
-                refBranch = getBranch(ref, refInstr, {}), 
-                tgtBranch = getBranch(tgt, tgtInstr, {});
-            if (refBranch.destination.isValid() && tgtBranch.destination.isValid()) {
-                match = offMap.codeMatch(refBranch.destination, tgtBranch.destination);
-                if (!match) {
-                    debug("Instruction mismatch on branch destination");
-                    return CMP_MISMATCH;
-                }
-                // TODO: perfect match... too perfect, mark as suspicious?
-                if (refBranch.destination == tgtBranch.destination) return CMP_MATCH;
-                // special case of jmp vs jmp short - allow only if variants enabled
-                if (refInstr.opcode != tgtInstr.opcode && (refInstr.isUnconditionalJump() || tgtInstr.isUnconditionalJump())) {
-                    if (options.variant) {
-                        verbose(output_color(OUT_YELLOW) + compareStatus(refInstr, tgtInstr, true, INS_MATCH_DIFF) + output_color(OUT_DEFAULT));
-                        tgtCsip += tgtInstr.length;
-                        return CMP_VARIANT;
-                    }
-                    else return CMP_MISMATCH;
-                }
-                // near jumps are usually used within a routine to handle looping and conditions,
-                // so a different value (relative jump amount) might mean a wrong flow
-                // -- mark with a different result value to be highlighted
-                if (refInstr.isNearJump()) return CMP_DIFFTGT;
-            }
-            // proceed with regular operand comparison
-        }
-        // iterate over operands, either one or both could be different, so check if the difference is acceptable
-        for (int opidx = 1; opidx <= 2; ++opidx) {
-            const Instruction::Operand *op = nullptr;
-            switch(opidx) {
-            case 1: if (insResult != INS_MATCH_DIFFOP2) op = &refInstr.op1; break;
-            case 2: if (insResult != INS_MATCH_DIFFOP1) op = &refInstr.op2; break;
-            }
-            if (op == nullptr) continue;
-
-            if (operandIsMemWithOffset(op->type)) {
-                // in strict mode, the offsets are expected to be exactly matching, with no translation
-                if (options.strict) {
-                    debug("Mismatching due to offset difference in strict mode");
-                    return CMP_MISMATCH;
-                }
-                // otherwise, apply mapping
-                SOffset refOfs = refInstr.memOffset(), tgtOfs = tgtInstr.memOffset();
-                Register segReg = refInstr.memSegmentId();
-                switch (segReg) {
-                case REG_CS:
-                    match = offMap.codeMatch(refOfs, tgtOfs);
-                    if (!match) verbose("Instruction mismatch due to code segment offset mapping conflict");
-                    break;
-                case REG_ES: /* TODO: come up with something better */
-                case REG_DS:
-                    match = offMap.dataMatch(refOfs, tgtOfs);
-                    if (!match) verbose("Instruction mismatch due to data segment offset mapping conflict");
-                    break;
-                case REG_SS:
-                    if (!options.strict) {
-                        match = offMap.stackMatch(refOfs, tgtOfs);
-                        if (!match) verbose("Instruction mismatch due to stack segment offset mapping conflict");
-                    }
-                    break;
-                default:
-                    throw AnalysisError("Unsupported segment register in instruction comparison: " + regName(segReg));
-                    break;
-                }
-                return match ? CMP_DIFFVAL : CMP_MISMATCH;
-            }
-            else if (operandIsImmediate(op->type) && !options.strict) {
-                debug("Ignoring immediate value difference in loose mode");
-                // arbitrary heuristic to highlight small immediate value differences in red, these are usually suspicious
-                if (op->dwordValue() <= 0xff) return CMP_DIFFTGT;
-                return CMP_DIFFVAL;
-            }
-        }
-    }
-    
-    if (match) return CMP_MATCH;
     // check for a variant match if allowed by options
-    else if (options.variant && INSTR_VARIANT.count(refInstr.toString())) {
+    if (options.variant && INSTR_VARIANT.count(refInstr.toString())) {
         // get vector of allowed variants (themselves vectors of strings)
         const auto &variants = INSTR_VARIANT.at(refInstr.toString());
         debug("Found "s + to_string(variants.size()) + " variants for instruction '" + refInstr.toString() + "'");
@@ -1137,11 +1054,104 @@ Analyzer::ComparisonResult Analyzer::instructionsMatch(const Executable &ref, co
     return CMP_MISMATCH;
 }
 
+Analyzer::ComparisonResult Analyzer::instructionsMatch(const Executable &ref, const Executable &tgt, const Instruction &refInstr, const Instruction &tgtInstr) {
+    if (options.ignoreDiff) return CMP_MATCH;
+
+    auto insResult = refInstr.match(tgtInstr);
+    // in strict mode, the instructions are expected to be exactly matching, with no variants/mapping
+    if (insResult != INS_MATCH_FULL && options.strict) {
+        debug("Mismatching due to difference in strict mode");
+        return CMP_MISMATCH;
+    }
+    // in case of complete mismatch, last ditch is to try a variant match
+    if (insResult == INS_MATCH_MISMATCH) return variantMatch(tgt, refInstr, tgtInstr);
+    // we now either have a full match, or a difference in one or both operands, check the offsets in either case
+    // (even if the instructions match fully, that could be an error if the equal offsets have previously been mapped to something else)
+    bool match = false;
+    if (operandIsMemWithOffset(refInstr.op1.type) || operandIsMemWithOffset(refInstr.op2.type)) {
+        assert(operandIsMemWithOffset(tgtInstr.op1.type) || operandIsMemWithOffset(tgtInstr.op2.type));
+        // apply mapping
+        // TODO: differentiate between offs/bx+offs/bp+offs?
+        SOffset refOfs = refInstr.memOffset(), tgtOfs = tgtInstr.memOffset();
+        Register segReg = refInstr.memSegmentId();
+        switch (segReg) {
+        case REG_CS:
+            match = offMap.codeMatch(refOfs, tgtOfs);
+            if (!match) verbose("Instruction mismatch due to code segment offset mapping conflict");
+            break;
+        case REG_ES: /* TODO: come up with something better */
+        case REG_DS:
+            match = offMap.dataMatch(refOfs, tgtOfs);
+            if (!match) verbose("Instruction mismatch due to data segment offset mapping conflict");
+            break;
+        case REG_SS:
+            match = offMap.stackMatch(refOfs, tgtOfs);
+            if (!match) verbose("Instruction mismatch due to stack segment offset mapping conflict");
+            break;
+        default:
+            throw AnalysisError("Unsupported segment register in instruction comparison: " + regName(segReg));
+            break;
+        }
+        if (!match) return CMP_MISMATCH;
+    }
+    // now that offsets are checked we can accept a full match if there's one
+    if (insResult == INS_MATCH_FULL) return CMP_MATCH;
+    // instructions differ in value of immediate or memory offset
+    assert(insResult == INS_MATCH_DIFF || insResult == INS_MATCH_DIFFOP1 || insResult == INS_MATCH_DIFFOP2);
+    if (refInstr.isBranch()) { // call or jump (conditional/unconditional)
+        const Branch 
+            refBranch = getBranch(ref, refInstr, {}), 
+            tgtBranch = getBranch(tgt, tgtInstr, {});
+        if (refBranch.destination.isValid() && tgtBranch.destination.isValid()) {
+            match = offMap.codeMatch(refBranch.destination, tgtBranch.destination);
+            if (!match) {
+                debug("Instruction mismatch on branch destination");
+                return CMP_MISMATCH;
+            }
+            // TODO: perfect match... too perfect, mark as suspicious?
+            if (refBranch.destination == tgtBranch.destination) return CMP_MATCH;
+            // special case of jmp vs jmp short - allow only if variants enabled
+            if (refInstr.opcode != tgtInstr.opcode && (refInstr.isUnconditionalJump() || tgtInstr.isUnconditionalJump())) {
+                if (options.variant) {
+                    verbose(output_color(OUT_YELLOW) + compareStatus(refInstr, tgtInstr, true, INS_MATCH_DIFF) + output_color(OUT_DEFAULT));
+                    tgtCsip += tgtInstr.length;
+                    return CMP_VARIANT;
+                }
+                else return CMP_MISMATCH;
+            }
+            // near jumps are usually used within a routine to handle looping and conditions,
+            // so a different value (relative jump amount) might mean a wrong flow
+            // -- mark with a different result value to be highlighted
+            if (refInstr.isNearJump()) return CMP_DIFFTGT;
+        }
+        // proceed with regular operand comparison
+    }
+    // iterate over operands, either one or both could be different, so check if the difference is acceptable
+    for (int opidx = 1; opidx <= 2; ++opidx) {
+        const Instruction::Operand *op = nullptr;
+        switch(opidx) {
+        case 1: if (insResult != INS_MATCH_DIFFOP2) op = &refInstr.op1; break;
+        case 2: if (insResult != INS_MATCH_DIFFOP1) op = &refInstr.op2; break;
+        }
+        if (op == nullptr) continue;
+        // memory operand differences were already handled
+        if (operandIsImmediate(op->type) && !options.strict) {
+            debug("Ignoring immediate value difference in loose mode");
+            // arbitrary heuristic to highlight small immediate value differences in red, these are usually suspicious
+            if (op->dwordValue() <= 0xff) return CMP_DIFFTGT;
+            return CMP_DIFFVAL;
+        }
+    }
+    // all special cases exhausted, just a difference on the operand value
+    return CMP_DIFFVAL;
+}
+
 void Analyzer::diffContext(const Executable &ref, const Executable &tgt) const {
     const int CONTEXT_COUNT = options.ctxCount;
     Address a1 = refCsip; 
     Address a2 = tgtCsip;
-    verbose("--- Context information for up to " + to_string(CONTEXT_COUNT) + " additional instructions after mismatch location:");
+    verbose("--- Context information for up to " + to_string(CONTEXT_COUNT) + " additional instructions of routine " + output_color(OUT_RED) + routine.name + output_color(OUT_DEFAULT) 
+        + " after mismatch location:");
     Instruction i1, i2;
     for (int i = 0; i <= CONTEXT_COUNT; ++i) {
         // make sure we are within code extents in both executables

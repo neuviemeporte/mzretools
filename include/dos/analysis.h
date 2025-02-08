@@ -135,7 +135,8 @@ private:
     Address findTargetLocation(const Executable &ref, const Executable &tgt);
     bool comparisonLoop(const Executable &ref, Executable &tgt, const CodeMap &refMap);
     Branch getBranch(const Executable &exe, const Instruction &i, const CpuState &regs) const;
-    ComparisonResult instructionsMatch(const Executable &ref, const Executable &tgt, const Instruction &refInstr, Instruction tgtInstr);
+    ComparisonResult variantMatch(const Executable &tgt, const Instruction &refInstr, Instruction tgtInstr);
+    ComparisonResult instructionsMatch(const Executable &ref, const Executable &tgt, const Instruction &refInstr, const Instruction &tgtInstr);
     void diffContext(const Executable &ref, const Executable &tgt) const;
     void skipContext(const Executable &ref, const Executable &tgt) const;
     void calculateStats(const CodeMap &routineMap);

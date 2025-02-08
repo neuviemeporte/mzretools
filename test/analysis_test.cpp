@@ -28,6 +28,7 @@ protected:
         return a.instructionsMatch(ref, tgt, refInstr, tgtInstr); 
     }
     auto analyzerDiffVal() { return Analyzer::CMP_DIFFVAL; }
+    auto analyzerDiffTgt() { return Analyzer::CMP_DIFFTGT; }
     bool crossCheck(const CodeMap &map1, const CodeMap &map2, const Size maxMiss) {
         TRACELN("Cross-checking map 1 (" + to_string(map1.routineCount()) + " routines) with map 2 (" + to_string(map2.routineCount()) + " routines)");
         Size missCount = 0;
@@ -442,6 +443,7 @@ TEST_F(AnalysisTest, CodeCompareUnreachable) {
         tgtCode = refCode;
     Executable e1{0, refCode}, e2{0, tgtCode};
     Analyzer::Options opt;
+    opt.strict = false;
     Routine r1{"test1", {0, refCode.size()}};
     // two reachable blocks separated by an unreachable one
     r1.reachable.push_back({0, 2});
@@ -565,6 +567,24 @@ TEST_F(AnalysisTest, DiffMemAndImm) {
         i2{0, e2.codePointer(0)};
     Analyzer a(opt);
     ASSERT_EQ(analyzerInstructionMatch(a, e1, e2, i1, i2), analyzerDiffVal());
+}
+
+TEST_F(AnalysisTest, DiffImmLow) {
+    const vector<Byte> refCode = {
+        0xC7,0x06,0x34,0x12,0xC3,0x00 // mov word [0x1234],0x13
+    };
+    const vector<Byte> objCode = {
+        0xC7,0x06,0x34,0x12,0x12,0x00 // mov word [0x1234],0x12
+    };
+    Analyzer::Options opt;
+    opt.strict = false;
+    Executable e1{0, refCode}, e2{0, objCode};
+    // decode instructions
+    Instruction 
+        i1{0, e1.codePointer(0)}, 
+        i2{0, e2.codePointer(0)};
+    Analyzer a(opt);
+    ASSERT_EQ(analyzerInstructionMatch(a, e1, e2, i1, i2), analyzerDiffTgt());
 }
 
 TEST_F(AnalysisTest, FindDuplicates) {
