@@ -1,4 +1,4 @@
-#include "dos/map.h"
+#include "dos/codemap.h"
 #include "dos/error.h"
 #include "dos/util.h"
 #include "dos/output.h"

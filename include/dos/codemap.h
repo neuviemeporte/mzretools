@@ -1,5 +1,5 @@
-#ifndef MAP_H
-#define MAP_H
+#ifndef CODEMAP_H
+#define CODEMAP_H
 
 #include <string>
 #include <regex>
@@ -97,4 +97,4 @@ private:
     void blocksFromQueue(const ScanQueue &sq, const bool unclaimedOnly);
 };
 
-#endif // MAP_H
+#endif // CODEMAP_H

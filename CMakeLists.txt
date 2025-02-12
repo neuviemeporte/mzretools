@@ -14,7 +14,7 @@ set(LIBDOS_SRC
     src/address.cpp
     src/memory.cpp
     src/psp.cpp
-    src/map.cpp
+    src/codemap.cpp
     src/analysis.cpp
     src/executable.cpp
     src/routine.cpp
@@ -35,7 +35,7 @@ set(LIBDOS_HDR
     include/dos/opcodes.h
     include/dos/registers.h
     include/dos/modrm.h
-    include/dos/map.h
+    include/dos/codemap.h
     include/dos/analysis.h
     include/dos/executable.h
     include/dos/routine.h

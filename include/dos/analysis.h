@@ -13,7 +13,7 @@
 #include "dos/instruction.h"
 #include "dos/routine.h"
 #include "dos/scanq.h"
-#include "dos/map.h"
+#include "dos/codemap.h"
 
 class Executable;
 
