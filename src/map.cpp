@@ -82,13 +82,18 @@ CodeMap::CodeMap(const ScanQueue &sq, const std::vector<Segment> &segs, const st
     order();
 }
 
-CodeMap::CodeMap(const std::string &path, const Word loadSegment) : CodeMap(loadSegment, 0) {
-    static const regex LSTFILE_RE{".*\\.(lst|LST)"};
+CodeMap::CodeMap(const std::string &path, const Word loadSegment, const Type type) : CodeMap(loadSegment, 0) {
     const auto fstat = checkFile(path);
     if (!fstat.exists) throw ArgError("File does not exist: "s + path);
-    smatch match;
-    if (regex_match(path, match, LSTFILE_RE)) loadFromIdaFile(path, loadSegment);
-    else loadFromMapFile(path, loadSegment);
+    switch(type) {
+    case MAP_IDALST: 
+        loadFromIdaFile(path, loadSegment);
+        break;
+    case MAP_MSLINK:
+        break;
+    default:
+        loadFromMapFile(path, loadSegment);
+    }
     debug("Done, found "s + to_string(routines.size()) + " routines, " + to_string(vars.size()) + " variables");
     // create a bogus scan queue and populate the visited map with markers where the routines are 
     // for building the list of unclaimed blocks between them - these are lost when the map is saved to disk

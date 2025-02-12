@@ -116,7 +116,7 @@ TEST_F(AnalysisTest, CpuState) {
 
 TEST_F(AnalysisTest, CodeMap) {
     // test loading of routine map from ida file
-    const CodeMap idaMap{"../bin/hello.lst"};
+    const CodeMap idaMap{"../bin/hello.lst", 0, CodeMap::MAP_IDALST};
     const auto sum = idaMap.getSummary();
     TRACE(sum.text);
     ASSERT_NE(sum.dataSize, 0);
@@ -226,7 +226,7 @@ TEST_F(AnalysisTest, FindRoutines) {
     ASSERT_EQ(discoveredMap.variableCount(), expectedVars);
 
     // create map from IDA listing
-    const CodeMap idaMap{"../bin/hello.lst", loadSegment};
+    const CodeMap idaMap{"../bin/hello.lst", loadSegment, CodeMap::MAP_IDALST};
     // compare our map against IDA map
     Size matchCount = idaMap.match(discoveredMap, true);
     const Size idaMatchCount = 38; // not all 54 routines that ida finds can be identified for now

@@ -76,7 +76,13 @@ void loadAndPrintMap(const string &mapfile, const bool verbose, const bool brief
     info("Single parameter specified, printing existing mapfile");
     auto fs = checkFile(mapfile);
     if (!fs.exists) fatal("Mapfile does not exist: " + mapfile);
-    CodeMap map(mapfile);
+    string mapfileLower(mapfile.size(), '\0');
+    std::transform(mapfile.begin(), mapfile.end(), mapfileLower.begin(), [](unsigned char c){ return std::tolower(c); });
+    const string ext = getExtension(mapfileLower);
+    CodeMap::Type mapType = CodeMap::MAP_MZRE;
+    if (ext == "lst") mapType = CodeMap::MAP_IDALST;
+    // TODO: support printing link maps?
+    CodeMap map(mapfile, 0, mapType);
     const auto sum = map.getSummary(verbose, brief, format);
     cout << sum.text;
     if (map.isIda()) map.save(mapfile + ".map");

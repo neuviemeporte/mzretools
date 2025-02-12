@@ -33,6 +33,11 @@ public:
             dataSize = otherSize = otherCount = ignoredReachableSize = ignoredReachableCount = uncompleteSize = uncompleteCount = unaccountedSize = unaccountedCount = 0;
         }
     };
+    enum Type {
+        MAP_MZRE,   // mzretools map format
+        MAP_IDALST, // IDA listing
+        MAP_MSLINK  // Microsoft linker map file
+    };
 private:
     friend class AnalysisTest;
     Word loadSegment;
@@ -48,7 +53,7 @@ private:
 public:
     CodeMap(const Word loadSegment, const Size mapSize) : loadSegment(loadSegment), mapSize(mapSize), curId(0), prevId(0), curBlockId(0), prevBlockId(0), ida(false) {}
     CodeMap(const ScanQueue &sq, const std::vector<Segment> &segs, const std::set<Address> &vars, const Word loadSegment, const Size mapSize);
-    CodeMap(const std::string &path, const Word loadSegment = 0);
+    CodeMap(const std::string &path, const Word loadSegment = 0, const Type type = MAP_MZRE);
     CodeMap() : CodeMap(0, 0) {}
 
     Size codeSize() const { return mapSize; }
