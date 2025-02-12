@@ -91,6 +91,7 @@ private:
     Block moveBlock(const Block &b, const Word segment) const;
     void sort();
     void loadFromMapFile(const std::string &path, const Word reloc);
+    void loadFromLinkFile(const std::string &path, const Word reloc);    
     void loadFromIdaFile(const std::string &path, const Word reloc);
     std::string routineString(const Routine &r, const Word reloc) const;
     std::string varString(const Variable &v, const Word reloc) const;

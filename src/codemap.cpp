@@ -90,6 +90,7 @@ CodeMap::CodeMap(const std::string &path, const Word loadSegment, const Type typ
         loadFromIdaFile(path, loadSegment);
         break;
     case MAP_MSLINK:
+        loadFromLinkFile(path, loadSegment);
         break;
     default:
         loadFromMapFile(path, loadSegment);
@@ -621,6 +622,10 @@ void CodeMap::loadFromMapFile(const std::string &path, const Word reloc) {
     } // iterate over mapfile lines
 
     if (mapSize == 0) throw ParseError("Invalid or undefined map size");
+}
+
+// load code map from Microsoft LINK mapfile
+void CodeMap::loadFromLinkFile(const std::string &path, const Word reloc) {
 }
 
 // create code map from IDA listing (.lst) file
