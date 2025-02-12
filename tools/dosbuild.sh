@@ -11,6 +11,7 @@ CONF_DIR=conf
 CONF_FILE=$CONF_DIR/toolchain.conf
 BAT_FILE=$TOOLCHAIN_DIR/build.bat
 DEBUG=0
+# always print toolchain stdout
 VERBOSE=0
 cmdline=$@
 
@@ -169,12 +170,16 @@ for f in $infiles; do
 done
 [ -f "$outfile" ] && rm $outfile # remove output file if it exists from the previous run, we use its existence to check for success/failure
 outfile_dir=$(basedir $outfile)
+outfile_name=$(basename $outfile)
+outfile_noext="${outfile_name%.*}"
+rspname=${outfile_noext}.rsp
+infile_rsp=$infile_dir/$rspname
 outfile_drive='e'
 if [ "$infile_dir" = "$outfile_dir" ]; then
     outfile_drive='d'
 fi
 outfile_dos="${outfile_drive}:\\$(dossep ${outfile#${outfile_dir}/})"
-debug "infile_dir = '$infile_dir', infiles_dos = '$infiles_dos', outfile_dir = '$outfile_dir', outfile_dos = '$outfile_dos'"
+debug "infile_dir = '$infile_dir', infiles_dos = '$infiles_dos', outfile_dir = '$outfile_dir', outfile_dos = '$outfile_dos', infile_rsp = '$infile_rsp'"
 if [ "$tool" != "test" ]; then
     [ -d "$infile_dir" ] || fatal "Input directory does not exist: $infile_dir"
     [ -d "$outfile_dir" ] || fatal "Output directory does not exist: $outfile_dir"
@@ -197,7 +202,35 @@ case $tool in
         ;;        
     link|qlink)
         [ "$flags" ] && cmdline+=" $flags"
-        cmdline+=" $infiles_dos,$outfile_dos,,$libs;"
+        # build response file, get around cmdline length limit
+        > $infile_rsp
+        count=0
+        for o in $infiles_dos; do
+            echo -n "$o" >> $infile_rsp
+            if ((++count == 8)); then
+                echo "+" >> $infile_rsp
+                count=0
+            else
+                echo -n " " >> $infile_rsp
+            fi
+        done
+        if ((count != 8)); then
+            echo "" >> $infile_rsp
+        fi
+        echo "$outfile_dos" >> $infile_rsp
+        echo ";" >> $infile_rsp
+        # TODO: wrap libs with + too?
+        if [ "$libs" ]; then
+            echo $libs >> $infile_rsp
+        else
+            echo ";" >> $infile_rsp
+        fi
+        if ((DEBUG)); then
+        echo "--- $infile_rsp:"
+        cat $infile_rsp
+        echo "---"
+        fi
+        cmdline+=" @${rspname}"
         ;;
     tlink)
         compiler_dir=$TC_DIR
