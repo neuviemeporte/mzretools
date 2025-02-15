@@ -29,8 +29,9 @@ void usage() {
            "--overwrite:    overwrite output file.map if already exists\n"
            "--brief:        only show uncompleted and unclaimed areas in map summary\n"
            "--format:       format printed routines in a way that's directly writable back to the map file\n"
-           "--nocpu:        omit CPU-related information like instruction decoding\n"
-           "--noanal:       omit analysis-related information\n"
+           "--nocpu:        omit CPU-related information like instruction decoding from debug output\n"
+           "--noanal:       omit analysis-related information from debug output\n"
+           "--linkmap file  use a linker map from Microsoft C to seed initial location of routines\n"
            "--load segment: overrride default load segment (0x0)", LOG_OTHER, LOG_ERROR);
     exit(1);
 }
@@ -94,7 +95,7 @@ int main(int argc, char *argv[]) {
         usage();
     }
     Word loadSegment = 0x0;
-    string file1, file2;
+    string file1, file2, linkmapPath;
     bool verbose = false;
     bool brief = false, format = false, overwrite = false;
     for (int aidx = 1; aidx < argc; ++aidx) {
@@ -109,16 +110,23 @@ int main(int argc, char *argv[]) {
             brief = true;
         }
         else if (arg == "--format") format = true;
-        else if (arg == "--load" && (aidx++ + 1 < argc)) {
+        else if (arg == "--load") {
+            if (++aidx >= argc) fatal("Option requires an argument: --load");
             string loadSegStr(argv[aidx]);
             loadSegment = static_cast<Word>(stoi(loadSegStr, nullptr, 16));
             info("Overloading default load segment: "s + hexVal(loadSegment));
+        }
+        else if (arg == "--linkmap") {
+            if (++aidx >= argc) fatal("Option requires an argument: --linkmap");
+            linkmapPath = string{argv[aidx]};
+            if (!checkFile(linkmapPath).exists) fatal("Linker map file does not exist: " + linkmapPath);
         }
         else if (file1.empty()) file1 = arg;
         else if (file2.empty()) file2 = arg;
         else fatal("Unrecognized argument: "s + arg);
     }
     try {
+        if (file1.empty()) fatal("Need at least one input file");
         if (file2.empty()) { // print existing map and exit
             loadAndPrintMap(file1, verbose, brief, format);
         }
@@ -129,6 +137,11 @@ int main(int argc, char *argv[]) {
             }
             Executable exe = loadExe(file1, loadSegment);
             Analyzer a = Analyzer(Analyzer::Options());
+            // optionally seed search queue with link map
+            if (!linkmapPath.empty()) {
+                CodeMap linkmap{linkmapPath, loadSegment, CodeMap::MAP_MSLINK};
+                a.seedQueue(linkmap, exe);
+            }
             CodeMap map = a.exploreCode(exe);
             if (map.empty()) {
                 fatal("Unable to find any routines");

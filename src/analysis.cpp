@@ -344,6 +344,24 @@ static string compareStatus(const Instruction &i1, const Instruction &i2, const 
     return status;
 }
 
+// for executables whose layout is known in advance (but we still want to determine the routine boundaries), like when we built it ourselves
+// and have the linker map, seed the scan queue for code exploration with all known routine entrypoint locations
+void Analyzer::seedQueue(const CodeMap &map, Executable &exe) {
+    CpuState initRegs{exe.entrypoint(), exe.stackAddr()};
+    scanQueue = ScanQueue{exe.loadAddr(), exe.size(), Destination(exe.entrypoint(), 1, true, initRegs)};
+    for (Size ri = 0; ri < map.routineCount(); ++ri) {
+        const Routine r = map.getRoutine(ri);
+        scanQueue.saveCall(r.entrypoint(), initRegs, false, r.name);
+    }
+    for (const Segment &seg : map.getSegments()) {
+        exe.storeSegment(seg.type, seg.address);
+    }
+    for (Size vi = 0; vi < map.variableCount(); ++vi) {
+        const Variable v = map.getVariable(vi);
+        dataRefs.insert(v.addr);
+    }
+}
+
 // explore the code without actually executing instructions, discover routine boundaries
 // TODO: identify routines through signatures generated from OMF libraries
 // TODO: trace usage of bp register (sub/add) to determine stack frame size of routines
@@ -352,8 +370,8 @@ CodeMap Analyzer::exploreCode(Executable &exe) {
     CpuState initRegs{exe.entrypoint(), exe.stackAddr()};
     
     debug("initial register values:\n"s + initRegs.toString());
-    // queue for BFS search
-    scanQueue = ScanQueue{exe.loadAddr(), exe.size(), Destination(exe.entrypoint(), 1, true, initRegs)};
+    // initialize queue for BFS search only if it's not been seeded already
+    if (scanQueue.empty()) scanQueue = ScanQueue{exe.loadAddr(), exe.size(), Destination(exe.entrypoint(), 1, true, initRegs)};
     dataRefs.clear();
     info("Analyzing code within extents: "s + exe.extents());
     Size locations = 0;

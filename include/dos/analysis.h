@@ -125,6 +125,7 @@ public:
     bool compareCode(const Executable &ref, Executable &tgt, const CodeMap &refMap);
     bool findDuplicates(const Executable &ref, Executable &tgt, const CodeMap &refMap, CodeMap &tgtMap);
     void findDataRefs(const Executable &exe, const CodeMap &map);
+    void seedQueue(const CodeMap &map, Executable &exe);
 
 private:
     bool skipAllowed(const Instruction &refInstr, Instruction tgtInstr);

@@ -204,6 +204,11 @@ TEST_F(AnalysisTest, CodeMapFromQueue) {
     TRACE(queueMap.getSummary().text);
 }
 
+TEST_F(AnalysisTest, CodeMapFromLinkMap) {
+    const string path{"../bin/link.map"};
+    CodeMap linkMap{path, 0, CodeMap::MAP_MSLINK};
+}
+
 TEST_F(AnalysisTest, BigCodeMap) {
     CodeMap rm{"../bin/egame.map", 0x1000};
     ASSERT_EQ(rm.routineCount(), 398);
