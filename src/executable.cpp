@@ -39,9 +39,9 @@ void Executable::init() {
     if (codeSize == 0)
         throw ArgError("Code size is zero while constructing executable");
     codeExtents = Block{{loadSegment, Word(0)}, Address(SEG_TO_OFFSET(loadSegment) + codeSize - 1)};
-    storeSegment(Segment::SEG_CODE, ep.segment);
+    storeSegment({"", Segment::SEG_CODE, ep.segment});
     stack.relocate(loadSegment);
-    storeSegment(Segment::SEG_STACK, stack.segment);
+    storeSegment({"", Segment::SEG_STACK, stack.segment});
     debug("Loaded executable data into memory, code at "s + codeExtents.toString() + ", relocated entrypoint " + entrypoint().toString() + ", stack " + stack.toString());
 }
 
@@ -60,7 +60,9 @@ Segment Executable::getSegment(const Word addr) const {
     return ret;
 }
 
-bool Executable::storeSegment(const Segment::Type type, const Word addr) {
+bool Executable::storeSegment(const Segment &seg) {
+    const Word addr = seg.address;
+    const Segment::Type type = seg.type;
     debug("Attempting to register segment " + hexVal(addr) + " of type " + Segment::typeString(type));
     const Address segAddress{addr, 0};
     if (!codeExtents.contains(segAddress)) {
@@ -97,21 +99,22 @@ bool Executable::storeSegment(const Segment::Type type, const Word addr) {
         }
     }
     // compose name for new segment
-    int idx=1;
-    for (const auto &s : segments) {
-        if (s.type == type) idx++;
+    Segment newSeg{seg};
+    if (seg.name.empty()) {
+        int idx=1;
+        for (const auto &s : segments) {
+            if (s.type == type) idx++;
+        }
+        switch (type) {
+        case Segment::SEG_CODE: newSeg.name = "Code"; break;
+        case Segment::SEG_DATA: newSeg.name = "Data"; break;
+        case Segment::SEG_STACK: newSeg.name = "Stack"; break;
+        default: throw AnalysisError("Unsupported segment type");
+        }
+        newSeg.name += to_string(idx);
     }
-    string segName;
-    switch (type) {
-    case Segment::SEG_CODE: segName = "Code"; break;
-    case Segment::SEG_DATA: segName = "Data"; break;
-    case Segment::SEG_STACK: segName = "Stack"; break;
-    default: throw AnalysisError("Unsupported segment type");
-    }
-    segName += to_string(idx);
-    Segment seg{segName, type, addr};
-    debug("Registered new segment: " + seg.toString());
-    segments.push_back(seg);
+    debug("Registered new segment: " + newSeg.toString());
+    segments.push_back(newSeg);
     return true;
 }
 

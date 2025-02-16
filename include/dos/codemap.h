@@ -52,7 +52,7 @@ private:
 
 public:
     CodeMap(const Word loadSegment, const Size mapSize) : loadSegment(loadSegment), mapSize(mapSize), curId(0), prevId(0), curBlockId(0), prevBlockId(0), ida(false) {}
-    CodeMap(const ScanQueue &sq, const std::vector<Segment> &segs, const std::set<Address> &vars, const Word loadSegment, const Size mapSize);
+    CodeMap(const ScanQueue &sq, const std::vector<Segment> &segs, const std::set<Variable> &vars, const Word loadSegment, const Size mapSize);
     CodeMap(const std::string &path, const Word loadSegment = 0, const Type type = MAP_MZRE);
     CodeMap() : CodeMap(0, 0) {}
 
@@ -87,7 +87,7 @@ public:
     void setSegments(const std::vector<Segment> &seg);
     
 private:
-    void storeDataRef(const Address &dr);
+    void storeVariable(const Variable &v);
     void closeBlock(Block &b, const Address &next, const ScanQueue &sq, const bool unclaimedOnly);
     Block moveBlock(const Block &b, const Word segment) const;
     void sort();

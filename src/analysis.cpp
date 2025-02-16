@@ -274,8 +274,8 @@ static void applyMov(const Instruction &i, CpuState &regs, Executable &exe) {
     // create data/stack segments from mov ds/mov ss stores
     if (set) {
         searchMessage(i.addr, "executed move to register: "s + i.toString());
-        if (i.op1.type == OPR_REG_DS) exe.storeSegment(Segment::SEG_DATA, regs.getValue(REG_DS));
-        else if (i.op1.type == OPR_REG_SS) exe.storeSegment(Segment::SEG_STACK, regs.getValue(REG_SS));
+        if (i.op1.type == OPR_REG_DS) exe.storeSegment({"", Segment::SEG_DATA, regs.getValue(REG_DS)});
+        else if (i.op1.type == OPR_REG_SS) exe.storeSegment({"", Segment::SEG_STACK, regs.getValue(REG_SS)});
     }
     debug(regs.toString());
 }
@@ -313,8 +313,8 @@ static void applyPop(const Instruction &i, CpuState &regs, Executable &exe) {
     if (reg != REG_NONE) {
         regs.setValue(reg, popVal);
         debug(regs.toString());
-        if (reg == REG_DS) exe.storeSegment(Segment::SEG_DATA, popVal);
-        else if (reg == REG_SS) exe.storeSegment(Segment::SEG_STACK, popVal);
+        if (reg == REG_DS) exe.storeSegment({"", Segment::SEG_DATA, popVal});
+        else if (reg == REG_SS) exe.storeSegment({"", Segment::SEG_STACK, popVal});
     }
 }
 
@@ -354,11 +354,11 @@ void Analyzer::seedQueue(const CodeMap &map, Executable &exe) {
         scanQueue.saveCall(r.entrypoint(), initRegs, false, r.name);
     }
     for (const Segment &seg : map.getSegments()) {
-        exe.storeSegment(seg.type, seg.address);
+        exe.storeSegment(seg);
     }
     for (Size vi = 0; vi < map.variableCount(); ++vi) {
         const Variable v = map.getVariable(vi);
-        dataRefs.insert(v.addr);
+        vars.insert(v);
     }
 }
 
@@ -366,13 +366,13 @@ void Analyzer::seedQueue(const CodeMap &map, Executable &exe) {
 // TODO: identify routines through signatures generated from OMF libraries
 // TODO: trace usage of bp register (sub/add) to determine stack frame size of routines
 // TODO: store references to potential jump tables (e.g. jmp cs:[bx+0xc08]), if unclaimed after initial search, try treating entries as pointers and run second search before coalescing blocks?
+// TODO: this is single-shot, need to wipe object state before done so that same analyzer can be used again
 CodeMap Analyzer::exploreCode(Executable &exe) {
     CpuState initRegs{exe.entrypoint(), exe.stackAddr()};
     
     debug("initial register values:\n"s + initRegs.toString());
     // initialize queue for BFS search only if it's not been seeded already
     if (scanQueue.empty()) scanQueue = ScanQueue{exe.loadAddr(), exe.size(), Destination(exe.entrypoint(), 1, true, initRegs)};
-    dataRefs.clear();
     info("Analyzing code within extents: "s + exe.extents());
     Size locations = 0;
  
@@ -385,7 +385,7 @@ CodeMap Analyzer::exploreCode(Executable &exe) {
         searchMessage(csip, "--- Scanning at new location from routine " + to_string(search.routineIdx) + ", call: "s + to_string(search.isCall) + ", queue = " + to_string(scanQueue.size()));
         CpuState regs = search.regs;
         regs.setValue(REG_CS, csip.segment);
-        exe.storeSegment(Segment::SEG_CODE, csip.segment);
+        exe.storeSegment({"", Segment::SEG_CODE, csip.segment});
         try {
             // iterate over instructions at current search location in a linear fashion, until an unconditional jump or return is encountered
             while (true) {
@@ -497,7 +497,7 @@ CodeMap Analyzer::exploreCode(Executable &exe) {
 #endif
 
     // create routine map from contents of search queue
-    auto ret = CodeMap{scanQueue, exe.getSegments(), dataRefs, exe.getLoadSegment(), exe.size()};
+    auto ret = CodeMap{scanQueue, exe.getSegments(), vars, exe.getLoadSegment(), exe.size()};
     // TODO: stats like for compare
     return ret;
 }
@@ -659,7 +659,7 @@ bool Analyzer::compareCode(const Executable &ref, Executable &tgt, const CodeMap
                     tgtQueue.saveCall(tgtCsip, {}, routine.near, routine.name);
                 }
             }
-            tgt.storeSegment(Segment::SEG_CODE, tgtCsip.segment);
+            tgt.storeSegment({"", Segment::SEG_CODE, tgtCsip.segment});
             verbose("--- Now @"s + refCsip.toString() + ", routine " + routine.dump(false) + ", block " + compareBlock.toString(true) +  ", target @" + tgtCsip.toString());
         }
         // TODO: consider dropping this "feature"
@@ -902,7 +902,7 @@ bool Analyzer::comparisonLoop(const Executable &ref, Executable &tgt, const Code
             if (refSegment.type == Segment::SEG_NONE) {
                 warn("Farcall segment " + hexVal(farDest.segment) + " not found in reference map");
             }
-            else if (!tgt.storeSegment(refSegment.type, tgtSegment)) {
+            else if (!tgt.storeSegment({"", refSegment.type, tgtSegment})) {
                 warn("Unable to register farcall destination segment " + hexVal(tgtSegment) + " with target executable");
             }
         }
@@ -1317,7 +1317,7 @@ void Analyzer::processDataReference(const Executable &exe, const Instruction i, 
     }
     const Word dsAddr = regs.getValue(segReg);
     Address dataAddr{dsAddr, offVal};
-    dataRefs.insert(dataAddr);
+    vars.insert({"", dataAddr});
     debug("Storing data reference: " + dataAddr.toString());
 }
 

@@ -69,7 +69,7 @@ void CodeMap::blocksFromQueue(const ScanQueue &sq, const bool unclaimedOnly) {
     closeBlock(b, endOffset, sq, unclaimedOnly);
 }
 
-CodeMap::CodeMap(const ScanQueue &sq, const std::vector<Segment> &segs, const std::set<Address> &vars, const Word loadSegment, const Size mapSize) : loadSegment(loadSegment), mapSize(mapSize), ida(false) {
+CodeMap::CodeMap(const ScanQueue &sq, const std::vector<Segment> &segs, const std::set<Variable> &vars, const Word loadSegment, const Size mapSize) : loadSegment(loadSegment), mapSize(mapSize), ida(false) {
     const Size routineCount = sq.routineCount();
     if (routineCount == 0)
         throw AnalysisError("Attempted to create code map from search queue with no routines");
@@ -78,7 +78,7 @@ CodeMap::CodeMap(const ScanQueue &sq, const std::vector<Segment> &segs, const st
     info("Building code map from search queue contents: "s + to_string(routineCount) + " routines over " + to_string(segments.size()) + " segments");
     routines = sq.getRoutines();
     blocksFromQueue(sq, false);
-    for (const auto &v : vars) storeDataRef(v);
+    for (const auto &v : vars) storeVariable(v);
     order();
 }
 
@@ -473,14 +473,17 @@ void CodeMap::setSegments(const std::vector<Segment> &seg) {
     std::sort(segments.begin(), segments.end());
 }
 
-void CodeMap::storeDataRef(const Address &dr) {
-    const Segment ds = findSegment(dr.segment);
+void CodeMap::storeVariable(const Variable &v) {
+    const Segment ds = findSegment(v.addr.segment);
     if (ds.type == Segment::SEG_NONE) {
-        debug("Unable to save variable at address " + dr.toString() + ", no record of segment at " + hexVal(dr.segment));
+        debug("Unable to save variable at address " + v.addr.toString() + ", no record of segment at " + hexVal(v.addr.segment));
         return;
     }
-    const size_t idx = vars.size() + 1;
-    vars.emplace_back(Variable{"var_" + to_string(idx), dr});
+    if (v.name.empty()) {
+        const size_t idx = vars.size() + 1;
+        vars.emplace_back(Variable{"var_" + to_string(idx), v.addr});
+    }
+    else vars.push_back(v);
 }
 
 Size CodeMap::segmentCount(const Segment::Type type) const {

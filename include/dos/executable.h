@@ -32,7 +32,7 @@ public:
     Block extents() const { return codeExtents; }
     bool contains(const Address &addr) const { return codeExtents.contains(addr); }
     Segment getSegment(const Word addr) const;
-    bool storeSegment(const Segment::Type type, const Word addr);
+    bool storeSegment(const Segment &seg);
     const Memory& getCode() const { return code; }
     const Byte* codePointer(const Address &addr) const { return code.pointer(addr); }
     const std::vector<Segment>& getSegments() const { return segments; }

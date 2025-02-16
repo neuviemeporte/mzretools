@@ -244,7 +244,7 @@ Segment::Segment(const std::smatch &match) {
 }
 
 std::smatch Segment::stringMatch(const std::string &str) {
-    static const regex SEG_RE{"^([_a-zA-Z0-9]+) (CODE|DATA|STACK) ([0-9a-fA-F]{1,4})"};
+    static const regex SEG_RE{"^([$_a-zA-Z0-9]+) (CODE|DATA|STACK) ([0-9a-fA-F]{1,4})"};
     smatch match;
     regex_match(str, match, SEG_RE);
     return match;
