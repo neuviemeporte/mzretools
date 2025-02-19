@@ -1,3 +1,4 @@
+- update nearness of routines in savecall
 - use relative threshold (e.g. 10%) in mzdup instead of same instructon count for all-size routines
 - implement mzsig, generate signatures from exe+map, have mzdup ingest .sig instead
 - support link .map as input to mzsig
