@@ -140,6 +140,7 @@ int main(int argc, char *argv[]) {
             // optionally seed search queue with link map
             if (!linkmapPath.empty()) {
                 CodeMap linkmap{linkmapPath, loadSegment, CodeMap::MAP_MSLINK};
+                info("Using linker map file " + linkmapPath + " to seed scan: " + to_string(linkmap.segmentCount()) + " segments, " + to_string(linkmap.routineCount()) + " routines, " + to_string(linkmap.variableCount()) + " variables");
                 a.seedQueue(linkmap, exe);
             }
             CodeMap map = a.exploreCode(exe);

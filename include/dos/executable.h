@@ -33,6 +33,7 @@ public:
     bool contains(const Address &addr) const { return codeExtents.contains(addr); }
     Segment getSegment(const Word addr) const;
     bool storeSegment(const Segment &seg);
+    void clearSegments() { segments.clear(); }
     const Memory& getCode() const { return code; }
     const Byte* codePointer(const Address &addr) const { return code.pointer(addr); }
     const std::vector<Segment>& getSegments() const { return segments; }

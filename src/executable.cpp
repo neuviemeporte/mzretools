@@ -74,7 +74,7 @@ bool Executable::storeSegment(const Segment &seg) {
         return s.type == type && s.address == addr;
     });
     if (found != segments.end()) {
-        debug("Segment already registered");
+        debug("Segment already registered as " + found->toString());
         return true;
     }
     // check if an existing segment of a different type has the same address
@@ -85,7 +85,7 @@ bool Executable::storeSegment(const Segment &seg) {
         const Segment &existing = *found;
         // existing code segments cannot share an address with another segment
         if (existing.type == Segment::SEG_CODE) {
-            debug("Segment " + hexVal(addr) + " already exists with type CODE, ignoring");
+            debug("Segment at " + hexVal(addr) + " already exists with type CODE, ignoring");
             return false;
         }
         // a new data segment trumps an existing stack segment

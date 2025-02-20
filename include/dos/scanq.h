@@ -58,7 +58,8 @@ public:
     void setRoutineIdx(Offset off, const Size length, RoutineIdx idx = NULL_ROUTINE);
     void clearRoutineIdx(Offset off);
     RoutineIdx isEntrypoint(const Address &addr) const;
-    RoutineEntrypoint getEntrypoint(const std::string &name);
+    RoutineEntrypoint getEntrypoint(const std::string &name) const;
+    RoutineEntrypoint getEntrypoint(const RoutineIdx idx) const;
     std::vector<Routine> getRoutines() const;
     std::vector<Block> getUnvisited() const;
     void dumpVisited(const std::string &path) const;

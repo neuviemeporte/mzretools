@@ -10,6 +10,12 @@ using namespace std;
 
 OUTPUT_CONF(LOG_ANALYSIS)
 
+#ifdef DEBUG
+#define PARSE_DEBUG(msg) debug(msg)
+#else
+#define PARSE_DEBUG(msg)
+#endif
+
 void CodeMap::blocksFromQueue(const ScanQueue &sq, const bool unclaimedOnly) {
     const Offset startOffset = SEG_TO_OFFSET(loadSegment);
     Offset endOffset = startOffset + mapSize;
@@ -661,19 +667,19 @@ void CodeMap::loadFromLinkFile(const std::string &path, const Word reloc) {
         lineno++;
         // switch into segment parsing mode
         if (mode != LINKMAP_SEGMENTS && std::regex_match(line, SEGMENTS_RE)) {
-            debug("Segment definitions starting on line " + to_string(lineno));
+            PARSE_DEBUG("Segment definitions starting on line " + to_string(lineno));
             mode = LINKMAP_SEGMENTS; 
             continue;
         }
         // switch into public parsing mode
         else if (mode != LINKMAP_PUBLICS && std::regex_match(line, PUBLICS_RE)) {
-            debug("Public definitions starting on line " + to_string(lineno));
+            PARSE_DEBUG("Public definitions starting on line " + to_string(lineno));
             mode = LINKMAP_PUBLICS; 
             continue;
         }
         // switch back to no mode, ignore public values
         else if (std::regex_match(line, PUBVAL_RE)) {
-            debug("Public values starting on line " + to_string(lineno));
+            PARSE_DEBUG("Public values starting on line " + to_string(lineno));
             mode = LINKMAP_NONE;
             continue;
         }
@@ -690,19 +696,19 @@ void CodeMap::loadFromLinkFile(const std::string &path, const Word reloc) {
                 name = tokens[3],
                 type = tokens[4];
             const Word segAddr = OFFSET_TO_SEG(start);
-            debug("Segment definition on line " + to_string(lineno) + ": start " + hexVal(start) + " (addr " + hexVal(segAddr) + ")" ", stop " + hexVal(stop) + " (size " + hexVal(size) 
+            PARSE_DEBUG("Segment definition on line " + to_string(lineno) + ": start " + hexVal(start) + " (addr " + hexVal(segAddr) + ")" ", stop " + hexVal(stop) + " (size " + hexVal(size) 
                 + "), length " + hexVal(length) + " name '" + name + "', type '" + type + "'");
             if (stop > totalSize) totalSize = stop;
             const Segment existSeg = findSegment(segAddr);
             if (existSeg.type != Segment::SEG_NONE) {
-                debug("Segment already exists at address " + hexVal(segAddr) + ": " + existSeg.toString());
+                PARSE_DEBUG("Segment already exists at address " + hexVal(segAddr) + ": " + existSeg.toString());
                 continue;
             }
             Segment::Type segType = Segment::SEG_NONE;
             if (type == "CODE") segType = Segment::SEG_CODE;
             else if (type.starts_with("DAT") || type == "BSS" || type == "CONST" || type == "MP" || type == "FAR_DATA" || type == "FAR_BSS") segType = Segment::SEG_DATA;
             else {
-                debug("Ignoring segment of type '" + type + "'");
+                PARSE_DEBUG("Ignoring segment of type '" + type + "'");
                 continue;
             }
             segments.emplace_back(Segment{name, segType, segAddr});
@@ -713,17 +719,17 @@ void CodeMap::loadFromLinkFile(const std::string &path, const Word reloc) {
                 static_cast<Word>(std::stoi(tokens[0], nullptr, 16)), 
                 static_cast<Word>(std::stoi(tokens[1], nullptr, 16))};
             const string name = tokens[2];
-            debug("Public definition on line " + to_string(lineno) + ", addr " + addr.toString() + ", name '" + name + "'");
+            PARSE_DEBUG("Public definition on line " + to_string(lineno) + ", addr " + addr.toString() + ", name '" + name + "'");
             Segment pubSeg = findSegment(addr.segment);
             if (pubSeg.type == Segment::SEG_NONE) {
-                debug("Unable to find segment at addr " + hexVal(addr.segment) + " for public " + name + ", ignoring");
+                PARSE_DEBUG("Unable to find segment at addr " + hexVal(addr.segment) + " for public " + name + ", ignoring");
                 continue;
             }
             else if (pubSeg.type == Segment::SEG_CODE) {
-                debug("\tPublic belongs to code segment, attempting to register routine");
+                PARSE_DEBUG("\tPublic belongs to code segment, attempting to register routine");
                 const Routine existRoutine = getRoutine(addr);
                 if (existRoutine.isValid()) {
-                    debug("Routine already exists at " + addr.toString() + ": " + existRoutine.toString() + ", ignoring");
+                    PARSE_DEBUG("Routine already exists at " + addr.toString() + ": " + existRoutine.toString() + ", ignoring");
                     continue;
                 }
                 Routine r{name, Block{addr}};
@@ -731,25 +737,23 @@ void CodeMap::loadFromLinkFile(const std::string &path, const Word reloc) {
                 routines.push_back(r);
             }
             else if (pubSeg.type == Segment::SEG_DATA) {
-                debug("\tPublic belongs to data segment, attempting to register variable");
+                PARSE_DEBUG("\tPublic belongs to data segment, attempting to register variable");
                 Variable existVar = getVariable(addr);
                 if (existVar.addr.isValid()) {
-                    debug("Variable already exists at " + addr.toString() + ": " + existVar.toString() + ", ignoring");
+                    PARSE_DEBUG("Variable already exists at " + addr.toString() + ": " + existVar.toString() + ", ignoring");
                     continue;
                 }
                 vars.emplace_back(Variable{name, addr});
             }
             else {
-                debug("Ignoring public not in code or data segment");
+                PARSE_DEBUG("Ignoring public not in code or data segment");
                 continue;
             }
         }
         // ignore everything else
-        else {
-            debug("Ignoring line " + to_string(lineno) + ": '" + line + "'");
-        }
     }
-    debug("Finished parsing linker map file, map size: " + hexVal(totalSize) + ", segments: " + to_string(segments.size()));
+    mapSize = totalSize;
+    debug("Finished parsing linker map file, map size: " + hexVal(mapSize) + ", segments: " + to_string(segments.size()));
 }
 
 // create code map from IDA listing (.lst) file

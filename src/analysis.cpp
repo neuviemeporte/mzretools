@@ -17,7 +17,11 @@
 
 using namespace std;
 
-#define DEBUG 1
+#ifdef DEBUG
+#define DUMP_REGS(regs) debug(regs.toString())
+#else
+#define DUMP_REGS(regs)
+#endif
 
 OUTPUT_CONF(LOG_ANALYSIS)
 
@@ -277,7 +281,7 @@ static void applyMov(const Instruction &i, CpuState &regs, Executable &exe) {
         if (i.op1.type == OPR_REG_DS) exe.storeSegment({"", Segment::SEG_DATA, regs.getValue(REG_DS)});
         else if (i.op1.type == OPR_REG_SS) exe.storeSegment({"", Segment::SEG_STACK, regs.getValue(REG_SS)});
     }
-    debug(regs.toString());
+    DUMP_REGS(regs);
 }
 
 // TODO: all this needs to get properly implemented as full cpu instructions instead of these lame approximations
@@ -298,7 +302,7 @@ static void applyPush(const Instruction &i, CpuState &regs) {
     const Word pushVal = regs.getValue(reg);
     debug("Pushing value of " + hexVal(pushVal));
     regs.push(pushVal);
-    debug(regs.toString());
+    DUMP_REGS(regs);
 }
 
 static void applyPop(const Instruction &i, CpuState &regs, Executable &exe) {
@@ -312,7 +316,7 @@ static void applyPop(const Instruction &i, CpuState &regs, Executable &exe) {
     debug("Popping value of " + hexVal(popVal));
     if (reg != REG_NONE) {
         regs.setValue(reg, popVal);
-        debug(regs.toString());
+        DUMP_REGS(regs);
         if (reg == REG_DS) exe.storeSegment({"", Segment::SEG_DATA, popVal});
         else if (reg == REG_SS) exe.storeSegment({"", Segment::SEG_STACK, popVal});
     }
@@ -347,19 +351,35 @@ static string compareStatus(const Instruction &i1, const Instruction &i2, const 
 // for executables whose layout is known in advance (but we still want to determine the routine boundaries), like when we built it ourselves
 // and have the linker map, seed the scan queue for code exploration with all known routine entrypoint locations
 void Analyzer::seedQueue(const CodeMap &map, Executable &exe) {
+    debug("Seeding scan queue from code map");
     CpuState initRegs{exe.entrypoint(), exe.stackAddr()};
-    scanQueue = ScanQueue{exe.loadAddr(), exe.size(), Destination(exe.entrypoint(), 1, true, initRegs)};
-    for (Size ri = 0; ri < map.routineCount(); ++ri) {
-        const Routine r = map.getRoutine(ri);
-        scanQueue.saveCall(r.entrypoint(), initRegs, false, r.name);
-    }
+    scanQueue = ScanQueue{exe.loadAddr(), exe.size(), {}};
+    // seed segments
+    exe.clearSegments();
+    debug("Seeding with " + to_string(map.segmentCount()) + " segments");
     for (const Segment &seg : map.getSegments()) {
+        debug("Attempting to seed segment: " + seg.toString());
         exe.storeSegment(seg);
     }
+    // try to add the entrypoint segment explicitly in case it was missed
+    exe.storeSegment(Segment{"", Segment::SEG_CODE, exe.entrypoint().segment});
+    // seed routines
+    debug("Seeding with " + to_string(map.routineCount()) + " entrypoints");
+    for (Size ri = 0; ri < map.routineCount(); ++ri) {
+        const Routine r = map.getRoutine(ri);
+        debug("Attempting to seed routine: " + r.toString());
+        scanQueue.saveCall(r.entrypoint(), initRegs, false, r.name);
+    }
+    // try to add the executable entrypoint explicitly in case it was missed
+    scanQueue.saveCall(exe.entrypoint(), initRegs, true, "start");
+    // seed vars
+    debug("Seeding with " + to_string(map.variableCount()) + " variables");
     for (Size vi = 0; vi < map.variableCount(); ++vi) {
         const Variable v = map.getVariable(vi);
+        debug("Seeding variable: " + v.toString());
         vars.insert(v);
     }
+    debug("Scan queue seeding complete");
 }
 
 // explore the code without actually executing instructions, discover routine boundaries
@@ -380,11 +400,13 @@ CodeMap Analyzer::exploreCode(Executable &exe) {
     while (!scanQueue.empty()) {
         // get a location from the queue and jump to it
         const Destination search = scanQueue.nextPoint();
+        const RoutineEntrypoint ep = scanQueue.getEntrypoint(search.routineIdx);
         locations++;
         Address csip = search.address;
-        searchMessage(csip, "--- Scanning at new location from routine " + to_string(search.routineIdx) + ", call: "s + to_string(search.isCall) + ", queue = " + to_string(scanQueue.size()));
+        searchMessage(csip, "--- Scanning at new location from routine " + ep.toString() + ", call: "s + to_string(search.isCall) + ", queue = " + to_string(scanQueue.size()));
         CpuState regs = search.regs;
         regs.setValue(REG_CS, csip.segment);
+        DUMP_REGS(regs);
         exe.storeSegment({"", Segment::SEG_CODE, csip.segment});
         try {
             // iterate over instructions at current search location in a linear fashion, until an unconditional jump or return is encountered
@@ -429,14 +451,18 @@ CodeMap Analyzer::exploreCode(Executable &exe) {
                         const RoutineIdx destId = scanQueue.getRoutineIdx(destOffset);
                         if (branch.isCall) {
                             // pessimistically, every register can be modified after returning from a call, except for CS, but let's be generous with DS and SS, otherwise we break too much stuff
+                            assert(regs.isKnown(REG_CS));
+                            const bool
+                                knownDS = regs.isKnown(REG_DS),
+                                knownSS = regs.isKnown(REG_SS);
                             const Word 
                                 cs = regs.getValue(REG_CS),
                                 ds = regs.getValue(REG_DS),
                                 ss = regs.getValue(REG_SS);
                             regs.reset();
                             regs.setValue(REG_CS, cs);
-                            regs.setValue(REG_DS, ds);
-                            regs.setValue(REG_SS, ss);
+                            if (knownDS) regs.setValue(REG_DS, ds);
+                            if (knownSS) regs.setValue(REG_SS, ss);
                         }
                         if (destId != search.routineIdx) {
                             branch.isCall = false;
@@ -941,7 +967,7 @@ Branch Analyzer::getBranch(const Executable &exe, const Instruction &i, const Cp
             break;
         case OP_GRP5_Ev:
             searchMessage(addr, "unknown near jump target: "s + i.toString());
-            debug(regs.toString());
+            DUMP_REGS(regs);
             break; 
         default: 
             throw AnalysisError("Unsupported jump opcode: "s + hexVal(i.opcode));
@@ -957,7 +983,7 @@ Branch Analyzer::getBranch(const Executable &exe, const Instruction &i, const Cp
         }
         else {
             searchMessage(addr, "unknown far jump target: "s + i.toString());
-            debug(regs.toString());
+            DUMP_REGS(regs);
         }
         break;
     // loops
@@ -992,7 +1018,7 @@ Branch Analyzer::getBranch(const Executable &exe, const Instruction &i, const Cp
         }
         else {
             searchMessage(addr, "unknown near call target: "s + i.toString());
-            debug(regs.toString());
+            DUMP_REGS(regs);
         } 
         break;
     case INS_CALL_FAR:
@@ -1005,7 +1031,7 @@ Branch Analyzer::getBranch(const Executable &exe, const Instruction &i, const Cp
         }
         else {
             searchMessage(addr, "unknown far call target: "s + i.toString());
-            debug(regs.toString());
+            DUMP_REGS(regs);
         }
         break;
     default:
@@ -1318,7 +1344,7 @@ void Analyzer::processDataReference(const Executable &exe, const Instruction i, 
     const Word dsAddr = regs.getValue(segReg);
     Address dataAddr{dsAddr, offVal};
     vars.insert({"", dataAddr});
-    debug("Storing data reference: " + dataAddr.toString());
+    debug("Storing data reference: " + dataAddr.toString() + ", " + regName(segReg) + " = " + hexVal(regs.getValue(segReg)));
 }
 
 struct Duplicate {

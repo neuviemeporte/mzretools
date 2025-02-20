@@ -25,6 +25,7 @@ set(LIBDOS_SRC
     src/opcodes.cpp
     src/output.cpp
     src/instruction.cpp
+    src/signature.cpp
     src/modrm.cpp)
 
 set(LIBDOS_HDR 
@@ -48,6 +49,7 @@ set(LIBDOS_HDR
     include/dos/dos.h
     include/dos/mz.h
     include/dos/instruction.h
+    include/dos/signature.h
     include/dos/editdistance.h)
 
 # the DOS emulation library
@@ -98,6 +100,9 @@ target_link_libraries(mzdup PUBLIC libdos)
 
 add_executable(mzptr src/mzptr.cpp)
 target_link_libraries(mzptr PUBLIC libdos)
+
+add_executable(mzsig src/mzsig.cpp)
+target_link_libraries(mzsig PUBLIC libdos)
 
 add_executable(addrtool src/addrtool.cpp)
 target_link_libraries(addrtool PUBLIC libdos)
