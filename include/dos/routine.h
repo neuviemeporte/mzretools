@@ -52,7 +52,7 @@ struct Routine {
     Block blockContaining(const Address &a) const;
     Block nextReachable(const Address &from) const;
     bool colides(const Block &block, const bool checkExtents = true) const;
-    std::string dump(const bool showChunks = true) const;
+    std::string dump(const bool showChunks = true, const bool showLinear = false) const;
     std::string toString() const;
     std::vector<Block> sortedBlocks() const;
     void recalculateExtents();

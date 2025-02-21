@@ -219,7 +219,7 @@ bool ScanQueue::saveBranch(const Branch &branch, const CpuState &regs, const Blo
 
     if (codeExtents.contains(branch.destination)) {
         bool ret;
-        if (branch.isCall) 
+        if (branch.isCall)
             ret = saveCall(branch.destination, regs, branch.isNear); 
         else 
             ret = saveJump(branch.destination, regs);

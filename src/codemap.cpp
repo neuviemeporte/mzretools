@@ -427,7 +427,7 @@ CodeMap::Summary CodeMap::getSummary(const bool verbose, const bool brief, const
         // print routine unless hide mode enabled and it's not important - show only uncompleted routines and big enough unclaimed blocks within code segments
         if (!(brief && (r.ignore || r.complete || r.external || r.assembly || r.size() < 3 || seg.type != Segment::SEG_CODE))) {
             if (!format) {
-                str << r.dump(verbose);
+                str << r.dump(verbose, true);
                 if (seg.type == Segment::SEG_DATA) str << " [data]";
                 str << endl;
             }

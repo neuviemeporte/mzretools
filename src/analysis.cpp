@@ -382,6 +382,18 @@ void Analyzer::seedQueue(const CodeMap &map, Executable &exe) {
     debug("Scan queue seeding complete");
 }
 
+// check for one or more nops past current instruction, mark as belonging to this routine if detected
+void Analyzer::claimNops(const Instruction &i, const Executable &exe) {
+    Address 
+        curAddr = i.addr,
+        nextAddr{curAddr + static_cast<SByte>(i.length)};
+    while (nextAddr > curAddr && exe.extents().contains(nextAddr) && Instruction{nextAddr, exe.codePointer(nextAddr)}.iclass == INS_NOP) {
+        scanQueue.setRoutineIdx(nextAddr.toLinear(), 1);
+        curAddr = nextAddr;
+        nextAddr++;
+    }
+}
+
 // explore the code without actually executing instructions, discover routine boundaries
 // TODO: identify routines through signatures generated from OMF libraries
 // TODO: trace usage of bp register (sub/add) to determine stack frame size of routines
@@ -439,15 +451,16 @@ CodeMap Analyzer::exploreCode(Executable &exe) {
                 processDataReference(exe, i, regs);
                 // interpret the instruction
                 if (i.isBranch()) {
-                    Branch branch = getBranch(exe, i, regs);
+                    const Branch branch = getBranch(exe, i, regs);
                     debug("Encountered branch: " + branch.toString());
                     // if the destination of the branch can be established, place it in the search queue
                     scanQueue.saveBranch(branch, regs, exe.extents());
-                    // for a call or conditional branch, we can continue scanning, but do it under a new search queue location 
+                    // for a call or conditional branch, we can continue scanning (fall-through), but do it under a new search queue location 
                     // to have finer granularity in case we run into data in the middle of code and have to rollback the whole block as bad
                     if (branch.isCall || branch.isConditional) {
-                        branch.destination = csip + static_cast<Offset>(i.length);
-                        const Offset destOffset = branch.destination.toLinear();
+                        Branch ftBranch;
+                        ftBranch.destination = csip + static_cast<Offset>(i.length);
+                        const Offset destOffset = ftBranch.destination.toLinear();
                         const RoutineIdx destId = scanQueue.getRoutineIdx(destOffset);
                         if (branch.isCall) {
                             // pessimistically, every register can be modified after returning from a call, except for CS, but let's be generous with DS and SS, otherwise we break too much stuff
@@ -465,25 +478,27 @@ CodeMap Analyzer::exploreCode(Executable &exe) {
                             if (knownSS) regs.setValue(REG_SS, ss);
                         }
                         if (destId != search.routineIdx) {
-                            branch.isCall = false;
-                            branch.isNear = true;
-                            branch.isConditional = false;
-                            debug("Saving fall-through branch: " + branch.toString() + " over id " + to_string(destId));
+                            ftBranch.isCall = false;
+                            ftBranch.isNear = true;
+                            ftBranch.isConditional = false;
+                            debug("Saving fall-through branch: " + ftBranch.toString() + " over id " + to_string(destId));
                             // make the destination of this fake "branch" undiscovered in the queue, wipe any claiming routine id run
                             scanQueue.clearRoutineIdx(destOffset);
-                            scanQueue.saveBranch(branch, regs, exe.extents());
+                            scanQueue.saveBranch(ftBranch, regs, exe.extents());
                         }
                         break;
                     }
                     // if the branch is an unconditional jump, we cannot keep scanning past it, regardless of the destination resolution
                     else {
                         searchMessage(csip, "routine scan interrupted by unconditional branch");
+                        claimNops(i, exe);
                         break;
                     }
                 }
                 else if (i.isReturn()) {
                     // TODO: check if return matches entrypoint type (near/far), warn otherwise
                     searchMessage(csip, "routine scan interrupted by return");
+                    claimNops(i, exe);
                     break;
                 }
                 // limited register value tracing to enable data/stack segment deduction

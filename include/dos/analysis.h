@@ -143,6 +143,7 @@ private:
     void calculateStats(const CodeMap &routineMap);
     void comparisonSummary(const Executable &ref, const CodeMap &routineMap, const bool showMissed);
     void processDataReference(const Executable &exe, const Instruction i, const CpuState &regs);
+    void claimNops(const Instruction &i, const Executable &exe);
 };
 
 #endif // ANALYSIS_H

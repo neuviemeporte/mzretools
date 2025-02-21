@@ -88,7 +88,7 @@ struct Block {
     bool operator==(const Block &arg) const { return begin == arg.begin && end == arg.end; }
     bool operator<(const Block &arg) const { return begin < arg.begin; }
 
-    std::string toString(const bool linear = false, const bool showSize = true) const;
+    std::string toString(const bool linear = false, const bool showSize = true, const bool includeLinear = false) const;
     std::string toHex() const;
     Size size() const { return (isValid() ? (end - begin) + 1 : 0); }
     bool isValid() const { return begin.isValid() && end.isValid() && begin <= end; }
