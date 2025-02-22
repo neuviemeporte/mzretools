@@ -362,12 +362,19 @@ void CodeMap::save(const std::string &path, const Word reloc, const bool overwri
         file << s.toString() << endl;
     }
     file << "#" << endl
-         << "# Discovered routines, one per line, syntax is \"RoutineName: Segment Type(NEAR/FAR) Extents [R/U]Block1 [R/U]Block2...\"" << endl
+         << "# Discovered routines, one per line, syntax is \"RoutineName: Segment Type(NEAR/FAR) Extents [R/U]Block1 [R/U]Block2... [annotations...]\"" << endl
          << "# The routine extents is the largest continuous block of instructions attributed to this routine and originating" << endl 
          << "# at the location determined to be the routine's entrypoint." << endl
          << "# Blocks are offset ranges relative to the segment that the routine belongs to, specifying address as belonging to the routine." << endl 
          << "# Blocks starting with R contain code that was determined reachable, U were unreachable but still likely belong to the routine." << endl
          << "# The routine blocks may cover a greater area than the extents if the routine has disconected chunks it jumps into." << endl
+         << "# Possible annotation types:" << endl
+         << "# ignore - ignore this routine in processing (comparison, signature extraction etc.)" << endl
+         << "# complete - this routine was completely reconstructed into C, only influences stat display when printing map" << endl
+         << "# external - is part of an external library (e.g. libc), ignore in comparison, don't count as uncompleted in stats" << endl
+         << "# detached - routine has no callers, looks useless, don't count as uncompleted in stats" << endl
+         << "# assembly - routine was written in assembly, don't include in comparisons by default" << endl
+         << "# duplicate - routine is a duplicate of another" << endl
          << "#" << endl;
     for (const auto &r : routines) {
         file << routineString(r, reloc) << endl;
