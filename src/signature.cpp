@@ -23,7 +23,7 @@ SignatureLibrary::SignatureLibrary(const CodeMap &map, const Executable &exe, co
         // TODO: try other reachable blocks?
         const Block block = routine.mainBlock();
         // extract string of signatures for reference routine
-        vector<Signature> sig = exe.getSignatures(block);
+        SignatureString sig = exe.getSignatures(block);
         const Size sigSize = sig.size();
         if (sigSize > 0 && sigSize >= minInstructions) {
             verbose("Extracted signature for routine " + routine.name + ", " + to_string(sig.size()) + " instructions");
@@ -31,10 +31,47 @@ SignatureLibrary::SignatureLibrary(const CodeMap &map, const Executable &exe, co
         }
         else debug("Routine too small: " + to_string(sigSize) + " instructions");
     }
+    verbose("Loaded signatures for " + to_string(sigs.size()) + " routines from executable");
 }
 
 SignatureLibrary::SignatureLibrary(const std::string &path) {
-
+    if (path.empty()) throw ArgError("Empty path for loading signature library");
+    ifstream file{path};
+    string line;
+    Size lineno = 0;
+    while (safeGetline(file, line)) {
+        lineno++;
+        // ignore comments and empty lines
+        if (line.empty() || line[0] == '#') continue;
+        string routineName, sigStr;
+        SignatureString tmpSigs;
+        auto prevPos = line.begin(), curPos = line.begin();
+        for (; curPos != line.end(); ++curPos) {
+            switch (*curPos) {
+            case ':':
+                if (!routineName.empty()) throw ParseError("More than one routine name for signature on line " + to_string(lineno));
+                routineName = {prevPos, curPos};
+                debug("Line " + to_string(lineno) + ", found routine name: '" + routineName + "'");
+                prevPos = curPos + 1;
+                break;
+            case ',':
+                sigStr = {prevPos, curPos};
+                debug("Line " + to_string(lineno) + ", found signature token: '" + sigStr + "'");
+                prevPos = curPos + 1;
+                tmpSigs.emplace_back(stoi(sigStr, nullptr, 16));
+                break;
+            }
+        }
+        if (routineName.empty()) throw ParseError("Routine missing on signature file line " + to_string(lineno));
+        if (sigStr.empty()) throw ParseError("Signature string missing on signature file line " + to_string(lineno));
+        // read final token which is not comma-terminated
+        sigStr = {prevPos, curPos};
+        debug("Line " + to_string(lineno) + ", final signature token: '" + sigStr + "'");
+        tmpSigs.emplace_back(stoi(sigStr, nullptr, 16));
+        verbose("Loaded signature for routine " + routineName + ", " + to_string(tmpSigs.size()) + " instructions");
+        sigs.emplace_back(SignatureItem{routineName, std::move(tmpSigs)});
+    }
+    verbose("Loaded signatures for " + to_string(sigs.size()) + " routines from " + path);
 }
 
 void SignatureLibrary::save(const std::string &path) const {

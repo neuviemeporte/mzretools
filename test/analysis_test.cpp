@@ -609,13 +609,22 @@ TEST_F(AnalysisTest, FindDuplicates) {
         ASSERT_FALSE(rm.getRoutine(i).duplicate);
     }
     ASSERT_EQ(rm.routineCount(), expectedRoutines);
-    CodeMap rmdup{rm};
-    ASSERT_EQ(rmdup.routineCount(), rm.routineCount());
-    ASSERT_TRUE(a.findDuplicates(exe, exe, rm, rmdup));
-    rmdup.save("hello.map.dup", loadSegment, true);
+    // generate signatures for discovered routines
+    SignatureLibrary sigs{rm, exe, opt.routineSizeThresh};
+    TRACELN("Extracted signatures: " + to_string(sigs.signatureCount()));
+    // save and load back signatures from file to test serialization
+    sigs.save("hello.sig");
+    SignatureLibrary loadedSigs{"hello.sig"};
+    ASSERT_EQ(loadedSigs.signatureCount(), sigs.signatureCount());
+    for (Size i = 0; i < loadedSigs.signatureCount(); ++i) {
+        ASSERT_EQ(sigs.getSignature(i).size(), loadedSigs.getSignature(i).size());
+    }
+    // find duplicates using extracted signatures
+    ASSERT_TRUE(a.findDuplicates(sigs, exe, rm));
+    rm.save("hello.map.dup", loadSegment, true);
     Size foundDuplicates = 0;
-    for (int i = 0; i < rmdup.routineCount(); ++i) {
-        if (rmdup.getRoutine(i).duplicate) foundDuplicates++;
+    for (int i = 0; i < rm.routineCount(); ++i) {
+        if (rm.getRoutine(i).duplicate) foundDuplicates++;
     }
     TRACELN("Found duplicates: " + to_string(foundDuplicates));
     ASSERT_EQ(foundDuplicates, expectedDuplicates);

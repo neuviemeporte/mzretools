@@ -25,7 +25,9 @@ void usage() {
         << "--verbose       show information about extracted routines" << endl
         << "--debug         show additional debug information" << endl
         << "--overwrite     overwrite output file if exists" << endl
-        << "--min count     ignore routines smaller than 'count' instructions (default: " << to_string(MIN_DEFAULT) << ")";
+        << "--min count     ignore routines smaller than 'count' instructions (default: " << to_string(MIN_DEFAULT) << ")" << endl
+        << "You can prevent specific routines from having their signatures extracted by annotating them with 'ignore' in the map file," << endl
+        << "see the map file format documentation for more information."; 
     output(str.str(), LOG_OTHER, LOG_ERROR);
     exit(1);
 }

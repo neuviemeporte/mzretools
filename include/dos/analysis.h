@@ -14,6 +14,7 @@
 #include "dos/routine.h"
 #include "dos/scanq.h"
 #include "dos/codemap.h"
+#include "dos/signature.h"
 
 class Executable;
 
@@ -85,12 +86,12 @@ public:
     struct Options {
         bool strict, ignoreDiff, noCall, variant, checkAsm;
         Size refSkip, tgtSkip, ctxCount;
-        Size routineSizeThresh; // routine size in instructions
-        Size routineDistanceThresh;
+        Size routineSizeThresh; // minimum routine size (in instructions) threshold
+        Size routineDistanceThresh; // maximum edit distance threshold (as ratio of routine size)
         Address stopAddr;
         std::string mapPath;
         Options() : strict(true), ignoreDiff(false), noCall(false), variant(false), refSkip(0), tgtSkip(0), ctxCount(10), 
-            routineSizeThresh(15), routineDistanceThresh(1) {}
+            routineSizeThresh(15), routineDistanceThresh(10) {}
     };
 private:
     enum ComparisonResult { 
@@ -123,7 +124,7 @@ public:
     Analyzer(const Options &options, const Size maxData = 0) : options(options), offMap(maxData), comparedSize(0) {}
     CodeMap exploreCode(Executable &exe);
     bool compareCode(const Executable &ref, Executable &tgt, const CodeMap &refMap);
-    bool findDuplicates(const Executable &ref, Executable &tgt, const CodeMap &refMap, CodeMap &tgtMap);
+    bool findDuplicates(const SignatureLibrary signatures, Executable &tgt, CodeMap &tgtMap);
     void findDataRefs(const Executable &exe, const CodeMap &map);
     void seedQueue(const CodeMap &map, Executable &exe);
 
