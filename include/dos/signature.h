@@ -20,7 +20,7 @@ struct SignatureItem {
 class SignatureLibrary {
     std::vector<SignatureItem> sigs;
 public:
-    SignatureLibrary(const CodeMap &map, const Executable &exe, const Size minInstructions);
+    SignatureLibrary(const CodeMap &map, const Executable &exe, const Size minInstructions, const Size maxInstructions = 0);
     SignatureLibrary(const std::string &path);
     bool empty() const { return sigs.empty(); }
     Size signatureCount() const { return sigs.size(); }

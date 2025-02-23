@@ -17,7 +17,7 @@ using namespace std;
 
 OUTPUT_CONF(LOG_ANALYSIS)
 
-SignatureLibrary::SignatureLibrary(const CodeMap &map, const Executable &exe, const Size minInstructions) {
+SignatureLibrary::SignatureLibrary(const CodeMap &map, const Executable &exe, const Size minInstructions, const Size maxInstructions) {
     for (Size idx = 0; idx < map.routineCount(); ++idx) {
         const Routine routine = map.getRoutine(idx);
         // TODO: external also, maybe enable with switch
@@ -31,11 +31,13 @@ SignatureLibrary::SignatureLibrary(const CodeMap &map, const Executable &exe, co
         // extract string of signatures for reference routine
         SignatureString sig = exe.getSignatures(block);
         const Size sigSize = sig.size();
-        if (sigSize > 0 && sigSize >= minInstructions) {
+        if (sigSize == 0) debug("Empty signature, ignoring");
+        else if (sigSize < minInstructions) debug("Routine too small: " + to_string(sigSize) + " instructions");
+        else if (maxInstructions != 0 && sigSize > maxInstructions) debug("Routine too big: " + to_string(sigSize) + " instructions");
+        else {
             verbose("Extracted signature for routine " + routine.name + ", " + to_string(sig.size()) + " instructions");
             sigs.emplace_back(SignatureItem{routine.name, std::move(sig)});
         }
-        else debug("Routine too small: " + to_string(sigSize) + " instructions");
     }
     verbose("Loaded signatures for " + to_string(sigs.size()) + " routines from executable");
 }

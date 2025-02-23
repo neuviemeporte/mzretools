@@ -13,7 +13,9 @@ using namespace std;
 
 OUTPUT_CONF(LOG_SYSTEM)
 
-const Size MIN_DEFAULT = 10;
+const Size 
+    MIN_DEFAULT = 10,
+    MAX_DEFAULT = 0;
 
 void usage() {
     ostringstream str;
@@ -26,6 +28,7 @@ void usage() {
         << "--debug         show additional debug information" << endl
         << "--overwrite     overwrite output file if exists" << endl
         << "--min count     ignore routines smaller than 'count' instructions (default: " << to_string(MIN_DEFAULT) << ")" << endl
+        << "--max count     ignore routines larger than 'count' instructions (0: no limit, default: " << to_string(MAX_DEFAULT) << ")" << endl
         << "You can prevent specific routines from having their signatures extracted by annotating them with 'ignore' in the map file," << endl
         << "see the map file format documentation for more information."; 
     output(str.str(), LOG_OTHER, LOG_ERROR);
@@ -46,7 +49,7 @@ int main(int argc, char *argv[]) {
     string exePath, mapPath, outPath;
     bool overwrite = false;
     Word loadSegment = 0;
-    Size minInstructions = MIN_DEFAULT;
+    Size minInstructions = MIN_DEFAULT, maxInstructions = MAX_DEFAULT;
     for (int aidx = 1; aidx < argc; ++aidx) {
         string arg(argv[aidx]);
         if (arg == "--verbose") setOutputLevel(LOG_VERBOSE);
@@ -55,6 +58,10 @@ int main(int argc, char *argv[]) {
         else if (arg == "--min" && ++aidx < argc) {
             string countStr{argv[aidx]};
             minInstructions = stoi(countStr, nullptr, 10);
+        }
+        else if (arg == "--max" && ++aidx < argc) {
+            string countStr{argv[aidx]};
+            maxInstructions = stoi(countStr, nullptr, 10);
         }
         else if (exePath.empty()) exePath = arg;
         else if (mapPath.empty()) mapPath = arg;
@@ -72,7 +79,7 @@ int main(int argc, char *argv[]) {
         info("Loaded map file " + mapPath + ": " + to_string(map.segmentCount()) + " segments, " + to_string(map.routineCount()) + " routines, " + to_string(map.variableCount()) + " variables");
         MzImage mz{exePath, loadSegment};
         Executable exe{mz};
-        SignatureLibrary sig{map, exe, minInstructions};
+        SignatureLibrary sig{map, exe, minInstructions, maxInstructions};
         info("Extracted signatures from " + to_string(sig.signatureCount()) + " routines, saving to " + outPath);
         sig.save(outPath);
     }
