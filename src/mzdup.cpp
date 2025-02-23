@@ -20,7 +20,7 @@ void usage() {
         << "--verbose:       show more detailed information about processed routines" << endl
         << "--debug:         show additional debug information" << endl
         << "--minsize count: don't search for duplicates of routines smaller than 'count' instructions (default: " << options.routineSizeThresh << ")" << endl
-        << "--maxdist count: routines differing by no more than 'count' instructions will be reported as duplicates (default: " << options.routineDistanceThresh << ")";
+        << "--maxdist ratio: how many instructions relative to its size can a routine differ by to still be reported as a duplicate (default: " << options.routineDistanceThresh << "%)";
     output(str.str(), LOG_OTHER, LOG_ERROR);
     exit(1);
 }

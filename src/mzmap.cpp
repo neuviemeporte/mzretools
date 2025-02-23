@@ -32,7 +32,7 @@ void usage() {
            "--nocpu:        omit CPU-related information like instruction decoding from debug output\n"
            "--noanal:       omit analysis-related information from debug output\n"
            "--linkmap file  use a linker map from Microsoft C to seed initial location of routines\n"
-           "--load segment: overrride default load segment (0x0)", LOG_OTHER, LOG_ERROR);
+           "--load segment: override default load segment (0x0)", LOG_OTHER, LOG_ERROR);
     exit(1);
 }
 

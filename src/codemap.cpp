@@ -115,6 +115,12 @@ CodeMap::CodeMap(const std::string &path, const Word loadSegment, const Type typ
     order();
 }
 
+Size CodeMap::routinesSize() const {
+    Size ret = 0;
+    for (const auto &r : routines) ret += r.size();
+    return ret;
+}
+
 Routine CodeMap::getRoutine(const Address &addr) const {
     for (const Routine &r : routines) {
         if (r.extents.contains(addr)) return r;

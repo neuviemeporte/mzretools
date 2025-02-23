@@ -1381,26 +1381,31 @@ struct Duplicate {
 bool Analyzer::findDuplicates(const SignatureLibrary signatures, Executable &tgt, CodeMap &tgtMap) {
     if (signatures.empty()) throw ArgError("Empty signature library provided for duplicate search");
     if (tgtMap.empty()) throw ArgError("Empty routine map provided for duplicate search");
-    info("Searching for duplicates of " + to_string(signatures.signatureCount()) + " routines among " + to_string(tgtMap.routineCount()) + " candidates, minimum instructions: " + to_string(options.routineSizeThresh) + ", maximum distance: " + to_string(options.routineDistanceThresh));
+    info("Searching for duplicates of " + to_string(signatures.signatureCount()) + " signatures among " + to_string(tgtMap.routineCount()) + " candidates, minimum instructions: " + to_string(options.routineSizeThresh) + ", maximum distance ratio: " + to_string(options.routineDistanceThresh) + "%");
     // store relationship between reference routines and their duplicates
     map<RoutineIdx, Duplicate> duplicates;
-    Size ignoreCount = 0;
+    Size ignoreCount = 0, ignoreTotalInstr = 0, missCount = 0, sigTotalInstr = 0, tgtTotalInstr = 0, missTotalInstr = 0;
     bool collision = false;
     // iterate over routines to find duplicates for
     for (Size sigIdx = 0; sigIdx < signatures.signatureCount(); ++sigIdx) {
         const SignatureItem &sig = signatures.getSignature(sigIdx);
         debug("Processing signature for routine: " + sig.routineName);
         const Size sigSize = sig.size();
+        sigTotalInstr += sigSize;
         if (sigSize < options.routineSizeThresh) {
-            debug("Ignoring routine " + sig.routineName + ", instruction count below threshold: " + to_string(sigSize));
+            verbose("Ignoring signature " + sig.routineName + ", instruction count below threshold: " + to_string(sigSize));
             ignoreCount++;
+            ignoreTotalInstr += sigSize;
             continue;
         }
+        // calculate max edit distance threshold to use as ratio of the signature size, so that larger routines can have more differing instructions
+        const Size distanceThresh = (sigSize * options.routineDistanceThresh) / 100;
         // seed lowest distance found
         duplicates[sigIdx] = Duplicate{MAX_DISTANCE};
-        debug("Searching for duplicates of routine " + sig.routineName + ", got string of " + to_string(sigSize) + " instructions");
-        // iterate over duplicate candidates from the other executable
+        debug("Searching for duplicates of routine " + sig.routineName + ", got string of " + to_string(sigSize) + " instructions, thresh = " + to_string(distanceThresh));
+        // iterate over signatures in library
         bool have_dup = false;
+        Size tgtTotalTemp = 0;
         for (Size tgtIdx = 0; tgtIdx < tgtMap.routineCount(); ++tgtIdx) {
             Routine tgtRoutine = tgtMap.getRoutine(tgtIdx);
             // TODO: try other reachable blocks?
@@ -1408,15 +1413,16 @@ bool Analyzer::findDuplicates(const SignatureLibrary signatures, Executable &tgt
             // extract string of signatures for target routine
             vector<Signature> tgtSigs = tgt.getSignatures(tgtBlock);
             const auto tgtSigSize = tgtSigs.size();
+            if (tgtTotalInstr == 0) tgtTotalTemp += tgtSigSize;
             const Size sigDelta = sigSize > tgtSigSize ? sigSize - tgtSigSize : tgtSigSize - sigSize;
             // ignore candidate if we know in advance the distance will be too high based on instruction count alone
-            if (sigDelta > options.routineDistanceThresh) {
+            if (sigDelta > distanceThresh) {
                 debug("\tIgnoring target routine " + tgtRoutine.name + " (" + to_string(tgtSigSize) + " instructions), instruction count difference exceeds distance threshold: " + to_string(sigDelta));
                 continue;
             }
             // calculate edit distance between reference and target signature strings
-            const auto distance = edit_distance_dp_thr(sig.signature.data(), sigSize, tgtSigs.data(), tgtSigSize, options.routineDistanceThresh);
-            if (distance > options.routineDistanceThresh) {
+            const auto distance = edit_distance_dp_thr(sig.signature.data(), sigSize, tgtSigs.data(), tgtSigSize, distanceThresh);
+            if (distance > distanceThresh) {
                 debug("\tIgnoring target routine " + tgtRoutine.name + " (" + to_string(tgtSigSize) + " instructions), distance above threshold");
                 continue;
             }
@@ -1431,6 +1437,7 @@ bool Analyzer::findDuplicates(const SignatureLibrary signatures, Executable &tgt
             }
             else debug("\tIgnoring target routine " + tgtRoutine.name + " (" + to_string(tgtSigSize) + " instructions), distance above previous value of " + to_string(d.distance));
         } // iterate over target routines
+        if (tgtTotalInstr == 0) tgtTotalInstr = tgtTotalTemp;
         // found an eligible duplicate after going through all target routines
         if (have_dup) {
             Duplicate &curDup = duplicates[sigIdx];
@@ -1453,24 +1460,27 @@ bool Analyzer::findDuplicates(const SignatureLibrary signatures, Executable &tgt
                 }
                 // current duplicate worse than other, clear current
                 else if (curDup.distance > otherDup.distance) {
-                    warn("Ignoring " + dupRoutine.toString() + " as duplicate of " + sig.routineName + ", previously better matched to " + otherSig.routineName
+                    warn("Ignoring " + dupRoutine.toString() + " as duplicate of " + sig.routineName + " with distance " + to_string(curDup.distance) + ", previously better matched by " + otherSig.routineName
                         + " with distance " + to_string(otherDup.distance), OUT_YELLOW);
                     clearIdx = sigIdx;
                     curDup = {};
                 }
                 // current duplicate as good as other, keep both for now
                 else {
-                    warn("Routine " + dupRoutine.toString() + " is a duplicate of " + signatures.getSignature(otherSigIdx).routineName + " with equal distance", OUT_BRIGHTRED);
+                    warn("Routine " + dupRoutine.toString() + " is a duplicate of " + sig.routineName + " and " + otherSig.routineName + " with equal distance", OUT_BRIGHTRED);
                     continue;
                 }
             }
         }
-        else 
-            debug("\tUnable to find duplicate of " + sig.routineName);
+        else {
+            verbose("Unable to find duplicate of " + sig.routineName + ", " + to_string(sigSize) + " instructions, max distance " + to_string(distanceThresh));
+            missCount++;
+            missTotalInstr += sigSize;
+        }
     } // iterate over reference routines
 
     // final run through the duplicates to patch the output map
-    Size dupCount = 0;
+    Size dupCount = 0, dupTotalInstr = 0;
     std::set<Size> dupIdxs;
     for (const auto& [sigIdx, dup] : duplicates) {
         if (!dup.isValid()) continue;
@@ -1482,13 +1492,19 @@ bool Analyzer::findDuplicates(const SignatureLibrary signatures, Executable &tgt
         dupRoutine.addComment("Routine " + dupRoutine.name + " is a potential duplicate of routine " + origSig.routineName + ", block " + dup.dupBlocks.front().toString() + " differs by " + to_string(dup.distance) + " instructions");
         dupRoutine.duplicate = true;
         dupCount++;
+        // sum up total number of instructions in detected duplicate routines
+        dupTotalInstr += dup.tgtSize;
     }
-    Size uniqueDups = dupIdxs.size();
+    const Size uniqueDups = dupIdxs.size();
 
-    if (dupCount) 
-        info("Found duplicates for " + to_string(dupCount) + " (unique " + to_string(uniqueDups) + ") routines out of " + to_string(signatures.signatureCount()) + " signatures, ignored " + to_string(ignoreCount), OUT_GREEN);
-    else 
-        info("No duplicates found, ignored " + to_string(ignoreCount) + " routines", OUT_RED);
+    if (dupCount) {
+        const Size dupPercent = (dupTotalInstr * 100) / tgtTotalInstr;
+        info("Processed " + to_string(signatures.signatureCount()) + " signatures, ignored " + to_string(ignoreCount) + " as too short\n" +
+             "Tried to find matches for " + to_string(tgtMap.routineCount()) + " target exe routines (" + to_string(tgtTotalInstr) + " instructions, 100%)\n" +
+             "Found " + to_string(dupCount) + " (unique: " + to_string(uniqueDups) + ") matching routines (" + to_string(dupTotalInstr) + " instructions, " + to_string(dupPercent) + "%)\n" +
+             "Unable to find " + to_string(tgtMap.routineCount() - dupCount) + " matching routines (" + to_string(100 - dupPercent) + "%)", OUT_GREEN);
+    }
+    else info("No duplicates found, ignored " + to_string(ignoreCount) + " routines", OUT_RED);
 
     if (collision) {
         assert(uniqueDups < dupCount);

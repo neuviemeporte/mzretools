@@ -60,6 +60,7 @@ public:
     Size routineCount() const { return routines.size(); }
     Size variableCount() const { return vars.size(); }
     Size segmentCount() const { return segments.size(); }
+    Size routinesSize() const;
 
     // TODO: routine.id start at 1, this is zero based, so id != idx, confusing
     Routine getRoutine(const Size idx) const { return routines.at(idx); }

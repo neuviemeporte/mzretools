@@ -9,13 +9,19 @@
 
 using namespace std;
 
+#ifdef DEBUG
+#define PARSE_DEBUG(msg) debug(msg)
+#else
+#define PARSE_DEBUG(msg)
+#endif
+
 OUTPUT_CONF(LOG_ANALYSIS)
 
 SignatureLibrary::SignatureLibrary(const CodeMap &map, const Executable &exe, const Size minInstructions) {
     for (Size idx = 0; idx < map.routineCount(); ++idx) {
         const Routine routine = map.getRoutine(idx);
         // TODO: external also, maybe enable with switch
-        if (routine.ignore) {
+        if (routine.ignore || routine.external) {
             debug("Ignoring routine: " + routine.dump(false));
             continue;
         }
@@ -51,12 +57,12 @@ SignatureLibrary::SignatureLibrary(const std::string &path) {
             case ':':
                 if (!routineName.empty()) throw ParseError("More than one routine name for signature on line " + to_string(lineno));
                 routineName = {prevPos, curPos};
-                debug("Line " + to_string(lineno) + ", found routine name: '" + routineName + "'");
+                PARSE_DEBUG("Line " + to_string(lineno) + ", found routine name: '" + routineName + "'");
                 prevPos = curPos + 1;
                 break;
             case ',':
                 sigStr = {prevPos, curPos};
-                debug("Line " + to_string(lineno) + ", found signature token: '" + sigStr + "'");
+                PARSE_DEBUG("Line " + to_string(lineno) + ", found signature token: '" + sigStr + "'");
                 prevPos = curPos + 1;
                 tmpSigs.emplace_back(stoi(sigStr, nullptr, 16));
                 break;
@@ -66,7 +72,7 @@ SignatureLibrary::SignatureLibrary(const std::string &path) {
         if (sigStr.empty()) throw ParseError("Signature string missing on signature file line " + to_string(lineno));
         // read final token which is not comma-terminated
         sigStr = {prevPos, curPos};
-        debug("Line " + to_string(lineno) + ", final signature token: '" + sigStr + "'");
+        PARSE_DEBUG("Line " + to_string(lineno) + ", final signature token: '" + sigStr + "'");
         tmpSigs.emplace_back(stoi(sigStr, nullptr, 16));
         verbose("Loaded signature for routine " + routineName + ", " + to_string(tmpSigs.size()) + " instructions");
         sigs.emplace_back(SignatureItem{routineName, std::move(tmpSigs)});
