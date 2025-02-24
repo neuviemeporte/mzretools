@@ -1,3 +1,6 @@
+- implement segment deduction from es, les, lds
+- implement memory writes in mzmap, rollback at function return? 
+- don't ignore address space when no segment, continue with no block until one is reached
 - examine remaining unreachable blocks in f14 routines
 - load exes at 0x1000, rebase addresses for display, ignore segments before address space
 - use relative threshold (e.g. 10%) in mzdup instead of same instructon count for all-size routines

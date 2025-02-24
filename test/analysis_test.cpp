@@ -211,7 +211,7 @@ TEST_F(AnalysisTest, CodeMapFromLinkMap) {
 
 TEST_F(AnalysisTest, BigCodeMap) {
     CodeMap rm{"../bin/egame.map", 0x1000};
-    ASSERT_EQ(rm.routineCount(), 398);
+    ASSERT_EQ(rm.routineCount(), 400);
 }
 
 TEST_F(AnalysisTest, FindRoutines) {

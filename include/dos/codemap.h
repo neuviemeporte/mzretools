@@ -85,7 +85,7 @@ public:
     Size segmentCount(const Segment::Type type) const;
     Segment findSegment(const Word addr) const;
     Segment findSegment(const std::string &name) const;
-    Segment findSegment(const Offset off) const;
+    Segment findSegment(const Offset off, const bool past = false) const;
     void setSegments(const std::vector<Segment> &seg);
     
 private:
