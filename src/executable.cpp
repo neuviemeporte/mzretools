@@ -130,7 +130,7 @@ vector<Signature> Executable::getSignatures(const Block &range) const {
     if (!range.singleSegment()) throw LogicError("Block boundaries reside in different segments for signature extraction");
     vector<Signature> ret;
     Instruction i;
-    for (Address a = range.begin; a < range.end; a += i.length) {
+    for (Address a = range.begin; a <= range.end; a += i.length) {
         i = Instruction{a, code.pointer(a)};
         ret.push_back(i.signature());
     }

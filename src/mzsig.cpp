@@ -20,9 +20,12 @@ const Size
 void usage() {
     ostringstream str;
     str << "mzsig v" << VERSION << endl
-        << "Usage: mzsig [options] exe_file map_file output_file" << endl
-        << "Extracts routines from exe_file at locations specified by map_file and saves their signatures to output_file" << endl
-        << "This is useful for finding routine duplicates from exe_file in other executables using mzdup" << endl
+        << "Usage: " << endl
+        << "mzsig [options] exe_file map_file output_file" << endl
+        << "    Extracts routines from exe_file at locations specified by map_file and saves their signatures to output_file" << endl
+        << "    This is useful for finding routine duplicates from exe_file in other executables using mzdup" << endl
+        << "mzsig [options] signature_file" << endl
+        << "    Displays the contents of the signature file" << endl
         << "Options:" << endl
         << "--verbose       show information about extracted routines" << endl
         << "--debug         show additional debug information" << endl
@@ -43,10 +46,10 @@ void fatal(const string &msg) {
 int main(int argc, char *argv[]) {
     setOutputLevel(LOG_INFO);
     setModuleVisibility(LOG_CPU, false);
-    if (argc < 4) {
+    if (argc < 2) {
         usage();
     }
-    string exePath, mapPath, outPath;
+    string path1, path2, path3;
     bool overwrite = false;
     Word loadSegment = 0;
     Size minInstructions = MIN_DEFAULT, maxInstructions = MAX_DEFAULT;
@@ -63,18 +66,25 @@ int main(int argc, char *argv[]) {
             string countStr{argv[aidx]};
             maxInstructions = stoi(countStr, nullptr, 10);
         }
-        else if (exePath.empty()) exePath = arg;
-        else if (mapPath.empty()) mapPath = arg;
-        else if (outPath.empty()) outPath = arg;
+        else if (path1.empty()) path1 = arg;
+        else if (path2.empty()) path2 = arg;
+        else if (path3.empty()) path3 = arg;
         else fatal("Unrecognized argument: "s + arg);
     }
-    if (exePath.empty()) fatal("Executable file path not provided");
-    if (mapPath.empty()) fatal("Map file path not provided");
-    if (outPath.empty()) fatal("Output file path not provided");
-    if (!checkFile(exePath).exists) fatal("Executable file does not exist: " + exePath);
-    if (!checkFile(mapPath).exists) fatal("Map file does not exist: " + mapPath);
-    if (!overwrite && checkFile(outPath).exists) fatal("Output file already exists: " + outPath);
     try {
+        if (path2.empty()) {
+            SignatureLibrary sig{path1};
+            info("Loaded signatures from " + path1 + ", " + to_string(sig.signatureCount()) + " routines");
+            sig.dump();
+            return 0;
+        }
+        const string exePath = path1, mapPath = path2, outPath = path3;
+        if (exePath.empty()) fatal("No executable/signature file path not provided");
+        if (mapPath.empty()) fatal("Map file path not provided");
+        if (outPath.empty()) fatal("Output file path not provided");
+        if (!checkFile(exePath).exists) fatal("Executable file does not exist: " + exePath);
+        if (!checkFile(mapPath).exists) fatal("Map file does not exist: " + mapPath);
+        if (!overwrite && checkFile(outPath).exists) fatal("Output file already exists: " + outPath);
         CodeMap map{mapPath, loadSegment, CodeMap::MAP_MZRE};
         info("Loaded map file " + mapPath + ": " + to_string(map.segmentCount()) + " segments, " + to_string(map.routineCount()) + " routines, " + to_string(map.variableCount()) + " variables");
         MzImage mz{exePath, loadSegment};

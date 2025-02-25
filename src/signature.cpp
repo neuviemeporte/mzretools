@@ -1,10 +1,12 @@
 #include "dos/signature.h"
 #include "dos/executable.h"
+#include "dos/instruction.h"
 #include "dos/codemap.h"
 #include "dos/output.h"
 #include "dos/util.h"
 #include "dos/error.h"
 
+#include <iostream>
 #include <fstream>
 
 using namespace std;
@@ -96,5 +98,44 @@ void SignatureLibrary::save(const std::string &path) const {
             file << hexVal(si.signature[j], false, false);
         }
         file << endl;
+    }
+}
+
+void SignatureLibrary::dump() const {
+    const auto dumpOp = [](const OperandType ot, const InstructionPrefix p) {
+        if (operandIsMem(ot)) {
+            if (prefixIsSegment(p)) cout << prefixName(p);
+            cout << "[" << operandName(ot);
+            if (operandIsMemWithOffset(ot)) {
+                if (!operandIsMemImmediate(ot)) cout << "+";
+                if (operandIsMemWithByteOffset(ot)) cout << "off8";
+                else if (operandIsMemWithWordOffset(ot)) cout << "off16";
+            }
+            cout << "]";
+        }
+        else cout << operandName(ot);
+    };
+    for (Size i = 0; i < signatureCount(); ++i) {
+        const SignatureItem &si = getSignature(i);  
+        cout << si.routineName << ": " << si.size() << " instructions" << endl;
+        for (const Signature s : si.signature) {
+            const InstructionPrefix p = static_cast<InstructionPrefix>((s >> 19) & 0b111);
+            const InstructionClass c = static_cast<InstructionClass>((s >> 12) & 0b1111111);
+            const OperandType
+                op1 = static_cast<OperandType>((s >> 6) & 0b111111),
+                op2 = static_cast<OperandType>(s & 0b111111);
+            cout << "\t";
+            if (prefixIsChain(p)) cout << prefixName(p) << " ";
+            cout << instructionName(c);
+            if (op1 > OPR_NONE) {
+                cout << " ";
+                dumpOp(op1, p);
+            }
+            if (op2 > OPR_NONE) {
+                cout << ", ";
+                dumpOp(op2, p);
+            }
+            cout << endl;
+        }
     }
 }

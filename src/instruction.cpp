@@ -165,6 +165,44 @@ static const OperandSize MODRM_OPR_SIZE[] = {
     OPRSZ_BYTE,  // MODRM_CL
 };
 
+static const char* INS_NAME[] = {
+    "???", "add", "push", "pop", "or", "adc", "sbb", "and", "daa", "sub", "das", "xor", "aaa", "cmp", "aas", "inc", "dec", "jmp", "jmp if", "jmp far", "test", "xchg", "mov", "lea", "nop", "cbw", "cwd",
+    "call", "call far", "wait", "pushf", "popf", "sahf", "lahf", "movsb", "movsw", "cmpsb", "cmpsw", "stosb", "stosw", "lodsb", "lodsw", "scasb", "scasw", "ret", "les", "lds", "retf", "int",
+    "int3", "into", "iret", "aam", "aad", "xlat", "loopnz", "loopz", "loop", "in", "out", "lock", "repnz", "repz", "hlt", "cmc", "clc", "stc", "cli", "sti", "cld", "std",
+    "rol", "ror", "rcl", "rcr", "shl", "shr", "sar", "not", "neg", "mul", "imul", "div", "idiv"
+};
+static_assert(ARRAY_SIZE(INS_NAME) == ARRAY_SIZE(INS_CLASS_ID));
+
+static const char* JMP_NAME[] = {
+    "jo", "jno", "jb", "jnb", "jz", "jnz", "jbe", "ja", "js", "jns", "jpe", "jpo", "jl", "jge", "jle", "jg", "jcxz"
+};
+static constexpr Size JMP_NAME_COUNT = sizeof(JMP_NAME) / sizeof(JMP_NAME[0]);
+
+static const char* OPR_NAME[] = {
+    "???", "X", 
+    "ax", "al", "ah", "bx", "bl", "bh", "cx", "cl", "ch", "dx", "dl", "dh", "si", "di", "bp", "sp", "cs", "ds", "es", "ss",
+    "bx+si", "bx+di", "bp+si", "bp+di", "si", "di", "bx", 
+    "", "bx+si", "bx+di", "bp+si", "bp+di", "si", "di", "bp", "bx",
+    "", "bx+si", "bx+di", "bp+si", "bp+di", "si", "di", "bp", "bx",
+    "0", "1", "i8", "i16", "i32",
+};
+
+static const char* PRF_NAME[] = {
+    "???", "es:", "cs:", "ss:", "ds:", "repnz", "repz"
+};
+
+const char* instructionName(const InstructionClass c) {
+    return INS_NAME[c];
+}
+
+const char* prefixName(const InstructionPrefix p) {
+    return PRF_NAME[p];
+}
+
+const char* operandName(const OperandType t) {
+    return OPR_NAME[t];
+}
+
 // convert an operand type with a memory offset or an immediate value to a word-sized equivalent, 
 // useful in fuzzy comparisons
 OperandType operandTypeToWord(const OperandType ot) {
@@ -486,32 +524,6 @@ Register Instruction::memSegmentId() const {
     return defaultMemSegment(op->type);
 }
 
-static const char* INS_NAME[] = {
-    "???", "add", "push", "pop", "or", "adc", "sbb", "and", "daa", "sub", "das", "xor", "aaa", "cmp", "aas", "inc", "dec", "jmp", "???", "jmp far", "test", "xchg", "mov", "lea", "nop", "cbw", "cwd",
-    "call", "call far", "wait", "pushf", "popf", "sahf", "lahf", "movsb", "movsw", "cmpsb", "cmpsw", "stosb", "stosw", "lodsb", "lodsw", "scasb", "scasw", "ret", "les", "lds", "retf", "int",
-    "int3", "into", "iret", "aam", "aad", "xlat", "loopnz", "loopz", "loop", "in", "out", "lock", "repnz", "repz", "hlt", "cmc", "clc", "stc", "cli", "sti", "cld", "std",
-    "rol", "ror", "rcl", "rcr", "shl", "shr", "sar", "not", "neg", "mul", "imul", "div", "idiv"
-};
-static_assert(ARRAY_SIZE(INS_NAME) == ARRAY_SIZE(INS_CLASS_ID));
-
-static const char* JMP_NAME[] = {
-    "jo", "jno", "jb", "jnb", "jz", "jnz", "jbe", "ja", "js", "jns", "jpe", "jpo", "jl", "jge", "jle", "jg", "jcxz"
-};
-static constexpr Size JMP_NAME_COUNT = sizeof(JMP_NAME) / sizeof(JMP_NAME[0]);
-
-static const char* OPR_NAME[] = {
-    "???", "X", 
-    "ax", "al", "ah", "bx", "bl", "bh", "cx", "cl", "ch", "dx", "dl", "dh", "si", "di", "bp", "sp", "cs", "ds", "es", "ss",
-    "bx+si", "bx+di", "bp+si", "bp+di", "si", "di", "bx", 
-    "", "bx+si", "bx+di", "bp+si", "bp+di", "si", "di", "bp", "bx",
-    "", "bx+si", "bx+di", "bp+si", "bp+di", "si", "di", "bp", "bx",
-    "0", "1", "i8", "i16", "i32",
-};
-
-static const char* PRF_NAME[] = {
-    "???", "es:", "cs:", "ss:", "ds:", "repnz", "repz"
-};
-
 std::string Instruction::Operand::toString() const {
     ostringstream str;
     if (operandIsReg(type))
@@ -658,8 +670,6 @@ ByteString Instruction::pattern() const {
 Signature Instruction::signature() const {
     Signature ret = 0;
     // fuse the instruction subtypes into a singular 32bit value that will serve as the instruction's signature:
-    // |reserved|prefix|class|op1type|op1size|op2type|op2size|
-    //  4b       3b     7b    6b      3b      6b      3b
     // |reserved|prefix|class|op1type|op2type|
     //  10b      3b     7b    6b      6b    
     const int reserved = 10;
@@ -672,6 +682,7 @@ Signature Instruction::signature() const {
     ret |= val;
     // ambiguate away embedded immediate size differences by converting a byte type to an equivalent word type
     // TODO: create specialized enum for signatures, this could fit in 16bits?
+    // TODO: also, no need to store off8/off16 for the operand type
     auto optype = operandTypeToWord(op1.type);
     if (optype > 0b111111) throw RangeError("Instruction operand 1 type out of range: " + hexVal((Word)optype));
     val = static_cast<DWord>(optype) << (shift -= 6);

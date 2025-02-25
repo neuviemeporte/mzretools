@@ -596,7 +596,7 @@ TEST_F(AnalysisTest, DiffImmLow) {
 
 TEST_F(AnalysisTest, FindDuplicates) {
     const Word loadSegment = 0x1234;
-    const Size expectedRoutines = 40, expectedDuplicates = 27;
+    const Size expectedRoutines = 40, expectedDuplicates = 28;
     MzImage mz{"../bin/hello.exe", loadSegment};
     Executable exe{mz};
     Analyzer::Options opt;

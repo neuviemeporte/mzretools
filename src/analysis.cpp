@@ -224,6 +224,7 @@ void VariantMap::loadFromStream(std::istream &str) {
 
 static void applyMov(const Instruction &i, CpuState &regs, Executable &exe) {
     // we only care about mov-s into registers
+    // TODO: support mov mem, reg? would need to keep stack of memories per queue item... maybe just a delta list to keep storage down?    
     if (i.iclass != INS_MOV || !operandIsReg(i.op1.type)) return;
 
     const Register dest = i.op1.regId();
@@ -274,12 +275,20 @@ static void applyMov(const Instruction &i, CpuState &regs, Executable &exe) {
         }
         else searchMessage(i.addr, "mov source address outside code extents: "s + srcAddr.toString());
     }
-    // TODO: support mov mem, reg? would need to keep stack of memories per queue item... maybe just a delta list to keep storage down?
-    // create data/stack segments from mov ds/mov ss stores
+    // create data/stack segments from mov ds/es/ss stores
     if (set) {
         searchMessage(i.addr, "executed move to register: "s + i.toString());
-        if (i.op1.type == OPR_REG_DS) exe.storeSegment({"", Segment::SEG_DATA, regs.getValue(REG_DS)});
-        else if (i.op1.type == OPR_REG_SS) exe.storeSegment({"", Segment::SEG_STACK, regs.getValue(REG_SS)});
+        switch (i.op1.type) {
+        case OPR_REG_DS: 
+            exe.storeSegment({"", Segment::SEG_DATA, regs.getValue(REG_DS)});
+            break;
+        case OPR_REG_ES: 
+            exe.storeSegment({"", Segment::SEG_DATA, regs.getValue(REG_ES)});
+            break;
+        case OPR_REG_SS:
+            exe.storeSegment({"", Segment::SEG_STACK, regs.getValue(REG_SS)});
+            break;
+        }
     }
     DUMP_REGS(regs);
 }
@@ -317,8 +326,15 @@ static void applyPop(const Instruction &i, CpuState &regs, Executable &exe) {
     if (reg != REG_NONE) {
         regs.setValue(reg, popVal);
         DUMP_REGS(regs);
-        if (reg == REG_DS) exe.storeSegment({"", Segment::SEG_DATA, popVal});
-        else if (reg == REG_SS) exe.storeSegment({"", Segment::SEG_STACK, popVal});
+        switch (reg) {
+        case REG_DS: 
+        case REG_ES: 
+            exe.storeSegment({"", Segment::SEG_DATA, popVal});
+            break;
+        case REG_SS: 
+            exe.storeSegment({"", Segment::SEG_STACK, popVal});
+            break;
+        }
     }
 }
 

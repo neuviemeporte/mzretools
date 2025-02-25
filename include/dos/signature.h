@@ -26,6 +26,7 @@ public:
     Size signatureCount() const { return sigs.size(); }
     const SignatureItem& getSignature(const Size idx) const { return sigs[idx]; }
     void save(const std::string &path) const;
+    void dump() const;
 };
 
 #endif // SIGNATURE_H
