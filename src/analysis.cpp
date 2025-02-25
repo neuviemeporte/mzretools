@@ -403,10 +403,16 @@ void Analyzer::claimNops(const Instruction &i, const Executable &exe) {
     Address 
         curAddr = i.addr,
         nextAddr{curAddr + static_cast<SByte>(i.length)};
-    while (nextAddr > curAddr && exe.extents().contains(nextAddr) && Instruction{nextAddr, exe.codePointer(nextAddr)}.iclass == INS_NOP) {
-        scanQueue.setRoutineIdx(nextAddr.toLinear(), 1);
-        curAddr = nextAddr;
-        nextAddr++;
+    try {
+        while (nextAddr > curAddr && exe.extents().contains(nextAddr) && Instruction{nextAddr, exe.codePointer(nextAddr)}.iclass == INS_NOP) {
+            scanQueue.setRoutineIdx(nextAddr.toLinear(), 1);
+            curAddr = nextAddr;
+            nextAddr++;
+        }
+    }
+    catch (CpuError &e) {
+        // encountered invalid instruction while trying to peek ahead, silently ignore
+        return;
     }
 }
 

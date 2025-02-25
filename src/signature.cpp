@@ -30,6 +30,10 @@ SignatureLibrary::SignatureLibrary(const CodeMap &map, const Executable &exe, co
         debug("Processing routine: " + routine.dump(false));
         // TODO: try other reachable blocks?
         const Block block = routine.mainBlock();
+        if (!block.isValid()) {
+            verbose("Routine has no valid block: " + routine.toString());
+            continue;
+        }
         // extract string of signatures for reference routine
         SignatureString sig = exe.getSignatures(block);
         const Size sigSize = sig.size();

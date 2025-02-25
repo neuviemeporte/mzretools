@@ -127,6 +127,7 @@ Address Executable::find(const ByteString &pattern, Block where) const {
 }
 
 vector<Signature> Executable::getSignatures(const Block &range) const {
+    if (!range.isValid()) throw ArgError("Invalid block provided for signature extraction");
     if (!range.singleSegment()) throw LogicError("Block boundaries reside in different segments for signature extraction");
     vector<Signature> ret;
     Instruction i;
