@@ -1415,7 +1415,7 @@ bool Analyzer::findDuplicates(const SignatureLibrary signatures, Executable &tgt
         const Size sigSize = sig.size();
         sigTotalInstr += sigSize;
         if (sigSize < options.routineSizeThresh) {
-            verbose("Ignoring signature " + sig.routineName + ", instruction count below threshold: " + to_string(sigSize));
+            verbose("[" + to_string(sigIdx+1) + "/" + to_string(signatures.signatureCount()) + "] Ignoring signature " + sig.routineName + ", instruction count below threshold: " + to_string(sigSize));
             ignoreCount++;
             ignoreTotalInstr += sigSize;
             continue;
@@ -1465,7 +1465,7 @@ bool Analyzer::findDuplicates(const SignatureLibrary signatures, Executable &tgt
             Duplicate &curDup = duplicates[sigIdx];
             debug("Processing duplicate: " + curDup.toString());
             const Routine dupRoutine = tgtMap.getRoutine(curDup.dupIdx);
-            verbose("Found duplicate of routine " + sig.routineName + " (" + to_string(curDup.refSize) + " instructions): " 
+            verbose("[" + to_string(sigIdx+1) + "/" + to_string(signatures.signatureCount()) + "] Found duplicate of routine " + sig.routineName + " (" + to_string(curDup.refSize) + " instructions): " 
                 + dupRoutine.toString() + " (" + to_string(curDup.tgtSize) + " instructions) with distance " + to_string(curDup.distance));
             // walk over all found duplicates looking for collisions
             for (auto& [otherSigIdx, otherDup] : duplicates) {
@@ -1495,7 +1495,7 @@ bool Analyzer::findDuplicates(const SignatureLibrary signatures, Executable &tgt
             }
         }
         else {
-            verbose("Unable to find duplicate of " + sig.routineName + ", " + to_string(sigSize) + " instructions, max distance " + to_string(distanceThresh));
+            verbose("[" + to_string(sigIdx+1) + "/" + to_string(signatures.signatureCount()) + "] Unable to find duplicate of " + sig.routineName + ", " + to_string(sigSize) + " instructions, max distance " + to_string(distanceThresh));
             missCount++;
             missTotalInstr += sigSize;
         }
