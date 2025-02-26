@@ -1432,6 +1432,10 @@ bool Analyzer::findDuplicates(const SignatureLibrary signatures, Executable &tgt
             Routine tgtRoutine = tgtMap.getRoutine(tgtIdx);
             // TODO: try other reachable blocks?
             const Block tgtBlock = tgtRoutine.mainBlock();
+            if (!tgtBlock.isValid()) {
+                debug("Routine has no valid block: " + tgtRoutine.toString());
+                continue;
+            }
             // extract string of signatures for target routine
             vector<Signature> tgtSigs = tgt.getSignatures(tgtBlock);
             const auto tgtSigSize = tgtSigs.size();
