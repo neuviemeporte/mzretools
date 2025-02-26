@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.5)
 
 project(mzretools LANGUAGES CXX)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ggdb -O0 -Wfatal-errors")
 
@@ -14,7 +14,7 @@ set(LIBDOS_SRC
     src/address.cpp
     src/memory.cpp
     src/psp.cpp
-    src/map.cpp
+    src/codemap.cpp
     src/analysis.cpp
     src/executable.cpp
     src/routine.cpp
@@ -25,6 +25,7 @@ set(LIBDOS_SRC
     src/opcodes.cpp
     src/output.cpp
     src/instruction.cpp
+    src/signature.cpp
     src/modrm.cpp)
 
 set(LIBDOS_HDR 
@@ -35,7 +36,7 @@ set(LIBDOS_HDR
     include/dos/opcodes.h
     include/dos/registers.h
     include/dos/modrm.h
-    include/dos/map.h
+    include/dos/codemap.h
     include/dos/analysis.h
     include/dos/executable.h
     include/dos/routine.h
@@ -48,6 +49,7 @@ set(LIBDOS_HDR
     include/dos/dos.h
     include/dos/mz.h
     include/dos/instruction.h
+    include/dos/signature.h
     include/dos/editdistance.h)
 
 # the DOS emulation library
@@ -98,6 +100,9 @@ target_link_libraries(mzdup PUBLIC libdos)
 
 add_executable(mzptr src/mzptr.cpp)
 target_link_libraries(mzptr PUBLIC libdos)
+
+add_executable(mzsig src/mzsig.cpp)
+target_link_libraries(mzsig PUBLIC libdos)
 
 add_executable(addrtool src/addrtool.cpp)
 target_link_libraries(addrtool PUBLIC libdos)

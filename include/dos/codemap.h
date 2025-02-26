@@ -1,5 +1,5 @@
-#ifndef MAP_H
-#define MAP_H
+#ifndef CODEMAP_H
+#define CODEMAP_H
 
 #include <string>
 #include <regex>
@@ -33,6 +33,11 @@ public:
             dataSize = otherSize = otherCount = ignoredReachableSize = ignoredReachableCount = uncompleteSize = uncompleteCount = unaccountedSize = unaccountedCount = 0;
         }
     };
+    enum Type {
+        MAP_MZRE,   // mzretools map format
+        MAP_IDALST, // IDA listing
+        MAP_MSLINK  // Microsoft linker map file
+    };
 private:
     friend class AnalysisTest;
     Word loadSegment;
@@ -47,13 +52,15 @@ private:
 
 public:
     CodeMap(const Word loadSegment, const Size mapSize) : loadSegment(loadSegment), mapSize(mapSize), curId(0), prevId(0), curBlockId(0), prevBlockId(0), ida(false) {}
-    CodeMap(const ScanQueue &sq, const std::vector<Segment> &segs, const std::set<Address> &vars, const Word loadSegment, const Size mapSize);
-    CodeMap(const std::string &path, const Word loadSegment = 0);
+    CodeMap(const ScanQueue &sq, const std::vector<Segment> &segs, const std::set<Variable> &vars, const Word loadSegment, const Size mapSize);
+    CodeMap(const std::string &path, const Word loadSegment = 0, const Type type = MAP_MZRE);
     CodeMap() : CodeMap(0, 0) {}
 
     Size codeSize() const { return mapSize; }
     Size routineCount() const { return routines.size(); }
     Size variableCount() const { return vars.size(); }
+    Size segmentCount() const { return segments.size(); }
+    Size routinesSize() const;
 
     // TODO: routine.id start at 1, this is zero based, so id != idx, confusing
     Routine getRoutine(const Size idx) const { return routines.at(idx); }
@@ -64,6 +71,7 @@ public:
     std::vector<Block> getUnclaimed() const { return unclaimed; }
     Variable getVariable(const Size idx) const { return vars.at(idx); }
     Variable getVariable(const std::string &name) const;
+    Variable getVariable(const Address &addr) const;
     Routine findByEntrypoint(const Address &ep) const;
     Block findCollision(const Block &b) const;
     bool empty() const { return routines.empty(); }
@@ -77,19 +85,20 @@ public:
     Size segmentCount(const Segment::Type type) const;
     Segment findSegment(const Word addr) const;
     Segment findSegment(const std::string &name) const;
-    Segment findSegment(const Offset off) const;
+    Segment findSegment(const Offset off, const bool past = false) const;
     void setSegments(const std::vector<Segment> &seg);
     
 private:
-    void storeDataRef(const Address &dr);
+    void storeVariable(const Variable &v);
     void closeBlock(Block &b, const Address &next, const ScanQueue &sq, const bool unclaimedOnly);
     Block moveBlock(const Block &b, const Word segment) const;
     void sort();
     void loadFromMapFile(const std::string &path, const Word reloc);
+    void loadFromLinkFile(const std::string &path, const Word reloc);    
     void loadFromIdaFile(const std::string &path, const Word reloc);
     std::string routineString(const Routine &r, const Word reloc) const;
     std::string varString(const Variable &v, const Word reloc) const;
     void blocksFromQueue(const ScanQueue &sq, const bool unclaimedOnly);
 };
 
-#endif // MAP_H
+#endif // CODEMAP_H

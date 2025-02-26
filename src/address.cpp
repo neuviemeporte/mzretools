@@ -124,12 +124,12 @@ Block::Block(const std::string &from, const std::string &to) {
         throw ArgError("Invalid memory block range");
 }
 
-std::string Block::toString(const bool linear, const bool showSize) const {
+std::string Block::toString(const bool linear, const bool showSize, const bool includeLinear) const {
     ostringstream str;
     if (!isValid()) str << "[invalid] ";
-    if (!linear) str << begin.toString(true) << "-" << end.toString(true);
+    if (!linear) str << begin.toString(!includeLinear) << "-" << end.toString(!includeLinear);
     else str << hexVal(begin.toLinear(), false, OFFSET_STRLEN) << "-" << hexVal(end.toLinear(), false, OFFSET_STRLEN);
-    if (showSize) str << "/" << hex << setw(OFFSET_STRLEN) << setfill('0') << size();
+    if (showSize) str << "[" << hex << setw(OFFSET_STRLEN) << setfill('0') << size() << "]";
     return str.str();
 }
 
@@ -244,7 +244,7 @@ Segment::Segment(const std::smatch &match) {
 }
 
 std::smatch Segment::stringMatch(const std::string &str) {
-    static const regex SEG_RE{"^([_a-zA-Z0-9]+) (CODE|DATA|STACK) ([0-9a-fA-F]{1,4})"};
+    static const regex SEG_RE{"^([$_a-zA-Z0-9]+) (CODE|DATA|STACK) ([0-9a-fA-F]{1,4})"};
     smatch match;
     regex_match(str, match, SEG_RE);
     return match;

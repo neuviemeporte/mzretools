@@ -17,7 +17,11 @@
 
 using namespace std;
 
-#define DEBUG 1
+#ifdef DEBUG
+#define DUMP_REGS(regs) debug(regs.toString())
+#else
+#define DUMP_REGS(regs)
+#endif
 
 OUTPUT_CONF(LOG_ANALYSIS)
 
@@ -220,6 +224,7 @@ void VariantMap::loadFromStream(std::istream &str) {
 
 static void applyMov(const Instruction &i, CpuState &regs, Executable &exe) {
     // we only care about mov-s into registers
+    // TODO: support mov mem, reg? would need to keep stack of memories per queue item... maybe just a delta list to keep storage down?    
     if (i.iclass != INS_MOV || !operandIsReg(i.op1.type)) return;
 
     const Register dest = i.op1.regId();
@@ -270,14 +275,22 @@ static void applyMov(const Instruction &i, CpuState &regs, Executable &exe) {
         }
         else searchMessage(i.addr, "mov source address outside code extents: "s + srcAddr.toString());
     }
-    // TODO: support mov mem, reg? would need to keep stack of memories per queue item... maybe just a delta list to keep storage down?
-    // create data/stack segments from mov ds/mov ss stores
+    // create data/stack segments from mov ds/es/ss stores
     if (set) {
         searchMessage(i.addr, "executed move to register: "s + i.toString());
-        if (i.op1.type == OPR_REG_DS) exe.storeSegment(Segment::SEG_DATA, regs.getValue(REG_DS));
-        else if (i.op1.type == OPR_REG_SS) exe.storeSegment(Segment::SEG_STACK, regs.getValue(REG_SS));
+        switch (i.op1.type) {
+        case OPR_REG_DS: 
+            exe.storeSegment({"", Segment::SEG_DATA, regs.getValue(REG_DS)});
+            break;
+        case OPR_REG_ES: 
+            exe.storeSegment({"", Segment::SEG_DATA, regs.getValue(REG_ES)});
+            break;
+        case OPR_REG_SS:
+            exe.storeSegment({"", Segment::SEG_STACK, regs.getValue(REG_SS)});
+            break;
+        }
     }
-    debug(regs.toString());
+    DUMP_REGS(regs);
 }
 
 // TODO: all this needs to get properly implemented as full cpu instructions instead of these lame approximations
@@ -298,7 +311,7 @@ static void applyPush(const Instruction &i, CpuState &regs) {
     const Word pushVal = regs.getValue(reg);
     debug("Pushing value of " + hexVal(pushVal));
     regs.push(pushVal);
-    debug(regs.toString());
+    DUMP_REGS(regs);
 }
 
 static void applyPop(const Instruction &i, CpuState &regs, Executable &exe) {
@@ -312,9 +325,16 @@ static void applyPop(const Instruction &i, CpuState &regs, Executable &exe) {
     debug("Popping value of " + hexVal(popVal));
     if (reg != REG_NONE) {
         regs.setValue(reg, popVal);
-        debug(regs.toString());
-        if (reg == REG_DS) exe.storeSegment(Segment::SEG_DATA, popVal);
-        else if (reg == REG_SS) exe.storeSegment(Segment::SEG_STACK, popVal);
+        DUMP_REGS(regs);
+        switch (reg) {
+        case REG_DS: 
+        case REG_ES: 
+            exe.storeSegment({"", Segment::SEG_DATA, popVal});
+            break;
+        case REG_SS: 
+            exe.storeSegment({"", Segment::SEG_STACK, popVal});
+            break;
+        }
     }
 }
 
@@ -344,17 +364,69 @@ static string compareStatus(const Instruction &i1, const Instruction &i2, const 
     return status;
 }
 
+// for executables whose layout is known in advance (but we still want to determine the routine boundaries), like when we built it ourselves
+// and have the linker map, seed the scan queue for code exploration with all known routine entrypoint locations
+void Analyzer::seedQueue(const CodeMap &map, Executable &exe) {
+    debug("Seeding scan queue from code map");
+    CpuState initRegs{exe.entrypoint(), exe.stackAddr()};
+    scanQueue = ScanQueue{exe.loadAddr(), exe.size(), {}};
+    // seed segments
+    exe.clearSegments();
+    debug("Seeding with " + to_string(map.segmentCount()) + " segments");
+    for (const Segment &seg : map.getSegments()) {
+        debug("Attempting to seed segment: " + seg.toString());
+        exe.storeSegment(seg);
+    }
+    // try to add the entrypoint segment explicitly in case it was missed
+    exe.storeSegment(Segment{"", Segment::SEG_CODE, exe.entrypoint().segment});
+    // seed routines
+    debug("Seeding with " + to_string(map.routineCount()) + " entrypoints");
+    for (Size ri = 0; ri < map.routineCount(); ++ri) {
+        const Routine r = map.getRoutine(ri);
+        debug("Attempting to seed routine: " + r.toString());
+        scanQueue.saveCall(r.entrypoint(), initRegs, false, r.name);
+    }
+    // try to add the executable entrypoint explicitly in case it was missed
+    scanQueue.saveCall(exe.entrypoint(), initRegs, true, "start");
+    // seed vars
+    debug("Seeding with " + to_string(map.variableCount()) + " variables");
+    for (Size vi = 0; vi < map.variableCount(); ++vi) {
+        const Variable v = map.getVariable(vi);
+        debug("Seeding variable: " + v.toString());
+        vars.insert(v);
+    }
+    debug("Scan queue seeding complete");
+}
+
+// check for one or more nops past current instruction, mark as belonging to this routine if detected
+void Analyzer::claimNops(const Instruction &i, const Executable &exe) {
+    Address 
+        curAddr = i.addr,
+        nextAddr{curAddr + static_cast<SByte>(i.length)};
+    try {
+        while (nextAddr > curAddr && exe.extents().contains(nextAddr) && Instruction{nextAddr, exe.codePointer(nextAddr)}.iclass == INS_NOP) {
+            scanQueue.setRoutineIdx(nextAddr.toLinear(), 1);
+            curAddr = nextAddr;
+            nextAddr++;
+        }
+    }
+    catch (CpuError &e) {
+        // encountered invalid instruction while trying to peek ahead, silently ignore
+        return;
+    }
+}
+
 // explore the code without actually executing instructions, discover routine boundaries
 // TODO: identify routines through signatures generated from OMF libraries
 // TODO: trace usage of bp register (sub/add) to determine stack frame size of routines
 // TODO: store references to potential jump tables (e.g. jmp cs:[bx+0xc08]), if unclaimed after initial search, try treating entries as pointers and run second search before coalescing blocks?
+// TODO: this is single-shot, need to wipe object state before done so that same analyzer can be used again
 CodeMap Analyzer::exploreCode(Executable &exe) {
     CpuState initRegs{exe.entrypoint(), exe.stackAddr()};
     
     debug("initial register values:\n"s + initRegs.toString());
-    // queue for BFS search
-    scanQueue = ScanQueue{exe.loadAddr(), exe.size(), Destination(exe.entrypoint(), 1, true, initRegs)};
-    dataRefs.clear();
+    // initialize queue for BFS search only if it's not been seeded already
+    if (scanQueue.empty()) scanQueue = ScanQueue{exe.loadAddr(), exe.size(), Destination(exe.entrypoint(), 1, true, initRegs)};
     info("Analyzing code within extents: "s + exe.extents());
     Size locations = 0;
  
@@ -362,12 +434,14 @@ CodeMap Analyzer::exploreCode(Executable &exe) {
     while (!scanQueue.empty()) {
         // get a location from the queue and jump to it
         const Destination search = scanQueue.nextPoint();
+        const RoutineEntrypoint ep = scanQueue.getEntrypoint(search.routineIdx);
         locations++;
         Address csip = search.address;
-        searchMessage(csip, "--- Scanning at new location from routine " + to_string(search.routineIdx) + ", call: "s + to_string(search.isCall) + ", queue = " + to_string(scanQueue.size()));
+        searchMessage(csip, "--- Scanning at new location from routine " + ep.toString() + ", call: "s + to_string(search.isCall) + ", queue = " + to_string(scanQueue.size()));
         CpuState regs = search.regs;
         regs.setValue(REG_CS, csip.segment);
-        exe.storeSegment(Segment::SEG_CODE, csip.segment);
+        DUMP_REGS(regs);
+        exe.storeSegment({"", Segment::SEG_CODE, csip.segment});
         try {
             // iterate over instructions at current search location in a linear fashion, until an unconditional jump or return is encountered
             while (true) {
@@ -399,47 +473,54 @@ CodeMap Analyzer::exploreCode(Executable &exe) {
                 processDataReference(exe, i, regs);
                 // interpret the instruction
                 if (i.isBranch()) {
-                    Branch branch = getBranch(exe, i, regs);
+                    const Branch branch = getBranch(exe, i, regs);
                     debug("Encountered branch: " + branch.toString());
                     // if the destination of the branch can be established, place it in the search queue
                     scanQueue.saveBranch(branch, regs, exe.extents());
-                    // for a call or conditional branch, we can continue scanning, but do it under a new search queue location 
+                    // for a call or conditional branch, we can continue scanning (fall-through), but do it under a new search queue location 
                     // to have finer granularity in case we run into data in the middle of code and have to rollback the whole block as bad
                     if (branch.isCall || branch.isConditional) {
-                        branch.destination = csip + static_cast<Offset>(i.length);
-                        const Offset destOffset = branch.destination.toLinear();
+                        Branch ftBranch;
+                        ftBranch.destination = csip + static_cast<Offset>(i.length);
+                        const Offset destOffset = ftBranch.destination.toLinear();
                         const RoutineIdx destId = scanQueue.getRoutineIdx(destOffset);
                         if (branch.isCall) {
                             // pessimistically, every register can be modified after returning from a call, except for CS, but let's be generous with DS and SS, otherwise we break too much stuff
+                            assert(regs.isKnown(REG_CS));
+                            const bool
+                                knownDS = regs.isKnown(REG_DS),
+                                knownSS = regs.isKnown(REG_SS);
                             const Word 
                                 cs = regs.getValue(REG_CS),
                                 ds = regs.getValue(REG_DS),
                                 ss = regs.getValue(REG_SS);
                             regs.reset();
                             regs.setValue(REG_CS, cs);
-                            regs.setValue(REG_DS, ds);
-                            regs.setValue(REG_SS, ss);
+                            if (knownDS) regs.setValue(REG_DS, ds);
+                            if (knownSS) regs.setValue(REG_SS, ss);
                         }
                         if (destId != search.routineIdx) {
-                            branch.isCall = false;
-                            branch.isNear = true;
-                            branch.isConditional = false;
-                            debug("Saving fall-through branch: " + branch.toString() + " over id " + to_string(destId));
+                            ftBranch.isCall = false;
+                            ftBranch.isNear = true;
+                            ftBranch.isConditional = false;
+                            debug("Saving fall-through branch: " + ftBranch.toString() + " over id " + to_string(destId));
                             // make the destination of this fake "branch" undiscovered in the queue, wipe any claiming routine id run
                             scanQueue.clearRoutineIdx(destOffset);
-                            scanQueue.saveBranch(branch, regs, exe.extents());
+                            scanQueue.saveBranch(ftBranch, regs, exe.extents());
                         }
                         break;
                     }
                     // if the branch is an unconditional jump, we cannot keep scanning past it, regardless of the destination resolution
                     else {
                         searchMessage(csip, "routine scan interrupted by unconditional branch");
+                        claimNops(i, exe);
                         break;
                     }
                 }
                 else if (i.isReturn()) {
                     // TODO: check if return matches entrypoint type (near/far), warn otherwise
                     searchMessage(csip, "routine scan interrupted by return");
+                    claimNops(i, exe);
                     break;
                 }
                 // limited register value tracing to enable data/stack segment deduction
@@ -479,7 +560,7 @@ CodeMap Analyzer::exploreCode(Executable &exe) {
 #endif
 
     // create routine map from contents of search queue
-    auto ret = CodeMap{scanQueue, exe.getSegments(), dataRefs, exe.getLoadSegment(), exe.size()};
+    auto ret = CodeMap{scanQueue, exe.getSegments(), vars, exe.getLoadSegment(), exe.size()};
     // TODO: stats like for compare
     return ret;
 }
@@ -641,7 +722,7 @@ bool Analyzer::compareCode(const Executable &ref, Executable &tgt, const CodeMap
                     tgtQueue.saveCall(tgtCsip, {}, routine.near, routine.name);
                 }
             }
-            tgt.storeSegment(Segment::SEG_CODE, tgtCsip.segment);
+            tgt.storeSegment({"", Segment::SEG_CODE, tgtCsip.segment});
             verbose("--- Now @"s + refCsip.toString() + ", routine " + routine.dump(false) + ", block " + compareBlock.toString(true) +  ", target @" + tgtCsip.toString());
         }
         // TODO: consider dropping this "feature"
@@ -884,7 +965,7 @@ bool Analyzer::comparisonLoop(const Executable &ref, Executable &tgt, const Code
             if (refSegment.type == Segment::SEG_NONE) {
                 warn("Farcall segment " + hexVal(farDest.segment) + " not found in reference map");
             }
-            else if (!tgt.storeSegment(refSegment.type, tgtSegment)) {
+            else if (!tgt.storeSegment({"", refSegment.type, tgtSegment})) {
                 warn("Unable to register farcall destination segment " + hexVal(tgtSegment) + " with target executable");
             }
         }
@@ -923,7 +1004,7 @@ Branch Analyzer::getBranch(const Executable &exe, const Instruction &i, const Cp
             break;
         case OP_GRP5_Ev:
             searchMessage(addr, "unknown near jump target: "s + i.toString());
-            debug(regs.toString());
+            DUMP_REGS(regs);
             break; 
         default: 
             throw AnalysisError("Unsupported jump opcode: "s + hexVal(i.opcode));
@@ -939,7 +1020,7 @@ Branch Analyzer::getBranch(const Executable &exe, const Instruction &i, const Cp
         }
         else {
             searchMessage(addr, "unknown far jump target: "s + i.toString());
-            debug(regs.toString());
+            DUMP_REGS(regs);
         }
         break;
     // loops
@@ -974,7 +1055,7 @@ Branch Analyzer::getBranch(const Executable &exe, const Instruction &i, const Cp
         }
         else {
             searchMessage(addr, "unknown near call target: "s + i.toString());
-            debug(regs.toString());
+            DUMP_REGS(regs);
         } 
         break;
     case INS_CALL_FAR:
@@ -987,7 +1068,7 @@ Branch Analyzer::getBranch(const Executable &exe, const Instruction &i, const Cp
         }
         else {
             searchMessage(addr, "unknown far call target: "s + i.toString());
-            debug(regs.toString());
+            DUMP_REGS(regs);
         }
         break;
     default:
@@ -1299,8 +1380,8 @@ void Analyzer::processDataReference(const Executable &exe, const Instruction i, 
     }
     const Word dsAddr = regs.getValue(segReg);
     Address dataAddr{dsAddr, offVal};
-    dataRefs.insert(dataAddr);
-    debug("Storing data reference: " + dataAddr.toString());
+    vars.insert({"", dataAddr});
+    debug("Storing data reference: " + dataAddr.toString() + ", " + regName(segReg) + " = " + hexVal(regs.getValue(segReg)));
 }
 
 struct Duplicate {
@@ -1319,120 +1400,137 @@ struct Duplicate {
     }
 };
 
-bool Analyzer::findDuplicates(const Executable &ref, Executable &tgt, const CodeMap &refMap, CodeMap &tgtMap) {
-    if (refMap.empty() || tgtMap.empty()) throw ArgError("Empty routine map provided for duplicate search");
-    info("Searching for duplicates of " + to_string(refMap.routineCount()) + " routines among " + to_string(tgtMap.routineCount()) + " candidates, minimum instructions: " + to_string(options.routineSizeThresh) + ", maximum distance: " + to_string(options.routineDistanceThresh));
+bool Analyzer::findDuplicates(const SignatureLibrary signatures, Executable &tgt, CodeMap &tgtMap) {
+    if (signatures.empty()) throw ArgError("Empty signature library provided for duplicate search");
+    if (tgtMap.empty()) throw ArgError("Empty routine map provided for duplicate search");
+    info("Searching for duplicates of " + to_string(signatures.signatureCount()) + " signatures among " + to_string(tgtMap.routineCount()) + " candidates, minimum instructions: " + to_string(options.routineSizeThresh) + ", maximum distance ratio: " + to_string(options.routineDistanceThresh) + "%");
     // store relationship between reference routines and their duplicates
     map<RoutineIdx, Duplicate> duplicates;
-    Size ignoreCount = 0;
+    Size ignoreCount = 0, ignoreTotalInstr = 0, missCount = 0, sigTotalInstr = 0, tgtTotalInstr = 0, missTotalInstr = 0;
     bool collision = false;
     // iterate over routines to find duplicates for
-    for (Size refIdx = 0; refIdx < refMap.routineCount(); ++refIdx) {
-        const Routine refRoutine = refMap.getRoutine(refIdx);
-        debug("Processing routine: " + refRoutine.dump(false));
-        // TODO: try other reachable blocks?
-        const Block refBlock = refRoutine.mainBlock();
-        // extract string of signatures for reference routine
-        vector<Signature> refSigs = ref.getSignatures(refBlock);
-        const auto refSigCount = refSigs.size();
-        if (refSigCount < options.routineSizeThresh) {
-            debug("Ignoring routine " + refRoutine.name + ", instruction count below threshold: " + to_string(refSigCount));
+    for (Size sigIdx = 0; sigIdx < signatures.signatureCount(); ++sigIdx) {
+        const SignatureItem &sig = signatures.getSignature(sigIdx);
+        debug("Processing signature for routine: " + sig.routineName);
+        const Size sigSize = sig.size();
+        sigTotalInstr += sigSize;
+        if (sigSize < options.routineSizeThresh) {
+            verbose("[" + to_string(sigIdx+1) + "/" + to_string(signatures.signatureCount()) + "] Ignoring signature " + sig.routineName + ", instruction count below threshold: " + to_string(sigSize));
             ignoreCount++;
+            ignoreTotalInstr += sigSize;
             continue;
         }
+        // calculate max edit distance threshold to use as ratio of the signature size, so that larger routines can have more differing instructions
+        const Size distanceThresh = (sigSize * options.routineDistanceThresh) / 100;
         // seed lowest distance found
-        duplicates[refIdx] = Duplicate{MAX_DISTANCE};
-        debug("Searching for duplicates of routine " + refRoutine.name + ", got string of " + to_string(refSigs.size()) + " instructions from " + refBlock.toString());
-        // iterate over duplicate candidates from the other executable
+        duplicates[sigIdx] = Duplicate{MAX_DISTANCE};
+        debug("Searching for duplicates of routine " + sig.routineName + ", got string of " + to_string(sigSize) + " instructions, thresh = " + to_string(distanceThresh));
+        // iterate over signatures in library
         bool have_dup = false;
+        Size tgtTotalTemp = 0;
         for (Size tgtIdx = 0; tgtIdx < tgtMap.routineCount(); ++tgtIdx) {
             Routine tgtRoutine = tgtMap.getRoutine(tgtIdx);
             // TODO: try other reachable blocks?
             const Block tgtBlock = tgtRoutine.mainBlock();
+            if (!tgtBlock.isValid()) {
+                debug("Routine has no valid block: " + tgtRoutine.toString());
+                continue;
+            }
             // extract string of signatures for target routine
             vector<Signature> tgtSigs = tgt.getSignatures(tgtBlock);
-            const auto tgtSigCount = tgtSigs.size();
-            const Size sigDelta = refSigCount > tgtSigCount ? refSigCount - tgtSigCount : tgtSigCount - refSigCount;
+            const auto tgtSigSize = tgtSigs.size();
+            if (tgtTotalInstr == 0) tgtTotalTemp += tgtSigSize;
+            const Size sigDelta = sigSize > tgtSigSize ? sigSize - tgtSigSize : tgtSigSize - sigSize;
             // ignore candidate if we know in advance the distance will be too high based on instruction count alone
-            if (sigDelta > options.routineDistanceThresh) {
-                debug("\tIgnoring target routine " + tgtRoutine.name + " (" + to_string(tgtSigCount) + " instructions), instruction count difference exceeds distance threshold: " + to_string(sigDelta));
+            if (sigDelta > distanceThresh) {
+                debug("\tIgnoring target routine " + tgtRoutine.name + " (" + to_string(tgtSigSize) + " instructions), instruction count difference exceeds distance threshold: " + to_string(sigDelta));
                 continue;
             }
             // calculate edit distance between reference and target signature strings
-            const auto distance = edit_distance_dp_thr(refSigs.data(), refSigs.size(), tgtSigs.data(), tgtSigs.size(), options.routineDistanceThresh);
-            if (distance > options.routineDistanceThresh) {
-                debug("\tIgnoring target routine " + tgtRoutine.name + " (" + to_string(tgtSigCount) + " instructions), distance above threshold");
+            const auto distance = edit_distance_dp_thr(sig.signature.data(), sigSize, tgtSigs.data(), tgtSigSize, distanceThresh);
+            if (distance > distanceThresh) {
+                debug("\tIgnoring target routine " + tgtRoutine.name + " (" + to_string(tgtSigSize) + " instructions), distance above threshold");
                 continue;
             }
-            debug("\tPotential duplicate found: " + tgtRoutine.name + " (" + to_string(tgtSigCount) + " instructions), distance: " + to_string(distance) + " instructions");
-            Duplicate &d = duplicates[refIdx];
+            debug("\tPotential duplicate found: " + tgtRoutine.name + " (" + to_string(tgtSigSize) + " instructions), distance: " + to_string(distance) + " instructions");
+            Duplicate &d = duplicates[sigIdx];
             if (distance < d.distance) {
                 have_dup = true;
                 debug("\tCalculated distance below previous value of " + to_string(d.distance));
-                d = Duplicate{distance, refSigCount, tgtSigCount, tgtIdx};
+                d = Duplicate{distance, sigSize, tgtSigSize, tgtIdx};
                 d.dupBlocks.push_back(tgtBlock);
-                debug("\tStored duplicate: " + duplicates[refIdx].toString());
+                debug("\tStored duplicate: " + duplicates[sigIdx].toString());
             }
-            else debug("\tIgnoring target routine " + tgtRoutine.name + " (" + to_string(tgtSigCount) + " instructions), distance above previous value of " + to_string(d.distance));
+            else debug("\tIgnoring target routine " + tgtRoutine.name + " (" + to_string(tgtSigSize) + " instructions), distance above previous value of " + to_string(d.distance));
         } // iterate over target routines
+        if (tgtTotalInstr == 0) tgtTotalInstr = tgtTotalTemp;
         // found an eligible duplicate after going through all target routines
         if (have_dup) {
-            Duplicate &curDup = duplicates[refIdx];
+            Duplicate &curDup = duplicates[sigIdx];
             debug("Processing duplicate: " + curDup.toString());
             const Routine dupRoutine = tgtMap.getRoutine(curDup.dupIdx);
-            verbose("Found duplicate of routine " + refRoutine.toString() + " (" + to_string(curDup.refSize) + " instructions): " 
+            verbose("[" + to_string(sigIdx+1) + "/" + to_string(signatures.signatureCount()) + "] Found duplicate of routine " + sig.routineName + " (" + to_string(curDup.refSize) + " instructions): " 
                 + dupRoutine.toString() + " (" + to_string(curDup.tgtSize) + " instructions) with distance " + to_string(curDup.distance));
             // walk over all found duplicates looking for collisions
-            for (auto& [otherRefIdx, otherDup] : duplicates) {
-                if (otherDup.dupIdx != curDup.dupIdx || otherRefIdx == refIdx) continue;
+            for (auto& [otherSigIdx, otherDup] : duplicates) {
+                if (otherDup.dupIdx != curDup.dupIdx || otherSigIdx == sigIdx) continue;
                 // target routine which we just identified as a duplicate of the currently processed reference exe routine was already marked a duplicate of another
                 collision = true;
                 Size clearIdx;
-                const Routine otherRefRoutine = refMap.getRoutine(otherRefIdx);
+                const SignatureItem &otherSig = signatures.getSignature(otherSigIdx);
                 // current duplicate better than other, clear other
                 if (curDup.distance < otherDup.distance) {
-                    warn("Unmarking " + dupRoutine.toString() + " as duplicate of " + otherRefRoutine.toString() + ", current distance " + to_string(curDup.distance) 
+                    warn("Unmarking " + dupRoutine.toString() + " as duplicate of " + otherSig.routineName + ", current distance " + to_string(curDup.distance) 
                         + " better than " + to_string(otherDup.distance), OUT_YELLOW);
                     otherDup = {};
                 }
                 // current duplicate worse than other, clear current
                 else if (curDup.distance > otherDup.distance) {
-                    warn("Ignoring " + dupRoutine.toString() + " as duplicate of " + refRoutine.toString() + ", previously better matched to " + otherRefRoutine.toString() 
+                    warn("Ignoring " + dupRoutine.toString() + " as duplicate of " + sig.routineName + " with distance " + to_string(curDup.distance) + ", previously better matched by " + otherSig.routineName
                         + " with distance " + to_string(otherDup.distance), OUT_YELLOW);
-                    clearIdx = refIdx;
+                    clearIdx = sigIdx;
                     curDup = {};
                 }
                 // current duplicate as good as other, keep both for now
                 else {
-                    warn("Routine " + dupRoutine.toString() + " is a duplicate of " + refMap.getRoutine(otherRefIdx).toString() + " with equal distance", OUT_BRIGHTRED);
+                    warn("Routine " + dupRoutine.toString() + " is a duplicate of " + sig.routineName + " and " + otherSig.routineName + " with equal distance", OUT_BRIGHTRED);
                     continue;
                 }
             }
         }
-        else 
-            debug("\tUnable to find duplicate of " + refRoutine.toString());
+        else {
+            verbose("[" + to_string(sigIdx+1) + "/" + to_string(signatures.signatureCount()) + "] Unable to find duplicate of " + sig.routineName + ", " + to_string(sigSize) + " instructions, max distance " + to_string(distanceThresh));
+            missCount++;
+            missTotalInstr += sigSize;
+        }
     } // iterate over reference routines
 
     // final run through the duplicates to patch the output map
-    Size dupCount = 0;
+    Size dupCount = 0, dupTotalInstr = 0;
     std::set<Size> dupIdxs;
-    for (const auto& [refIdx, dup] : duplicates) {
+    for (const auto& [sigIdx, dup] : duplicates) {
         if (!dup.isValid()) continue;
         dupIdxs.insert(dup.dupIdx);
-        const Routine origRoutine = refMap.getRoutine(refIdx);
+        const SignatureItem &origSig = signatures.getSignature(sigIdx);
         Routine &dupRoutine = tgtMap.getMutableRoutine(dup.dupIdx);
         debug("Emitting duplicate: " + dupRoutine.toString());
         // TODO: list duplicate blocks once figured out how to do comparisons on other blocks than the main one
-        dupRoutine.addComment("Routine " + dupRoutine.name + " is a potential duplicate of routine " + origRoutine.name + ", block " + dup.dupBlocks.front().toString() + " differs by " + to_string(dup.distance) + " instructions");
+        dupRoutine.addComment("Routine " + dupRoutine.name + " is a potential duplicate of routine " + origSig.routineName + ", block " + dup.dupBlocks.front().toString() + " differs by " + to_string(dup.distance) + " instructions");
         dupRoutine.duplicate = true;
         dupCount++;
+        // sum up total number of instructions in detected duplicate routines
+        dupTotalInstr += dup.tgtSize;
     }
-    Size uniqueDups = dupIdxs.size();
+    const Size uniqueDups = dupIdxs.size();
 
-    if (dupCount) 
-        info("Found duplicates for " + to_string(dupCount) + " (unique " + to_string(uniqueDups) + ") routines out of " + to_string(refMap.routineCount()) + " routines" + ", ignored " + to_string(ignoreCount), OUT_GREEN);
-    else 
-        info("No duplicates found, ignored " + to_string(ignoreCount) + " routines", OUT_RED);
+    if (dupCount) {
+        const Size dupPercent = (dupTotalInstr * 100) / tgtTotalInstr;
+        info("Processed " + to_string(signatures.signatureCount()) + " signatures, ignored " + to_string(ignoreCount) + " as too short\n" +
+             "Tried to find matches for " + to_string(tgtMap.routineCount()) + " target exe routines (" + to_string(tgtTotalInstr) + " instructions, 100%)\n" +
+             "Found " + to_string(dupCount) + " (unique: " + to_string(uniqueDups) + ") matching routines (" + to_string(dupTotalInstr) + " instructions, " + to_string(dupPercent) + "%)\n" +
+             "Unable to find " + to_string(tgtMap.routineCount() - dupCount) + " matching routines (" + to_string(100 - dupPercent) + "%)", OUT_GREEN);
+    }
+    else info("No duplicates found, ignored " + to_string(ignoreCount) + " routines", OUT_RED);
 
     if (collision) {
         assert(uniqueDups < dupCount);

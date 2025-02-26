@@ -2,12 +2,13 @@
 
 #include <iostream>
 #include <map>
+#include <cassert>
 
 using namespace std;
 
 static LogPriority globalPriority = LOG_INFO;
 
-static map<LogModule, bool> moduleVisible = {
+static map<LogModule, bool> moduleVisibility = {
     { LOG_SYSTEM,    true },
     { LOG_CPU,       true },
     { LOG_MEMORY,    true },
@@ -18,7 +19,7 @@ static map<LogModule, bool> moduleVisible = {
 };
 
 void output(const std::string &msg, const LogModule mod, const LogPriority pri, const Color color, const bool suppressNewline) {
-    if (pri < globalPriority || !moduleVisible[mod]) return;
+    if (pri < globalPriority || !moduleVisibility[mod]) return;
     if (color != OUT_DEFAULT) cout << output_color(color);
     cout << msg;
     if (color != OUT_DEFAULT) cout << output_color(OUT_DEFAULT);
@@ -30,7 +31,12 @@ void setOutputLevel(const LogPriority minPriority) {
 }
 
 void setModuleVisibility(const LogModule mod, const bool visible) {
-    moduleVisible[mod] = visible;
+    moduleVisibility[mod] = visible;
+}
+
+bool moduleVisible(const LogModule mod) {
+    assert(mod < moduleVisibility.size());
+    return moduleVisibility[mod];
 }
 
 string output_color(const Color c) {

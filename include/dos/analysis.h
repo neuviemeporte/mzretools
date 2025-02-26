@@ -13,7 +13,8 @@
 #include "dos/instruction.h"
 #include "dos/routine.h"
 #include "dos/scanq.h"
-#include "dos/map.h"
+#include "dos/codemap.h"
+#include "dos/signature.h"
 
 class Executable;
 
@@ -85,12 +86,12 @@ public:
     struct Options {
         bool strict, ignoreDiff, noCall, variant, checkAsm;
         Size refSkip, tgtSkip, ctxCount;
-        Size routineSizeThresh; // routine size in instructions
-        Size routineDistanceThresh;
+        Size routineSizeThresh; // minimum routine size (in instructions) threshold
+        Size routineDistanceThresh; // maximum edit distance threshold (as ratio of routine size)
         Address stopAddr;
         std::string mapPath;
         Options() : strict(true), ignoreDiff(false), noCall(false), variant(false), refSkip(0), tgtSkip(0), ctxCount(10), 
-            routineSizeThresh(15), routineDistanceThresh(1) {}
+            routineSizeThresh(15), routineDistanceThresh(10) {}
     };
 private:
     enum ComparisonResult { 
@@ -117,14 +118,15 @@ private:
     std::set<std::string> routineNames, excludedNames, missedNames;
     Size refSkipCount, tgtSkipCount;
     Address refSkipOrigin, tgtSkipOrigin;
-    std::set<Address> dataRefs;
+    std::set<Variable> vars;
 
 public:
     Analyzer(const Options &options, const Size maxData = 0) : options(options), offMap(maxData), comparedSize(0) {}
     CodeMap exploreCode(Executable &exe);
     bool compareCode(const Executable &ref, Executable &tgt, const CodeMap &refMap);
-    bool findDuplicates(const Executable &ref, Executable &tgt, const CodeMap &refMap, CodeMap &tgtMap);
+    bool findDuplicates(const SignatureLibrary signatures, Executable &tgt, CodeMap &tgtMap);
     void findDataRefs(const Executable &exe, const CodeMap &map);
+    void seedQueue(const CodeMap &map, Executable &exe);
 
 private:
     bool skipAllowed(const Instruction &refInstr, Instruction tgtInstr);
@@ -142,6 +144,7 @@ private:
     void calculateStats(const CodeMap &routineMap);
     void comparisonSummary(const Executable &ref, const CodeMap &routineMap, const bool showMissed);
     void processDataReference(const Executable &exe, const Instruction i, const CpuState &regs);
+    void claimNops(const Instruction &i, const Executable &exe);
 };
 
 #endif // ANALYSIS_H

@@ -93,9 +93,9 @@ bool Routine::colides(const Block &block, const bool checkExtents) const {
     return false;
 }
 
-string Routine::dump(const bool showChunks) const {
+string Routine::dump(const bool showChunks, const bool showLinear) const {
     ostringstream str;
-    str << extents.toString(false, true) << ": " << name;
+    str << extents.toString(false, true, showLinear) << ": " << name;
     if (near) str << " [near]";
     else str << " [far]";
     if (ignore) str << " [ignored]";

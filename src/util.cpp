@@ -198,6 +198,14 @@ std::string getDirname(const std::string &path) {
     return p.string();
 }
 
+std::string getExtension(const std::string &path) {
+    if (path.empty()) return {};
+    fs::path p{path};
+    string ext = p.extension().string();
+    if (ext.front() == '.') return string(ext.begin() + 1, ext.end());
+    return {};
+}
+
 std::string replaceExtension(const std::string &path, const std::string &ext) {
     if (path.empty()) return path;
     fs::path p{path};

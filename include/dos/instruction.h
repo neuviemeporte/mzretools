@@ -102,6 +102,10 @@ INSTRUCTION_CLASS
 #undef X
 };
 
+InstructionClass instr_class(const Byte opcode);
+const char* instr_class_name(const InstructionClass iclass);
+const char* instructionName(const InstructionClass c);
+
 #define INSTRUCTION_PREFIX \
     X(PRF_NONE) \
     X(PRF_SEG_ES) \
@@ -117,7 +121,9 @@ INSTRUCTION_PREFIX
 };
 
 inline bool prefixIsSegment(const InstructionPrefix p) { return p >= PRF_SEG_ES && p <= PRF_SEG_DS; }
+inline bool prefixIsChain(const InstructionPrefix p) { return p >= PRF_CHAIN_REPNZ && p <= PRF_CHAIN_REPZ; }
 Register prefixRegId(const InstructionPrefix p);
+const char* prefixName(const InstructionPrefix p);
 
 // the offsets in memory operands (OFF8/OFF16) are signed, except for OPR_MEM_OFF16 (e.g. [0x9000])
 // TODO: OPR_MEM_OFF8 should not exist? There is no modrm MEM type that allows a 8bit offset by itself.
@@ -218,8 +224,8 @@ inline bool operandIsExplicitImmediate(const OperandType ot) {
 }
 
 OperandType operandTypeToWord(const OperandType ot);
-
 Register defaultMemSegment(const OperandType ot);
+const char* operandName(const OperandType t);
 
 #define OPERAND_SIZE \
     X(OPRSZ_UNK) \
@@ -321,8 +327,5 @@ private:
     Size loadImmediate(Operand &op, const Byte *data);
     const Operand* memOperand() const;
 };
-
-InstructionClass instr_class(const Byte opcode);
-const char* instr_class_name(const InstructionClass iclass);
 
 #endif // INSTRUCTION_H

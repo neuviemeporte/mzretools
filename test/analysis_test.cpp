@@ -116,7 +116,7 @@ TEST_F(AnalysisTest, CpuState) {
 
 TEST_F(AnalysisTest, CodeMap) {
     // test loading of routine map from ida file
-    const CodeMap idaMap{"../bin/hello.lst"};
+    const CodeMap idaMap{"../bin/hello.lst", 0, CodeMap::MAP_IDALST};
     const auto sum = idaMap.getSummary();
     TRACE(sum.text);
     ASSERT_NE(sum.dataSize, 0);
@@ -204,9 +204,14 @@ TEST_F(AnalysisTest, CodeMapFromQueue) {
     TRACE(queueMap.getSummary().text);
 }
 
+TEST_F(AnalysisTest, CodeMapFromLinkMap) {
+    const string path{"../bin/link.map"};
+    CodeMap linkMap{path, 0, CodeMap::MAP_MSLINK};
+}
+
 TEST_F(AnalysisTest, BigCodeMap) {
     CodeMap rm{"../bin/egame.map", 0x1000};
-    ASSERT_EQ(rm.routineCount(), 398);
+    ASSERT_EQ(rm.routineCount(), 400);
 }
 
 TEST_F(AnalysisTest, FindRoutines) {
@@ -226,7 +231,7 @@ TEST_F(AnalysisTest, FindRoutines) {
     ASSERT_EQ(discoveredMap.variableCount(), expectedVars);
 
     // create map from IDA listing
-    const CodeMap idaMap{"../bin/hello.lst", loadSegment};
+    const CodeMap idaMap{"../bin/hello.lst", loadSegment, CodeMap::MAP_IDALST};
     // compare our map against IDA map
     Size matchCount = idaMap.match(discoveredMap, true);
     const Size idaMatchCount = 38; // not all 54 routines that ida finds can be identified for now
@@ -591,7 +596,7 @@ TEST_F(AnalysisTest, DiffImmLow) {
 
 TEST_F(AnalysisTest, FindDuplicates) {
     const Word loadSegment = 0x1234;
-    const Size expectedRoutines = 40, expectedDuplicates = 23;
+    const Size expectedRoutines = 40, expectedDuplicates = 28;
     MzImage mz{"../bin/hello.exe", loadSegment};
     Executable exe{mz};
     Analyzer::Options opt;
@@ -604,13 +609,22 @@ TEST_F(AnalysisTest, FindDuplicates) {
         ASSERT_FALSE(rm.getRoutine(i).duplicate);
     }
     ASSERT_EQ(rm.routineCount(), expectedRoutines);
-    CodeMap rmdup{rm};
-    ASSERT_EQ(rmdup.routineCount(), rm.routineCount());
-    ASSERT_TRUE(a.findDuplicates(exe, exe, rm, rmdup));
-    rmdup.save("hello.map.dup", loadSegment, true);
+    // generate signatures for discovered routines
+    SignatureLibrary sigs{rm, exe, opt.routineSizeThresh};
+    TRACELN("Extracted signatures: " + to_string(sigs.signatureCount()));
+    // save and load back signatures from file to test serialization
+    sigs.save("hello.sig");
+    SignatureLibrary loadedSigs{"hello.sig"};
+    ASSERT_EQ(loadedSigs.signatureCount(), sigs.signatureCount());
+    for (Size i = 0; i < loadedSigs.signatureCount(); ++i) {
+        ASSERT_EQ(sigs.getSignature(i).size(), loadedSigs.getSignature(i).size());
+    }
+    // find duplicates using extracted signatures
+    ASSERT_TRUE(a.findDuplicates(sigs, exe, rm));
+    rm.save("hello.map.dup", loadSegment, true);
     Size foundDuplicates = 0;
-    for (int i = 0; i < rmdup.routineCount(); ++i) {
-        if (rmdup.getRoutine(i).duplicate) foundDuplicates++;
+    for (int i = 0; i < rm.routineCount(); ++i) {
+        if (rm.getRoutine(i).duplicate) foundDuplicates++;
     }
     TRACELN("Found duplicates: " + to_string(foundDuplicates));
     ASSERT_EQ(foundDuplicates, expectedDuplicates);

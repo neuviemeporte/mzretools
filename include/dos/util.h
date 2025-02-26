@@ -54,6 +54,7 @@ struct FileStatus {
 
 FileStatus checkFile(const std::string &path);
 std::string getDirname(const std::string &path);
+std::string getExtension(const std::string &path);
 std::string replaceExtension(const std::string &path, const std::string &ext);
 bool deleteFile(const std::string &path);
 bool readBinaryFile(const std::string &path, Byte *buf, const Size size = 0);
@@ -65,6 +66,7 @@ std::vector<SWord> hexaToNumeric(const std::string &hexa);
 std::string numericToHexa(const ByteString &pattern);
 std::vector<std::string> splitString(const std::string &str, char delim);
 void erasePattern(ByteString &str, const ByteString &pat);
+bool regexMatch(const std::regex &re, const std::string &str);
 std::vector<std::string> extractRegex(const std::regex &re, const std::string &str);
 
 #endif // UTIL_H

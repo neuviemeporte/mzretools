@@ -32,10 +32,12 @@ ScanQueue::ScanQueue(const Address &origin, const Size codeSize, const Destinati
     origin(origin)
 {
     debug("Initializing queue, origin: " + origin.toString() + ", size = " + to_string(codeSize) + ", seed: " + seed.toString() + ", name: '" + name + "'");
-    queue.push_front(seed);
-    RoutineEntrypoint ep{seed.address, seed.routineIdx, true};
-    if (!name.empty()) ep.name = name;
-    entrypoints.push_back(ep);
+    if (seed.address.isValid()) {
+        queue.push_front(seed);
+        RoutineEntrypoint ep{seed.address, seed.routineIdx, true};
+        if (!name.empty()) ep.name = name;
+        entrypoints.push_back(ep);
+    }
 }
 
 string ScanQueue::statusString() const { 
@@ -93,9 +95,17 @@ RoutineIdx ScanQueue::isEntrypoint(const Address &addr) const {
     else return NULL_ROUTINE;
 }
 
-RoutineEntrypoint ScanQueue::getEntrypoint(const std::string &name) {
+RoutineEntrypoint ScanQueue::getEntrypoint(const std::string &name) const {
     const auto &found = std::find_if(entrypoints.begin(), entrypoints.end(), [&](const RoutineEntrypoint &ep){
         return ep.name == name;
+    });
+    if (found != entrypoints.end()) return *found;
+    return {};
+}
+
+RoutineEntrypoint ScanQueue::getEntrypoint(const RoutineIdx idx) const {
+    const auto &found = std::find_if(entrypoints.begin(), entrypoints.end(), [&](const RoutineEntrypoint &ep){
+        return ep.idx == idx;
     });
     if (found != entrypoints.end()) return *found;
     return {};
@@ -145,10 +155,21 @@ vector<Block> ScanQueue::getUnvisited() const {
 bool ScanQueue::saveCall(const Address &dest, const CpuState &regs, const bool near, const std::string name) {
     if (!dest.isValid()) return false;
     RoutineIdx destId = isEntrypoint(dest);
-    if (destId != NULL_ROUTINE) 
+    if (destId != NULL_ROUTINE) {
         debug("Address "s + dest.toString() + " already registered as entrypoint for routine " + to_string(destId));
-    else if (hasPoint(dest, true)) 
+        if (destId >= routineCount() || destId == 0) {
+            debug("Could not locate routine entrypoint by index: " + to_string(destId));
+            return false;
+        }
+        RoutineEntrypoint &ep = entrypoints[destId - 1];
+        if (ep.near != near) {
+            ep.near = near;
+            debug("Updated nearness for entrypoint " + ep.toString());
+        }
+    }
+    else if (hasPoint(dest, true)) {
         debug("Search queue already contains call to address "s + dest.toString());
+    }
     else { // not a known entrypoint and not yet in queue
         destId = getRoutineIdx(dest.toLinear());
         RoutineIdx newRoutineIdx = routineCount() + 1;
@@ -198,7 +219,7 @@ bool ScanQueue::saveBranch(const Branch &branch, const CpuState &regs, const Blo
 
     if (codeExtents.contains(branch.destination)) {
         bool ret;
-        if (branch.isCall) 
+        if (branch.isCall)
             ret = saveCall(branch.destination, regs, branch.isNear); 
         else 
             ret = saveJump(branch.destination, regs);

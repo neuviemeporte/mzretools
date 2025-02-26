@@ -29,9 +29,10 @@ void usage() {
            "--overwrite:    overwrite output file.map if already exists\n"
            "--brief:        only show uncompleted and unclaimed areas in map summary\n"
            "--format:       format printed routines in a way that's directly writable back to the map file\n"
-           "--nocpu:        omit CPU-related information like instruction decoding\n"
-           "--noanal:       omit analysis-related information\n"
-           "--load segment: overrride default load segment (0x0)", LOG_OTHER, LOG_ERROR);
+           "--nocpu:        omit CPU-related information like instruction decoding from debug output\n"
+           "--noanal:       omit analysis-related information from debug output\n"
+           "--linkmap file  use a linker map from Microsoft C to seed initial location of routines\n"
+           "--load segment: override default load segment (0x0)", LOG_OTHER, LOG_ERROR);
     exit(1);
 }
 
@@ -76,7 +77,13 @@ void loadAndPrintMap(const string &mapfile, const bool verbose, const bool brief
     info("Single parameter specified, printing existing mapfile");
     auto fs = checkFile(mapfile);
     if (!fs.exists) fatal("Mapfile does not exist: " + mapfile);
-    CodeMap map(mapfile);
+    string mapfileLower(mapfile.size(), '\0');
+    std::transform(mapfile.begin(), mapfile.end(), mapfileLower.begin(), [](unsigned char c){ return std::tolower(c); });
+    const string ext = getExtension(mapfileLower);
+    CodeMap::Type mapType = CodeMap::MAP_MZRE;
+    if (ext == "lst") mapType = CodeMap::MAP_IDALST;
+    // TODO: support printing link maps?
+    CodeMap map(mapfile, 0, mapType);
     const auto sum = map.getSummary(verbose, brief, format);
     cout << sum.text;
     if (map.isIda()) map.save(mapfile + ".map");
@@ -88,7 +95,7 @@ int main(int argc, char *argv[]) {
         usage();
     }
     Word loadSegment = 0x0;
-    string file1, file2;
+    string file1, file2, linkmapPath;
     bool verbose = false;
     bool brief = false, format = false, overwrite = false;
     for (int aidx = 1; aidx < argc; ++aidx) {
@@ -103,16 +110,23 @@ int main(int argc, char *argv[]) {
             brief = true;
         }
         else if (arg == "--format") format = true;
-        else if (arg == "--load" && (aidx++ + 1 < argc)) {
+        else if (arg == "--load") {
+            if (++aidx >= argc) fatal("Option requires an argument: --load");
             string loadSegStr(argv[aidx]);
             loadSegment = static_cast<Word>(stoi(loadSegStr, nullptr, 16));
             info("Overloading default load segment: "s + hexVal(loadSegment));
+        }
+        else if (arg == "--linkmap") {
+            if (++aidx >= argc) fatal("Option requires an argument: --linkmap");
+            linkmapPath = string{argv[aidx]};
+            if (!checkFile(linkmapPath).exists) fatal("Linker map file does not exist: " + linkmapPath);
         }
         else if (file1.empty()) file1 = arg;
         else if (file2.empty()) file2 = arg;
         else fatal("Unrecognized argument: "s + arg);
     }
     try {
+        if (file1.empty()) fatal("Need at least one input file");
         if (file2.empty()) { // print existing map and exit
             loadAndPrintMap(file1, verbose, brief, format);
         }
@@ -123,6 +137,12 @@ int main(int argc, char *argv[]) {
             }
             Executable exe = loadExe(file1, loadSegment);
             Analyzer a = Analyzer(Analyzer::Options());
+            // optionally seed search queue with link map
+            if (!linkmapPath.empty()) {
+                CodeMap linkmap{linkmapPath, loadSegment, CodeMap::MAP_MSLINK};
+                info("Using linker map file " + linkmapPath + " to seed scan: " + to_string(linkmap.segmentCount()) + " segments, " + to_string(linkmap.routineCount()) + " routines, " + to_string(linkmap.variableCount()) + " variables");
+                a.seedQueue(linkmap, exe);
+            }
             CodeMap map = a.exploreCode(exe);
             if (map.empty()) {
                 fatal("Unable to find any routines");
