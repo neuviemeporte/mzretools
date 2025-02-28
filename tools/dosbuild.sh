@@ -57,6 +57,7 @@ if [ "$tool" != "test" ]; then
         case $tool in
         cc) tool=cl;;
         link) ;;
+        lib) ;;
         *) toolok=0;;
         esac
     elif [[ $chain =~ ^qc ]]; then
@@ -232,6 +233,29 @@ case $tool in
         fi
         cmdline+=" @${rspname}"
         ;;
+    lib)
+        echo -n "$outfile_dos" > $infile_rsp
+        if [ "$flags" ]; then
+            echo -n " $flags" >> $infile_rsp
+        fi
+        count=$(echo $infiles_dos | wc -w)
+        idx=1
+        for o in $infiles_dos; do
+            if ((idx != count)); then
+                echo "+$o&" >> $infile_rsp
+            else
+                echo "+$o" >> $infile_rsp
+            fi
+            ((++idx))
+        done
+        echo ";" >> $infile_rsp
+        if ((DEBUG)); then
+        echo "--- $infile_rsp:"
+        cat $infile_rsp
+        echo "---"
+        fi
+        cmdline+=" @${rspname}"
+        ;;
     tlink)
         compiler_dir=$TC_DIR
         [ "$flags" ] && cmdline+=" $flags"
@@ -266,7 +290,7 @@ debug "cmdline: $cmdline"
 # create dos bat file for launching inside the emulator
 
 cat > $BAT_FILE <<EOF
-set PATH=Z:\;C:\\$chain\\bin;C:\\$chain\binb;C:\\$chain
+set PATH=Z:\;C:\\$chain\\bin;C:\\$chain\binb;C:\\$chain\bound;C:\\$chain
 set INCLUDE=C:\\$chain\\include
 set LIB=C:\\$chain\\lib
 mount d $infile_dir

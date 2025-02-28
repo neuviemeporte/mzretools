@@ -1,3 +1,4 @@
+- print routine entrypoint in "potential duplicate" comment in .dup map
 - implement segment deduction from es, les, lds
 - implement memory writes in mzmap, rollback at function return? 
 - examine remaining unreachable blocks in f14 routines
