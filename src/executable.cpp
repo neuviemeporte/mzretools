@@ -17,7 +17,8 @@ Executable::Executable(const MzImage &mz) :
     code(mz.loadSegment(), mz.loadModuleData(), mz.loadModuleSize()),
     loadSegment(mz.loadSegment()),
     codeSize(mz.loadModuleSize()),
-    stack(mz.stackPointer())
+    stack(mz.stackPointer()),
+    origPath(mz.path())
 {
     // relocate entrypoint
     setEntrypoint(mz.entrypoint());

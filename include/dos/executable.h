@@ -19,6 +19,7 @@ class Executable {
     Address ep, stack;
     Block codeExtents;
     std::vector<Segment> segments;
+    std::string origPath;
 
 public:
     explicit Executable(const MzImage &mz);
@@ -30,6 +31,7 @@ public:
 
     Size size() const { return codeSize; }
     Block extents() const { return codeExtents; }
+    std::string path() const { return origPath; }
     bool contains(const Address &addr) const { return codeExtents.contains(addr); }
     Segment getSegment(const Word addr) const;
     bool storeSegment(const Segment &seg);

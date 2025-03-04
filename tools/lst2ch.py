@@ -127,9 +127,8 @@ def saveVariable(var, vars, offset, total_size):
     '''store variable in list, add its size to running total'''
     if not var:
         return total_size
-    
-    # if var.name == 'stru_1892E':
-    #     breakpoint()
+    if next((v for v in vars if v.name == var.name), None) is not None:
+        error(f"Variable already exists: {var.name}")
     varsize = var.size()
     vars.append(var)
     total_size += varsize
@@ -159,6 +158,7 @@ def parseListing(iter, config, structs):
     proto_off = 0
     decl_str = ''
     decl_off = 0
+    jmp_count = 0
 
     while True:
         # lstfile eof
@@ -243,10 +243,20 @@ def parseListing(iter, config, structs):
                 if not curVar.addData(data, dtype, itemsz):
                     error("Data rejected by new variable?!")
                 total_datasize = sumData(count, curVar, total_datasize)
-            elif (match := Regex.DATA.match(instr)) is not None: # unnamed data
-                itemtype = match.group(1)
+            elif ((match := Regex.DATA.match(instr)) is not None) or ((match := Regex.ALIGN.match(instr)) is not None): # unnamed data/align directive
+                if (instr.startswith('align')):
+                    count = int(match.group(1), 16)
+                    amount = count - (offset % count)
+                    debug(f"Alignment directive, count: {count}, emitting {amount} align bytes")
+                    itemtype = 'db'
+                    if (curVar and curVar.dtype == Datatype.BSS):
+                        datavalue = f'{amount:X}h dup(?)'
+                    else:
+                        datavalue = f'{amount:X}h dup(0)'
+                else:
+                    itemtype = match.group(1)
+                    datavalue = match.group(2)
                 itemsz = Datatype.TYPESIZE[itemtype]
-                datavalue = match.group(2)
                 debug(f"Data continuation, item size = '{itemsz}', value = '{datavalue}'")
                 data, count, dtype, comm = parseData(datavalue, structs)
                 # TODO: make dummy also if current var is word, but data is bytes
@@ -280,10 +290,13 @@ def parseListing(iter, config, structs):
                 debug(f"far jump to {target}")
                 total_varsize = saveVariable(curVar, variables, offset, total_varsize)
                 curVar = Variable(f"jmp_{target}", offset, 1, comment)
+                if next((v for v in variables if v.name == curVar.name), None) is not None:
+                    curVar.name = f"jmp_{jmp_count}"
                 data = [ 0xea, 0x00, 0x00, 0x00, 0x00] # far jmp 0:0
                 if not curVar.addData(data, Datatype.ARRAY, 1):
                     error("Data rejected by new dummy jump variable?!")
                 total_datasize = sumData(len(data), curVar, total_datasize)
+                jmp_count += 1
             elif (match := Regex.STRUCTBSSVAR.match(instr)) is not None: # uninitialized structure
                 varname = match.group(1)
                 structname = match.group(2)
@@ -465,7 +478,7 @@ def main():
     procs, vars, proc_ignored, total_data = parseListing(lst_iter, config, structs)
     # don't continue if input file was empty
     if len(procs) == 0 and len(vars) == 0:
-        info("Input file empty, no action")
+        info("Parsing the listing yielded no results, empty file or broken config?")
         # touch files for make
         if output_h:
             Path(hpath).touch()

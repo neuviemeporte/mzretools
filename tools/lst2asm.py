@@ -7,6 +7,7 @@ import sys
 import re
 import os.path
 from pathlib import Path
+import traceback
 
 from output import debug, info, error, setDebug
 from helper import LstIterator, Output
@@ -38,15 +39,11 @@ def closeExtracts(items, dir):
         f = open(path, "a")
         f.write(f"{i.segment} ends\nend\n")
 
-def main():
+def main(lstpath, asmpath, confpath):
     if len(sys.argv) < 4:
         error("Syntax: lst2asm infile outfile conffile [--debug] [--stub] [--noproc] [--nopreserve]")
 
     opcode_map = { 'add': '05h', 'cmp': '3Dh', 'and': '25h', 'sub': '2Dh', 'sbb': '1Dh' }
-
-    lstpath = sys.argv[1]
-    asmpath = sys.argv[2]
-    confpath = sys.argv[3]
 
     # routine processing modes:
     # 1. all routines copied verbatim (default)
@@ -231,13 +228,16 @@ def main():
             # more complex substitutions
             # TODO: make more generic, configurable from conffile
             if (match := Regex.ALIGN.match(instr)) is not None:
-                amount = int(match.group(1))
-                if amount == 2:
-                    writeList = [ 'nop' ]
-                elif amount == 4:
-                    writeList = [ 'nop', 'nop' ]
-                elif amount != 2:
-                    error(f"Unsupported align amount: {amount} on line {lst_iter.lineNumber()}")
+                align = int(match.group(1), 16)
+                count = align - (offset % align) 
+                comment += instr
+                if segment in config.code_segments:
+                    writeList = [ 'nop' ] * count
+                elif segment in config.data_segments:
+                    if config.inBss(segment, offset):
+                        writeList = [ 'db ?' ] * count
+                    else:
+                        writeList = [ 'db 0' ] * count
             elif (match := Regex.INSTR_AX.match(instr)) is not None:
                 comment += instr
                 opcode = opcode_map[match.group(1)]
@@ -295,12 +295,31 @@ def main():
     for p in config.coda:
         asmfile.write(p + "\n")
 
+    if asmfile.tell() == 0:
+        error("Output file is empty, broken config?")
+
     # check if all preserved routines were written out to output file
     if config.preserves and not noPreserve:
         for p in config.preserves:
             if p not in output_procs:
                 info(f"WARNING: Preserved routine not written to output: {p}")
 
-
 if __name__ == '__main__':
-    main()
+    lstpath = sys.argv[1]
+    asmpath = sys.argv[2]
+    confpath = sys.argv[3]
+    success = True
+    try:
+        main(lstpath, asmpath, confpath)
+    except RuntimeError:
+        success = False
+    except:
+        success = False
+        traceback.print_exc()
+    finally:
+        if not success:
+            out_path = Path(asmpath)
+            if out_path.is_file():
+                debug(f"Removing output file {asmpath} due to fatal error")
+                out_path.unlink()
+            sys.exit(1)
