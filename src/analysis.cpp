@@ -1526,9 +1526,10 @@ bool Analyzer::findDuplicates(const SignatureLibrary signatures, Executable &tgt
     if (dupCount) {
         const Size dupPercent = (dupTotalInstr * 100) / tgtTotalInstr;
         info("Processed " + to_string(signatures.signatureCount()) + " signatures, ignored " + to_string(ignoreCount) + " as too short\n" +
-             "Tried to find matches for " + to_string(tgtMap.routineCount()) + " target exe routines (" + to_string(tgtTotalInstr) + " instructions, 100%)\n" +
-             "Found " + to_string(dupCount) + " (unique: " + to_string(uniqueDups) + ") matching routines (" + to_string(dupTotalInstr) + " instructions, " + to_string(dupPercent) + "%)\n" +
-             "Unable to find " + to_string(tgtMap.routineCount() - dupCount) + " matching routines (" + to_string(100 - dupPercent) + "%)", OUT_GREEN);
+             "Tried to find matches for " + to_string(tgtMap.routineCount()) + " routines of target executable (" + tgt.path() + "), " + to_string(tgtTotalInstr) + " instructions total, 100%\n" +
+             "Found " + to_string(dupCount) + " (unique: " + to_string(uniqueDups) + ") matching routines, " + to_string(dupTotalInstr) + " instructions total, " + output_color(OUT_GREEN) + 
+             to_string(dupPercent) + "%" + output_color(OUT_DEFAULT) + "\n" +
+             "Unable to find " + to_string(tgtMap.routineCount() - dupCount) + " matching routines, " + output_color(OUT_RED) + to_string(100 - dupPercent) + "%" + output_color(OUT_DEFAULT));
     }
     else info("No duplicates found, ignored " + to_string(ignoreCount) + " routines", OUT_RED);
 

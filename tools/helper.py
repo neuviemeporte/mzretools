@@ -34,7 +34,7 @@ class Block:
         return maxBegin <= minEnd
 
 class Output:
-    MAXLINE = 80
+    MAXLINE = 120
     def __init__(self, handle):
         self.handle = handle
         self.indent = ''
@@ -46,7 +46,7 @@ class Output:
             items = chars.split(';')
             instr = items[0]
             if instr and len(instr) > self.MAXLINE:
-                error(f"Instruction string too long: {instr}")
+                error(f"Instruction string too long: {instr.rstrip()}")
             # write out comment before instruction
             # TODO: handle more than 2 items
             comment = items[1]
@@ -91,7 +91,7 @@ class Location:
         return self.replace
 
 class Extract:
-    def __init__(self, segment, block, start, end, ported=True, filename=None):
+    def __init__(self, segment, block, start = 0, end = 0, ported=True, filename=None):
         self.segment = segment
         self.block = block
         self.start = start

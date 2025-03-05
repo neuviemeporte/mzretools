@@ -15,4 +15,4 @@ def info(str):
 
 def error(str):
     print(f"ERROR: {str}")
-    sys.exit(1)
+    raise RuntimeError

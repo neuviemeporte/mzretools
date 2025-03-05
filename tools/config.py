@@ -7,6 +7,7 @@ from util import parseNum
 
 class Config:
     COMMENT_RE = re.compile(r'^\s*//.*')
+
     def __init__(self, confpath):
         debug(f"Loading configuration from {confpath}")
         self.confpath = confpath
@@ -27,8 +28,10 @@ class Config:
         self.publics = []
         self.header_preamble = ""
         self.header_coda = ""
+        self.bss = []
         self.loadConfig()
         self.setConfig()
+
     def setConfig(self):
         for name in [ "preamble", "coda", "include", "in_segments", "code_segments", "data_segments", "preserves", "externs", "publics", "header_preamble", "header_coda" ]:
             if name in self.config:
@@ -39,17 +42,24 @@ class Config:
             v = parseNum(self.config['data_size'])
             debug(f"data_size: {v}")
             self.data_size = v
+        if 'bss' in self.config:
+            for b in self.config['bss']:
+                v = self.makeBss(b)
+                debug(f"bss: {v}")
+                self.bss.append(v)
         for name in [ 'remove', 'replace', 'insert' ]:
             if name in self.config:
                 for i in self.config[name]:
                     l = self.makeLocation(i)
                     debug(f"{name}: {l}")
                     getattr(self, name).append(l)
-        if 'extract' in self.config:
-            for e in self.config['extract']:
-                v = self.makeExtract(e)
-                debug(f"extract: {v}")
-                self.extract.append(v)
+        for name in [ 'extract' ]:
+            if name in self.config:
+                for e in self.config[name]:
+                    v = self.makeExtract(e)
+                    debug(f"extract: {v}")
+                    self.extract.append(v)
+
     def loadConfig(self):
         file = open(self.confpath)
         json_str = ""
@@ -89,6 +99,18 @@ class Config:
         match_end = d['to'] if 'to' in d else None
         ported = d['ported'] if 'ported' in d else True
         return Extract(seg, Block(begin, end), match_begin, match_end, ported)
+    
+    def makeBss(self, d):
+        seg = d['seg'] if 'seg' in d else None
+        begin = parseNum(d['begin']) if 'begin' in d else 0
+        end = parseNum(d['end']) if 'end' in d else 0
+        return Extract(seg, Block(begin, end))
+    
+    def inBss(self, segment, offset):
+        for b in self.bss:
+            if b.segment == segment and offset >= b.block.begin and offset <= b.block.end:
+                return True
+        return False
 
 # this is an unused experiment for a superset of json, with comments, references and includes, doesn't work due to unsolved json tree walking and update
 def parseConf():
