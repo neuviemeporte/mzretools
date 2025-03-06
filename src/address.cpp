@@ -95,15 +95,27 @@ std::ostream& operator<<(std::ostream &os, const Address &arg) {
 }
 
 Block::Block(const std::string &blockStr) {
-    static const regex BLOCK_RE{"([0-9a-fA-F]{1,6})-([0-9a-fA-F]{1,6})"};
+    static const regex 
+        BLOCK_RE{"([0-9a-fA-F]{1,4}):([0-9a-fA-F]{1,4})-([0-9a-fA-F]{1,4}):([0-9a-fA-F]{1,4})"},
+        LINBLOCK_RE{"([0-9a-fA-F]{1,6})-([0-9a-fA-F]{1,6})"};
     smatch match;
-    if (!regex_match(blockStr, match, BLOCK_RE))
-        throw ArgError("Invalid block string: "s + blockStr);
-    const Offset 
-        beginVal = stoi(match.str(1), nullptr, 16),
-        endVal   = stoi(match.str(2), nullptr, 16);
-    begin = Address{beginVal};
-    end = Address{endVal};
+    if (regex_match(blockStr, match, BLOCK_RE)) {
+        const Word
+            beginSeg = stoi(match.str(1), nullptr, 16),
+            beginOff = stoi(match.str(2), nullptr, 16),
+            endSeg   = stoi(match.str(3), nullptr, 16),
+            endOff   = stoi(match.str(4), nullptr, 16);
+        begin = Address{beginSeg, beginOff};
+        end = Address{endSeg, endOff};
+    }
+    else if (regex_match(blockStr, match, LINBLOCK_RE)) {
+        const Offset 
+            beginVal = stoi(match.str(1), nullptr, 16),
+            endVal   = stoi(match.str(2), nullptr, 16);
+        begin = Address{beginVal};
+        end = Address{endVal};
+    }
+    else throw ArgError("Invalid block string: "s + blockStr);
 }
 
 Block::Block(const std::string &from, const std::string &to) {

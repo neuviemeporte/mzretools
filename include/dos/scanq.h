@@ -35,7 +35,7 @@ class ScanQueue {
     // TODO: store addresses from loaded exe in map, otherwise they don't match after analysis done if exe loaded at segment other than 0
     std::vector<RoutineIdx> visited;
     Address origin;
-    Destination curSearch;
+    Destination seed, curSearch;
     std::list<Destination> queue;
     std::vector<RoutineEntrypoint> entrypoints;
 

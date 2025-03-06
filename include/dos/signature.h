@@ -2,6 +2,7 @@
 #define SIGNATURE_H
 
 #include "dos/types.h"
+#include "dos/address.h"
 
 #include <vector>
 #include <string>
@@ -12,8 +13,10 @@ class Executable;
 
 struct SignatureItem {
     std::string routineName;
+    Block routineExtents;
     SignatureString signature;
-    SignatureItem(const std::string &routineName, SignatureString &&signature) : routineName(routineName), signature(signature) {}
+    SignatureItem(const std::string &routineName, const Block &routineExtents, SignatureString &&signature) : 
+        routineName(routineName), routineExtents(routineExtents), signature(signature) {}
     Size size() const { return signature.size(); }
 };
 

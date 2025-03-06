@@ -29,7 +29,8 @@ string Branch::toString() const {
 
 ScanQueue::ScanQueue(const Address &origin, const Size codeSize, const Destination &seed, const std::string name) :
     visited(codeSize, NULL_ROUTINE),
-    origin(origin)
+    origin(origin),
+    seed(seed)
 {
     debug("Initializing queue, origin: " + origin.toString() + ", size = " + to_string(codeSize) + ", seed: " + seed.toString() + ", name: '" + name + "'");
     if (seed.address.isValid()) {
@@ -114,6 +115,7 @@ RoutineEntrypoint ScanQueue::getEntrypoint(const RoutineIdx idx) const {
 // return the set of routines found by the queue, these will only have the entrypoint set and an automatic name generated
 vector<Routine> ScanQueue::getRoutines() const {
     auto routines = vector<Routine>{routineCount()};
+    const Address seedAddr = seed.address;
     for (const auto &ep : entrypoints) {
         auto &r = routines.at(ep.idx - 1);
         // initialize routine extents with entrypoint address
@@ -121,7 +123,7 @@ vector<Routine> ScanQueue::getRoutines() const {
         r.near = ep.near;
         if (!ep.name.empty()) r.name = ep.name;
         // assign automatic names to routines
-        else if (ep.addr == originAddress()) r.name = "start";
+        else if (seedAddr.isValid() && ep.addr == seedAddr) r.name = "start";
         else r.name = "routine_"s + to_string(ep.idx);
     }
     return routines;

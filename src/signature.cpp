@@ -20,8 +20,9 @@ using namespace std;
 OUTPUT_CONF(LOG_ANALYSIS)
 
 SignatureLibrary::SignatureLibrary(const CodeMap &map, const Executable &exe, const Size minInstructions, const Size maxInstructions) {
+    const Word loadSeg = exe.loadAddr().segment;
     for (Size idx = 0; idx < map.routineCount(); ++idx) {
-        const Routine routine = map.getRoutine(idx);
+        Routine routine = map.getRoutine(idx);
         // TODO: external also, maybe enable with switch
         if (routine.ignore || routine.external) {
             debug("Ignoring routine: " + routine.dump(false));
@@ -41,8 +42,10 @@ SignatureLibrary::SignatureLibrary(const CodeMap &map, const Executable &exe, co
         else if (sigSize < minInstructions) debug("Routine too small: " + to_string(sigSize) + " instructions");
         else if (maxInstructions != 0 && sigSize > maxInstructions) debug("Routine too big: " + to_string(sigSize) + " instructions");
         else {
+            Block extents{routine.extents};
+            extents.rebase(loadSeg);
             verbose("Extracted signature for routine " + routine.name + ", " + to_string(sig.size()) + " instructions");
-            sigs.emplace_back(SignatureItem{routine.name, std::move(sig)});
+            sigs.emplace_back(SignatureItem{routine.name, extents, std::move(sig)});
         }
     }
     verbose("Loaded signatures for " + to_string(sigs.size()) + " routines from executable");
@@ -57,15 +60,24 @@ SignatureLibrary::SignatureLibrary(const std::string &path) {
         lineno++;
         // ignore comments and empty lines
         if (line.empty() || line[0] == '#') continue;
-        string routineName, sigStr;
+        string routineStr, routineName, extentsStr, sigStr;
         SignatureString tmpSigs;
+        Block extents;
+        vector<string> routineTokens;
         auto prevPos = line.begin(), curPos = line.begin();
         for (; curPos != line.end(); ++curPos) {
             switch (*curPos) {
-            case ':':
+            case '/':
                 if (!routineName.empty()) throw ParseError("More than one routine name for signature on line " + to_string(lineno));
-                routineName = {prevPos, curPos};
+                routineStr = {prevPos, curPos};
+                routineTokens = splitString(routineStr, ' ');
+                if (routineTokens.empty()) throw ParseError("Empty routine tokens on line " + to_string(lineno));
+                routineName = routineTokens.front();
                 PARSE_DEBUG("Line " + to_string(lineno) + ", found routine name: '" + routineName + "'");
+                if (routineTokens.size() > 1) {
+                    extents = Block{routineTokens[1]};
+                    PARSE_DEBUG("Line " + to_string(lineno) + ", found routine extents: " + extents.toString());
+                }
                 prevPos = curPos + 1;
                 break;
             case ',':
@@ -83,7 +95,7 @@ SignatureLibrary::SignatureLibrary(const std::string &path) {
         PARSE_DEBUG("Line " + to_string(lineno) + ", final signature token: '" + sigStr + "'");
         tmpSigs.emplace_back(stoi(sigStr, nullptr, 16));
         verbose("Loaded signature for routine " + routineName + ", " + to_string(tmpSigs.size()) + " instructions");
-        sigs.emplace_back(SignatureItem{routineName, std::move(tmpSigs)});
+        sigs.emplace_back(SignatureItem{routineName, extents, std::move(tmpSigs)});
     }
     verbose("Loaded signatures for " + to_string(sigs.size()) + " routines from " + path);
 }
@@ -96,7 +108,10 @@ void SignatureLibrary::save(const std::string &path) const {
         const SignatureItem &si = getSignature(i);
         const Size size = si.signature.size();
         if (size == 0) continue;
-        file << si.routineName << ": ";
+        file << si.routineName;
+        if (si.routineExtents.isValid())
+            file << " " << si.routineExtents.toString(false, false);
+        file << "/";
         for (Size j = 0; j < size; ++j) {
             if (j != 0) file << ",";
             file << hexVal(si.signature[j], false, false);

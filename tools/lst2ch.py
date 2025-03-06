@@ -6,6 +6,7 @@ from output import error, debug, info, setDebug
 from config import Config
 from util import Regex, parseNum, joinStrings, sizeStr, ignoredProc, splitData, percentStr, tweakComment
 from helper import Routine, Variable, Struct, Datatype, LstIterator, StructIterator, enforceType
+import traceback
 
 # TODO: 
 # struct N dup <P, Q, ...> 
@@ -429,28 +430,10 @@ def writeVars(vars, cfile, hfile):
         oldtype = v.dtype
     return datasum_size
 
-def main():
-    argc = len(sys.argv)
-    if argc < 4:
-        error("Syntax: lst2asm infile outdir conffile [--noc] [--noh] [--debug]")
-
-    lstpath = sys.argv[1]
-    outdir = sys.argv[2]
-    confpath = sys.argv[3]
-
+def main(lstpath, outdir, confpath, output_c, output_h):
     lstname, _ = os.path.splitext(os.path.basename(lstpath))
-    output_c = True
-    output_h = True
     hpath = f"{outdir}/{lstname}.h"
     cpath = f"{outdir}/{lstname}.c"
-    for i in range(4, argc):
-        argv = sys.argv[i]
-        if argv == "--noc":
-            output_c = False
-        elif argv == "--noh":
-            output_h = False
-        elif argv == "--debug":
-            setDebug(True)
 
     if not os.path.isfile(lstpath):
         error(f"Input file does not exist: {lstpath}")
@@ -512,4 +495,35 @@ def main():
         error(f"Accumulated data size ({sizeStr(datasum_size)}) different than expected {sizeStr(config.data_size)}")    
 
 if __name__ == '__main__':
-    main()
+    argc = len(sys.argv)
+    if argc < 4:
+        info("Syntax: lst2asm infile outdir conffile [--noc] [--noh] [--debug]")
+        sys.exit(1)
+    lstpath = sys.argv[1]
+    outdir = sys.argv[2]
+    confpath = sys.argv[3]
+    output_c = True
+    output_h = True
+    success = True
+    for i in range(4, argc):
+        argv = sys.argv[i]
+        if argv == "--noc":
+            output_c = False
+        elif argv == "--noh":
+            output_h = False
+        elif argv == "--debug":
+            setDebug(True)    
+    try:
+        main(lstpath, outdir, confpath, output_c, output_h)
+    except RuntimeError:
+        success = False
+    except:
+        success = False
+        traceback.print_exc()
+    finally:
+        if not success:
+            # out_path = Path(asmpath)
+            # if out_path.is_file():
+            #     debug(f"Removing output file {asmpath} due to fatal error")
+            #     out_path.unlink()
+            sys.exit(1)

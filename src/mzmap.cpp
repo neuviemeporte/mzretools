@@ -94,7 +94,7 @@ int main(int argc, char *argv[]) {
     if (argc < 2) {
         usage();
     }
-    Word loadSegment = 0x0;
+    Word loadSegment = 0x1000;
     string file1, file2, linkmapPath;
     bool verbose = false;
     bool brief = false, format = false, overwrite = false;

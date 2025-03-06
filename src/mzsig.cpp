@@ -51,7 +51,7 @@ int main(int argc, char *argv[]) {
     }
     string path1, path2, path3;
     bool overwrite = false;
-    Word loadSegment = 0;
+    Word loadSegment = 0x1000;
     Size minInstructions = MIN_DEFAULT, maxInstructions = MAX_DEFAULT;
     for (int aidx = 1; aidx < argc; ++aidx) {
         string arg(argv[aidx]);

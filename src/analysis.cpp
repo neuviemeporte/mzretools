@@ -1515,7 +1515,10 @@ bool Analyzer::findDuplicates(const SignatureLibrary signatures, Executable &tgt
         Routine &dupRoutine = tgtMap.getMutableRoutine(dup.dupIdx);
         debug("Emitting duplicate: " + dupRoutine.toString());
         // TODO: list duplicate blocks once figured out how to do comparisons on other blocks than the main one
-        dupRoutine.addComment("Routine " + dupRoutine.name + " is a potential duplicate of routine " + origSig.routineName + ", block " + dup.dupBlocks.front().toString() + " differs by " + to_string(dup.distance) + " instructions");
+        Block extents = dup.dupBlocks.front();
+        extents.rebase(tgt.loadAddr().segment);
+        dupRoutine.addComment("Routine " + dupRoutine.name + " " + extents.toString() + " is a potential duplicate of routine " + origSig.routineName 
+            + " " + origSig.routineExtents.toString()  + ", differs by " + to_string(dup.distance) + " instructions");
         dupRoutine.duplicate = true;
         dupCount++;
         // sum up total number of instructions in detected duplicate routines
