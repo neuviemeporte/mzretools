@@ -21,7 +21,8 @@ class Regex:
     SEGMENT = re.compile(f'^seg{SPACES}({NAME})')
     NUMBER = re.compile(f'^{NUMVAL}$')
     FARJMP = re.compile(f'jmp{SPACES}(?:far{SPACES})?(?:ptr{SPACES})?({NAME})')
-    PROTO = re.compile(f'^(?:{CTYPE})' + r'\s*\*?\s*' + '(?:__cdecl)?' + r'\s*' + f'({NAME})' + r'\(.*\)')
+    #PROTO = re.compile(f'^(?:{CTYPE})' + r'\s*\*?\s*' + '(?:__cdecl)?' + r'\s*' + f'({NAME})' + r'\(.*\)')
+    PROTO = re.compile(f'^(?:{CTYPE})' + r'.*' + f' ({NAME})' + r'\(.*\)')
     COLLAPSED = re.compile(r'\[' + f'({NUMVAL}) BYTES: COLLAPSED FUNCTION ({NAME}).*')
     SECRET = re.compile(f'^lst2ch:(.*)')
     STRUCT = re.compile(f'^({NAME}){SPACES}struc' + r'\s*;\s*\(\s*' +f'sizeof=({NUMVAL})')
@@ -61,7 +62,7 @@ def joinStrings(s):
         return s + "\n"
     
 def sizeStr(value):
-    if not value:
+    if value is None:
         return "None"
     return f"{value}/{hex(value)}"
 

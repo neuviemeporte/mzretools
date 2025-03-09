@@ -154,8 +154,9 @@ def enforceType(actual, required):
     return ret
 
 class Variable:
-    def __init__(self, name, offset, itemsz, comm, decl_str = None, decl_off = 0, itype = None):
+    def __init__(self, name, segment, offset, itemsz, comm, decl_str = None, decl_off = 0, itype = None):
         self.name = name
+        self.segment = segment
         self.offset = offset
         self.itemsz = itemsz
         self.data = []

@@ -520,7 +520,7 @@ CodeMap Analyzer::exploreCode(Executable &exe) {
                 else if (i.isReturn()) {
                     // TODO: check if return matches entrypoint type (near/far), warn otherwise
                     searchMessage(csip, "routine scan interrupted by return");
-                    claimNops(i, exe);
+                    //claimNops(i, exe);
                     break;
                 }
                 // limited register value tracing to enable data/stack segment deduction

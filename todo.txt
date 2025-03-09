@@ -1,11 +1,8 @@
-- print routine entrypoint in "potential duplicate" comment in .dup map
+- detect routines split in two by segment opening, e.g. egame copyJoystickData seg002:0cbe-0cd5, keep routine in old segment?
 - implement segment deduction from es, les, lds
 - implement memory writes in mzmap, rollback at function return? 
 - examine remaining unreachable blocks in f14 routines
 - load exes at 0x1000, rebase addresses for display, ignore segments before address space
-- use relative threshold (e.g. 10%) in mzdup instead of same instructon count for all-size routines
-- implement mzsig, generate signatures from exe+map, have mzdup ingest .sig instead
-- support link .map as input to mzsig
 - output ida .pat files for flirt?
 - detect and erase bogus data segments cutting across code segments, e.g. Data2/3 in egame.exe, notice when walking over code which is in the data segment
 - mark null blocks as bad/unreachable in mzmap - runs of 0000/add [bx+si],al probably don't make sense in legitimate code

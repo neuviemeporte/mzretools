@@ -118,13 +118,13 @@ prev_offset = 0
 def checkDataSize(size, offset):
     global prev_offset
     debug(f"Checking data size {sizeStr(size)} against offset {sizeStr(offset)} (prev = {sizeStr(prev_offset)})")
-    if not offset or offset == prev_offset:
+    if offset is None or offset == prev_offset:
         return
     if size != offset:
         error(f"Summed up data size {sizeStr(size)} does not agree with offset {sizeStr(offset)}")
     prev_offset = offset
 
-def saveVariable(var, vars, offset, total_size):
+def saveVariable(var, vars, segment, offset, total_size):
     '''store variable in list, add its size to running total'''
     if not var:
         return total_size
@@ -132,7 +132,10 @@ def saveVariable(var, vars, offset, total_size):
         error(f"Variable already exists: {var.name}")
     varsize = var.size()
     vars.append(var)
-    total_size += varsize
+    if var.segment == segment:
+        total_size += varsize
+    else:
+        debug("Variable from previous segment, not summing up size")
     debug(f'Closed variable {var.name}, added {sizeStr(varsize)} to total variable size, now {sizeStr(total_size)}')
     # check only if the current offset is different from the var just closed - for example initialized struct arrays do not change the offset
     if offset and total_size != offset and offset != var.offset:
@@ -151,9 +154,10 @@ def parseListing(iter, config, structs):
     procs = []
     # two independent counters for verifying the data segment layout, should always match
     # sum of parsed data values
-    total_datasize = 0
+    running_datasize = 0
     # sum of parsed variable sizes
-    total_varsize = 0
+    running_varsize = 0
+    total_datasize = 0
     proc_ignored = 0
     proto_str = ''
     proto_off = 0
@@ -170,6 +174,12 @@ def parseListing(iter, config, structs):
 
         if segment and not segment in config.in_segments:
             continue
+
+        if running_datasize > 0 and offset == 0:
+            debug(f"Offset reset, resetting datasize 0x{running_datasize:x}, varsize 0x{running_varsize:x}")
+            total_datasize += running_datasize
+            running_datasize = 0
+            running_varsize = 0
 
         # TODO: refactor, lots of repetition
         if segment in config.code_segments:
@@ -223,12 +233,13 @@ def parseListing(iter, config, structs):
             else:
                 debug("Code line ignored")
         elif segment in config.data_segments or not segment:
-            checkDataSize(total_datasize, offset)
+            checkDataSize(running_datasize, offset)
             if (match := Regex.SECRET.match(comment[0])): # special message to ourselves in ida comment
                 msg = match.group(1)
                 debug(f"Secret message: {msg}")
                 if curVar and curVar.offset == offset:
                     curVar.setDecl(msg)
+            # not elif by design, previous condition acts just on the comment
             if (match := Regex.VAR.match(instr)) is not None: # name + data
                 dataname = match.group(1)
                 itemsz = Datatype.TYPESIZE[match.group(2)]
@@ -236,14 +247,14 @@ def parseListing(iter, config, structs):
                 debug(f"Named variable, name = '{dataname}', item size = '{itemsz}', value = '{datavalue}'")
                 if curVar:
                     # have previous variable, need to close
-                    total_varsize = saveVariable(curVar, variables, offset, total_varsize)
+                    running_varsize = saveVariable(curVar, variables, segment, offset, running_varsize)
                 data, count, dtype, comm = parseData(datavalue, structs)
                 if comm:
                     comment.append(comm)
-                curVar = Variable(dataname, offset, itemsz, comment, decl_str, decl_off)
+                curVar = Variable(dataname, segment, offset, itemsz, comment, decl_str, decl_off)
                 if not curVar.addData(data, dtype, itemsz):
                     error("Data rejected by new variable?!")
-                total_datasize = sumData(count, curVar, total_datasize)
+                running_datasize = sumData(count, curVar, running_datasize)
             elif ((match := Regex.DATA.match(instr)) is not None) or ((match := Regex.ALIGN.match(instr)) is not None): # unnamed data/align directive
                 if (instr.startswith('align')):
                     count = int(match.group(1), 16)
@@ -264,24 +275,24 @@ def parseListing(iter, config, structs):
                 if not (curVar and curVar.addData(data, dtype, itemsz)): 
                     # data rejected by current variable, or no variable active, need to create a dummy new one
                     debug("Need to create dummy variable")
-                    total_varsize = saveVariable(curVar, variables, offset, total_varsize)
-                    curVar = Variable(f"{segment}_{Datatype.CTYPE[itemtype]}_" + ("%x" % offset), offset, itemsz, comm, decl_str, decl_off)
+                    running_varsize = saveVariable(curVar, variables, segment, offset, running_varsize)
+                    curVar = Variable(f"{segment}_{Datatype.CTYPE[itemtype]}_" + ("%x" % offset), segment, offset, itemsz, comm, decl_str, decl_off)
                     curVar.setDummy(True)
                     if not curVar.addData(data, dtype, itemsz):
                         error("Data rejected by new dummy variable?!")
-                total_datasize = sumData(count, curVar, total_datasize)
+                running_datasize = sumData(count, curVar, running_datasize)
             elif not instr and comment[0]: # standalone comment in data segment
                 if (match := Regex.COLLAPSED.match(comment[0])) is not None: # collapsed function in data segment
                     procsize = int(match.group(1), 16)
                     procname = match.group(2)
                     debug(f"Collapsed function '{procname}, size = {procsize}")
                     if curVar:
-                        total_varsize = saveVariable(curVar, variables, offset, total_varsize)
-                    curVar = Variable(procname, offset, 1, None)
+                        running_varsize = saveVariable(curVar, variables, segment, offset, running_varsize)
+                    curVar = Variable(procname, segment, offset, 1, None)
                     data = procsize * [0] # fake data contents since we don't know what's inside
                     if not curVar.addData(data, Datatype.ARRAY, 1):
                         error("Data rejected by new collapsed function variable?!")
-                    total_datasize = sumData(procsize, None, total_datasize)
+                    running_datasize = sumData(procsize, None, running_datasize)
                 else: # potential custom data declaration
                     decl_str = comment[0]
                     decl_off = offset
@@ -289,14 +300,14 @@ def parseListing(iter, config, structs):
             elif (match := Regex.FARJMP.match(instr)) is not None: # far jump within data segment
                 target = match.group(1)
                 debug(f"far jump to {target}")
-                total_varsize = saveVariable(curVar, variables, offset, total_varsize)
-                curVar = Variable(f"jmp_{target}", offset, 1, comment)
+                running_varsize = saveVariable(curVar, variables, segment, offset, running_varsize)
+                curVar = Variable(f"jmp_{target}", segment, offset, 1, comment)
                 if next((v for v in variables if v.name == curVar.name), None) is not None:
                     curVar.name = f"jmp_{jmp_count}"
                 data = [ 0xea, 0x00, 0x00, 0x00, 0x00] # far jmp 0:0
                 if not curVar.addData(data, Datatype.ARRAY, 1):
                     error("Data rejected by new dummy jump variable?!")
-                total_datasize = sumData(len(data), curVar, total_datasize)
+                running_datasize = sumData(len(data), curVar, running_datasize)
                 jmp_count += 1
             elif (match := Regex.STRUCTBSSVAR.match(instr)) is not None: # uninitialized structure
                 varname = match.group(1)
@@ -304,10 +315,10 @@ def parseListing(iter, config, structs):
                 debug(f"Structure bss variable, name: {varname}, struct: {structname}")
                 struct = getStruct(structs, structname)
                 # close previous variable if present
-                total_varsize = saveVariable(curVar, variables, offset, total_varsize)
-                curVar = Variable(varname, offset, struct.getSize(), comment, decl_str, decl_off, struct)
+                running_varsize = saveVariable(curVar, variables, segment, offset, running_varsize)
+                curVar = Variable(varname, segment, offset, struct.getSize(), comment, decl_str, decl_off, struct)
                 curVar.addData([None] * struct.getMemberCount(), Datatype.BSS, struct.getSize())
-                total_datasize = sumData(1, curVar, total_datasize)
+                running_datasize = sumData(1, curVar, running_datasize)
             elif (match := Regex.STRUCTBSSARR.match(instr)) is not None: # arrray of uninitialized structures
                 varname = match.group(1)
                 datavalue = match.group(2)
@@ -316,21 +327,21 @@ def parseListing(iter, config, structs):
                 data, count, dtype, comm = parseData(datavalue, structs)
                 struct = getStruct(structs, structname)
                 # close previous variable if present
-                total_varsize = saveVariable(curVar, variables, offset, total_varsize)
-                curVar = Variable(varname, offset, struct.getSize(), comment, decl_str, decl_off, struct)
+                running_varsize = saveVariable(curVar, variables, segment, offset, running_varsize)
+                curVar = Variable(varname, segment, offset, struct.getSize(), comment, decl_str, decl_off, struct)
                 curVar.addData(data, dtype, struct.getSize())
-                total_datasize = sumData(count, curVar, total_datasize)
+                running_datasize = sumData(count, curVar, running_datasize)
             elif (match := Regex.STRUCTVAR.match(instr)) is not None: # initialized structure var
                 varname = match.group(1)
                 structname = match.group(2)
                 vardata = match.group(3)
                 debug(f"Initialized structure variable, name: {varname}, structname: {structname}, data: {vardata}")
-                total_varsize = saveVariable(curVar, variables, offset, total_varsize)
+                running_varsize = saveVariable(curVar, variables, segment, offset, running_varsize)
                 data, count, dtype, comm = parseData(vardata, structs)
                 struct = getStruct(structs, structname)
-                curVar = Variable(varname, offset, struct.getSize(), comment, decl_str, decl_off, struct)
+                curVar = Variable(varname, segment, offset, struct.getSize(), comment, decl_str, decl_off, struct)
                 curVar.addData(data, dtype, struct.getSize(), struct.name)
-                total_datasize = sumData(1, curVar, total_datasize)
+                running_datasize = sumData(1, curVar, running_datasize)
             elif (match := Regex.STRUCTINIT.match(instr)) is not None: # unnamed initialized structure data
                 structname = match.group(1)
                 vardata = match.group(2)
@@ -340,21 +351,21 @@ def parseListing(iter, config, structs):
                 if not (curVar and curVar.addData(data, dtype, struct.getSize())): 
                     # data rejected by current variable, or no variable active, need to create a dummy new one
                     debug("Need to create dummy variable")
-                    total_varsize = saveVariable(curVar, variables, offset, total_varsize)
-                    curVar = Variable(f"{segment}_struc_" + ("%x" % offset), offset, struct.getSize(), comm, decl_str, decl_off, struct)
+                    running_varsize = saveVariable(curVar, variables, segment, offset, running_varsize)
+                    curVar = Variable(f"{segment}_struc_" + ("%x" % offset), segment, offset, struct.getSize(), comm, decl_str, decl_off, struct)
                     curVar.setDummy(True)
                     if not curVar.addData(data, dtype, struct.getSize(), struct.name):
                         error("Data rejected by new dummy variable?!")
-                total_datasize = sumData(1, curVar, total_datasize)
+                running_datasize = sumData(1, curVar, running_datasize)
             elif (match := Regex.STRUCTARR.match(instr)) is not None: # named initialized structure array
                 varname = match.group(1)
                 structname = match.group(2)
                 dupval = parseNum(match.group(3))
                 vardata = match.group(4)
                 debug(f"Initialized structure array, var: {varname}, struct: {structname}, dup: {dupval}, data: {vardata}")
-                total_varsize = saveVariable(curVar, variables, offset, total_varsize)
+                running_varsize = saveVariable(curVar, variables, segment, offset, running_varsize)
                 struct = getStruct(structs, structname)
-                curVar = Variable(varname, offset, struct.getSize(), comment, decl_str, decl_off, struct)
+                curVar = Variable(varname, segment, offset, struct.getSize(), comment, decl_str, decl_off, struct)
                 data, count, dtype, comm = parseData(vardata, structs)
                 # TODO: implement a better way of handling input by struct vars
                 if len(data) != struct.getMemberCount():
@@ -363,7 +374,7 @@ def parseListing(iter, config, structs):
                     else:
                         error(f"Invalid data size {sizeStr(len(data))} to initialize struct of type {structname}")
                 curVar.addData(data, dtype, struct.getSize(), struct.name)
-                total_datasize = sumData(dupval, curVar, total_datasize)
+                running_datasize = sumData(dupval, curVar, running_datasize)
             else:
                 debug("Data line ignored")
         else:
@@ -375,6 +386,7 @@ def parseListing(iter, config, structs):
     if curSub:
         error(f"Unclosed procedure at EOF: {curSub.name}")
 
+    total_datasize += running_datasize
     return procs, variables, proc_ignored, total_datasize
 
 def calculateExtracts(config, procs, proc_ignored, remaining_size):
@@ -490,9 +502,9 @@ def main(lstpath, outdir, confpath, output_c, output_h):
         hfile.write(joinStrings(config.header_coda))
     info(f"Found {len(vars)} variables, size = {sizeStr(datasum_size)}")
     if datasum_size != total_data:
-        error(f"Accumulated data size ({sizeStr(datasum_size)}) different than running total {sizeStr(total_data)}")
+        error(f"Accumulated data size ({sizeStr(datasum_size)}) different than parsed {sizeStr(total_data)}")
     if datasum_size != config.data_size:
-        error(f"Accumulated data size ({sizeStr(datasum_size)}) different than expected {sizeStr(config.data_size)}")    
+        error(f"Accumulated data size ({sizeStr(datasum_size)}) different than configured {sizeStr(config.data_size)}")    
 
 if __name__ == '__main__':
     argc = len(sys.argv)
