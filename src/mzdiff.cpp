@@ -33,6 +33,7 @@ void usage() {
            "--idiff        ignore differences completely\n"
            "--nocall       do not follow calls, useful for comparing single functions\n"
            "--asm          descend into routines marked as assembly in the map, normally skipped\n"
+           "--nostat       do not display comparison statistics at the end\n"
            "--rskip count  skip differences, ignore up to 'count' consecutive mismatching instructions in the reference executable\n"
            "--tskip count  skip differences, ignore up to 'count' consecutive mismatching instructions in the target executable\n"
            "--ctx count    display up to 'count' context instructions after a mismatch (default 10)\n"
@@ -141,6 +142,7 @@ int main(int argc, char *argv[]) {
         else if (arg == "--idiff") opt.ignoreDiff = true;
         else if (arg == "--nocall") opt.noCall = true;
         else if (arg == "--asm") opt.checkAsm = true;
+        else if (arg == "--nostat") opt.noStats = true;
         else if (arg == "--rskip") {
             if (aidx + 1 >= argc) fatal("Option requires an argument: --rskip");
             opt.refSkip = stoi(argv[++aidx], nullptr, 10);

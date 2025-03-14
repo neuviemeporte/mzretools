@@ -16,7 +16,7 @@ class Datatype:
     NAME = { UNK: 'unknown', ARRAY: 'array', CSTR: 'cstring', BSS: 'bss', PTR: 'pointer' }
     CTYPE = { 'db': 'char', 'dw': 'int', 'dd': 'long' }
     TYPESIZE = { 'db': 1, 'dw': 2, 'dd': 4 }
-    SIZETYPE = { 1: 'uint8', 2: 'int16', 4: 'uint32' }
+    SIZETYPE = { 1: 'uint8', 2: 'int16', 4: 'int32' }
 
 class Block:
     def __init__(self, begin, end):

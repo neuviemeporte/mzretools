@@ -925,7 +925,7 @@ bool Analyzer::comparisonLoop(const Executable &ref, Executable &tgt, const Code
 
         // compare instructions
         if (!compareInstructions(ref, tgt, refInstr, tgtInstr)) {
-            comparisonSummary(ref, refMap, false);
+            if (!options.noStats) comparisonSummary(ref, refMap, false);
             return false;
         }
 
@@ -1317,8 +1317,8 @@ void Analyzer::comparisonSummary(const Executable &ref, const CodeMap &routineMa
     calculateStats(routineMap);
 
     ostringstream msg;
-    msg << "Load module of executable is " << sizeStr(loadModuleSize) << " bytes"
-        << endl << "--- Routine map stats (static):" << endl
+    msg << "--- Routine map stats (static):" << endl
+        << "Load module of executable is " << sizeStr(loadModuleSize) << " bytes" << endl
         << "Routine map of " << routineMapSize << " routines covers " << sizeStr(routineSumSize) 
         << " bytes (" << ratioStr(routineSumSize,loadModuleSize) << " of the load module)"
         << endl
