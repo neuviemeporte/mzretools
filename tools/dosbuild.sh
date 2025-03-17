@@ -9,10 +9,9 @@
 TOOLCHAIN_DIR=dos
 CONF_DIR=conf
 CONF_FILE=$CONF_DIR/toolchain.conf
-BAT_FILE=$TOOLCHAIN_DIR/build.bat
-DEBUG=0
+DEBUG=1
 # always print toolchain stdout
-VERBOSE=0
+VERBOSE=1
 cmdline=$@
 
 function syntax() {
@@ -174,17 +173,26 @@ outfile_dir=$(basedir $outfile)
 outfile_name=$(basename $outfile)
 outfile_noext="${outfile_name%.*}"
 rspname=${outfile_noext}.rsp
-infile_rsp=$infile_dir/$rspname
-outfile_drive='e'
-if [ "$infile_dir" = "$outfile_dir" ]; then
-    outfile_drive='d'
-fi
+outfile_drive='f'
 outfile_dos="${outfile_drive}:\\$(dossep ${outfile#${outfile_dir}/})"
-debug "infile_dir = '$infile_dir', infiles_dos = '$infiles_dos', outfile_dir = '$outfile_dir', outfile_dos = '$outfile_dos', infile_rsp = '$infile_rsp'"
+
 if [ "$tool" != "test" ]; then
     [ -d "$infile_dir" ] || fatal "Input directory does not exist: $infile_dir"
     [ -d "$outfile_dir" ] || fatal "Output directory does not exist: $outfile_dir"
 fi
+
+# copy infiles to temporary directory, enables parallell builds
+tmpdir=$(mktemp -d XXXXXXXX)
+function cleanup() {
+    debug "Cleaning up tmpdir: $tmpdir"
+    rm -rf $tmpdir
+}
+trap cleanup EXIT
+pushd "$infile_dir" &> /dev/null || fatal "Unable to change to input directory $infile_dir"
+cp $infiles_dos ../$tmpdir  || fatal "Unable to copy files to temporary directory $tmpdir"
+popd &> /dev/null
+infile_rsp=$tmpdir/$rspname
+debug "infile_dir = '$infile_dir', infiles_dos = '$infiles_dos', outfile_dir = '$outfile_dir', outfile_dos = '$outfile_dos', infile_rsp = '$infile_rsp'"
 
 # compose tool cmdline in dos based on tool type
 cmdline=$tool
@@ -286,16 +294,17 @@ case $tool in
 esac
 debug "cmdline: $cmdline"
 
-#echo "--- build running $tool from $chain"
 # create dos bat file for launching inside the emulator
-
+# mounts following drives:
+# drive C: - toolchain
+# drive D: - original input directory (for headers etc.)
+# drive E: - temporary directory with input files
+# drive F: - output directory
+BAT_FILE=$tmpdir/build.bat
 cat > $BAT_FILE <<EOF
 set PATH=Z:\;C:\\$chain\\bin;C:\\$chain\binb;C:\\$chain\bound;C:\\$chain
 set INCLUDE=C:\\$chain\\include
 set LIB=C:\\$chain\\lib
-mount d $infile_dir
-mount e $outfile_dir
-d:
 $cmdline > log.txt
 EOF
 
@@ -305,20 +314,37 @@ if ((DEBUG)); then
     echo "---"
 fi
 
+INSTANCE_CONF=$tmpdir/instance.conf
+cat > $INSTANCE_CONF << EOF
+[autoexec]
+mount c dos
+mount d $infile_dir
+mount e $tmpdir
+mount f $outfile_dir
+e:
+build.bat
+exit
+EOF
+
 # remove logfile from previous run if exists to avoid reporting bogus errors in case of build failure
-logfile=$infile_dir/log.txt
-emu_logfile=build.log
+logfile=$tmpdir/log.txt
+emu_logfile=$tmpdir/dosbox.log
 rm -f $logfile
 rm -f $emu_logfile
 # start bat file in emulator in headless mode
 [ "$tool" != "test" ] && echo "$cmdline"
-SDL_VIDEODRIVER=dummy dosbox -conf $CONF_FILE $BAT_FILE -exit &> $emu_logfile
+debug "Launching headless dosbox to run $BAT_FILE"
+SDL_VIDEODRIVER=dummy dosbox -conf $CONF_FILE -conf $INSTANCE_CONF &> $emu_logfile
+debug "Dosbox returned $?"
 # check if successful by examining if output file exists
 if [ "$tool" != "test" ]; then
     if [ ! -f "$outfile" ]; then
+        debug "Output file $outfile does not exist"
         if [ -f "$logfile" ]; then
+            debug "Printing logfile"
             cat $logfile; 
         else
+            debug "Printing emulator logfile"
             cat $emu_logfile
             echo "Build failed and no logfile found, check emulator configuration"
         fi
@@ -330,11 +356,13 @@ if [ "$tool" != "test" ]; then
     mv "$outfile_tmp" "$outfile"
     # the linker can create an output file even in presence of errors so check log
     if grep -i "error" $logfile &> /dev/null; then
+        debug "Error detected in $logfile"
         rm $outfile
         cat $logfile; 
         exit 1;
     fi
-    if grep -ie "warning" $logfile &> /dev/null || ((VERBOSE)); then 
+    if grep -ie "warning" $logfile &> /dev/null || ((VERBOSE)); then
+        debug "Warning detected in $logfile"
         cat $logfile;
     fi
 else
