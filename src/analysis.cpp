@@ -45,7 +45,7 @@ bool OffsetMap::codeMatch(const Address from, const Address to) {
     }
     // ensure uniqueness in other direction (no duplicate "to"s across all mappings)
     for (const auto& [f, t] : codeMap) if (t == to) {
-        error("Code address mapping " + from.toString() + "->" + to.toString() + " collides with existing " + f.toString() + "->" + t.toString());
+        error("Code address mapping " + from.toString() + "->" + to.toString() + " collides with existing " + f.toString() + "<-" + t.toString());
         return false;
     }
     // otherwise save new mapping
@@ -938,7 +938,7 @@ bool Analyzer::comparisonLoop(const Executable &ref, Executable &tgt, const Code
             // if the destination of the branch can be established, place it in the compare queue
             if (scanQueue.saveBranch(refBranch, {}, ref.extents())) {
                 // if the branch destination was accepted, save the address mapping of the branch destination between the reference and target
-                offMap.codeMatch(refBranch.destination, tgtBranch.destination);
+                if (!offMap.codeMatch(refBranch.destination, tgtBranch.destination)) return false;
             }
             const Routine refRoutine = refMap.getRoutine(refBranch.destination);
             if (refRoutine.isValid()) {
@@ -953,7 +953,7 @@ bool Analyzer::comparisonLoop(const Executable &ref, Executable &tgt, const Code
                 refBranch = getBranch(ref, refInstr, {}),
                 tgtBranch = getBranch(tgt, tgtInstr, {});
             if (refBranch.destination.isValid() && tgtBranch.destination.isValid()) {
-                offMap.codeMatch(refBranch.destination, tgtBranch.destination);
+                if (!offMap.codeMatch(refBranch.destination, tgtBranch.destination)) return false;
             }
         }
 
@@ -1224,7 +1224,7 @@ Analyzer::ComparisonResult Analyzer::instructionsMatch(const Executable &ref, co
         if (operandIsImmediate(op->type) && !options.strict) {
             debug("Ignoring immediate value difference in loose mode");
             // arbitrary heuristic to highlight small immediate value differences in red, these are usually suspicious
-            if (op->dwordValue() <= 0xff) return CMP_DIFFTGT;
+            if (op->dwordValue() <= 0xff && !refInstr.isBranch()) return CMP_DIFFTGT;
             return CMP_DIFFVAL;
         }
     }
