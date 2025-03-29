@@ -144,6 +144,7 @@ def contains(instr, tmpl):
     return instr.find(tmpl) >= 0
 
 def isData(instr):
+    # note the spaces in the match strings, we reject data without a name
     if contains(instr, ' db ') or contains(instr, ' dw ') or contains(instr, ' dd '):
         return True
     return False

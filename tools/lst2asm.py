@@ -130,7 +130,7 @@ def main(lstpath, asmpath, confpath):
         if not instr:
             continue
 
-        # handle routine preservation and elimination
+        # handle code preservation and elimination
         if segment in config.code_segments:
             # routine start
             if (match := Regex.PROC.match(instr)) is not None: # procedure start
@@ -161,7 +161,7 @@ def main(lstpath, asmpath, confpath):
             # instructions inside a procedure
             elif stub and (noPreserve or cur_proc not in config.preserves):
                 debug(f"Ignoring instructions in stubbed routine {cur_proc}")
-                skipWrite = True                
+                skipWrite = True
             elif noProc and (noPreserve or cur_proc not in config.preserves):
                 debug(f"Ignoring instructions of non-preserved routine {cur_proc}")
                 skipWrite = True

@@ -1149,8 +1149,19 @@ Analyzer::ComparisonResult Analyzer::instructionsMatch(const Executable &ref, co
         debug("Mismatching due to difference in strict mode");
         return CMP_MISMATCH;
     }
-    // in case of complete mismatch, last ditch is to try a variant match
-    if (insResult == INS_MATCH_MISMATCH) return variantMatch(tgt, refInstr, tgtInstr);
+    if (insResult == INS_MATCH_MISMATCH) {
+        // special case of jmp vs jmp short - allow only if variants enabled and in assembly routines, which are not well behaved
+        if (refInstr.opcode != tgtInstr.opcode && refInstr.isUnconditionalJump() && tgtInstr.isUnconditionalJump()) {
+            if (options.variant || routine.assembly) {
+                verbose(output_color(OUT_BRIGHTRED) + compareStatus(refInstr, tgtInstr, true, INS_MATCH_DIFF) + output_color(OUT_DEFAULT));
+                tgtCsip += tgtInstr.length;
+                return CMP_VARIANT;
+            }
+            else return CMP_MISMATCH;
+        }
+        // in case of complete mismatch, last ditch is to try a variant match
+        return variantMatch(tgt, refInstr, tgtInstr);
+    } 
     // we now either have a full match, or a difference in one or both operands, check the offsets in either case
     // (even if the instructions match fully, that could be an error if the equal offsets have previously been mapped to something else)
     bool match = false;
@@ -1196,15 +1207,6 @@ Analyzer::ComparisonResult Analyzer::instructionsMatch(const Executable &ref, co
             }
             // TODO: perfect match... too perfect, mark as suspicious?
             if (refBranch.destination == tgtBranch.destination) return CMP_MATCH;
-            // special case of jmp vs jmp short - allow only if variants enabled
-            if (refInstr.opcode != tgtInstr.opcode && (refInstr.isUnconditionalJump() || tgtInstr.isUnconditionalJump())) {
-                if (options.variant) {
-                    verbose(output_color(OUT_YELLOW) + compareStatus(refInstr, tgtInstr, true, INS_MATCH_DIFF) + output_color(OUT_DEFAULT));
-                    tgtCsip += tgtInstr.length;
-                    return CMP_VARIANT;
-                }
-                else return CMP_MISMATCH;
-            }
             // near jumps are usually used within a routine to handle looping and conditions,
             // so a different value (relative jump amount) might mean a wrong flow
             // -- mark with a different result value to be highlighted
