@@ -39,6 +39,19 @@ function dossep() {
     echo "$1" | sed -e 's|/|\\|g'
 }
 
+function output_unresolved() {
+    local logfile=$1
+    local ext_re='_([_a-zA-Z0-9]+) in file\(s\):'
+    grep "Unresolved externals" $logfile &> /dev/null || return
+    echo "--- Formatted unresolved externals for pasting into YAML config:"
+    while IFS= read -r line || [ "$line" ]; do 
+        [[ ! $line =~ $ext_re ]] && continue
+        name=${BASH_REMATCH[1]}
+        echo -n "\"$name\", "
+    done < "$logfile"
+    echo
+}
+
 which dosbox &> /dev/null || fatal "Dosbox not installed"
 [ -f "$CONF_FILE" ] || fatal "Dosbox configuration file does not exist: $CONF_FILE"
 
@@ -332,6 +345,8 @@ if [ "$tool" != "test" ]; then
     if grep -i "error" $logfile &> /dev/null; then
         rm $outfile
         cat $logfile; 
+        # special handling for MS C linker output
+        [[ $chain =~ ^msc && $tool = "link" ]] && output_unresolved "$logfile"
         exit 1;
     fi
     if grep -ie "warning" $logfile &> /dev/null || ((VERBOSE)); then 

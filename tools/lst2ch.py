@@ -69,11 +69,11 @@ def parseData(valstr, structs):
             structname = match.group(1)
             count = parseNum(match.group(2))
             struct = getStruct(structs, structname)
-            debug(f"Structure array, struct: {struct.name}, count: {sizeStr(count)}, itemsize: {sizeStr(struct.getSize())}")
+            debug(f"Structure array, struct: {struct.name}, dup: {sizeStr(count)}, itemsize: {sizeStr(struct.getSize())}")
             datatype = enforceType(datatype, Datatype.BSS)
             size += count
             # create fake values for every member in the struct times the number of items in the array
-            data.extend(count * struct.getMemberCount() * [None])
+            data.extend(count * struct.getSize() * [None])
         else:
             error(f"Unrecognized value string: {i}")
     debug(f"parsed data: len = {sizeStr(len(data))}, count = {sizeStr(size)}, type = {Datatype.NAME[datatype]}")
@@ -145,7 +145,7 @@ def saveVariable(var, vars, segment, offset, total_size):
 def getStruct(structs, name):
     if name in structs:
         return structs[name]
-    error(f"Unable to find definition of struct {name}")
+    error(f"Unable to find definition of struct {name}, add or update .inc file to config")
 
 def parseListing(iter, config, structs):
     curVar = None
@@ -312,20 +312,20 @@ def parseListing(iter, config, structs):
             elif (match := Regex.STRUCTBSSVAR.match(instr)) is not None: # uninitialized structure
                 varname = match.group(1)
                 structname = match.group(2)
-                debug(f"Structure bss variable, name: {varname}, struct: {structname}")
                 struct = getStruct(structs, structname)
+                debug(f"Structure bss variable, name: {varname}, struct: {structname}, size: {sizeStr(struct.size)}")
                 # close previous variable if present
                 running_varsize = saveVariable(curVar, variables, segment, offset, running_varsize)
                 curVar = Variable(varname, segment, offset, struct.getSize(), comment, decl_str, decl_off, struct)
-                curVar.addData([None] * struct.getMemberCount(), Datatype.BSS, struct.getSize())
+                curVar.addData([None] * struct.getSize(), Datatype.BSS, struct.getSize())
                 running_datasize = sumData(1, curVar, running_datasize)
             elif (match := Regex.STRUCTBSSARR.match(instr)) is not None: # arrray of uninitialized structures
                 varname = match.group(1)
                 datavalue = match.group(2)
                 structname = match.group(3)
-                debug(f"Array of bss structures, name: {varname}, data: {datavalue}")
-                data, count, dtype, comm = parseData(datavalue, structs)
                 struct = getStruct(structs, structname)
+                debug(f"Array of bss structures, name: {varname}, size: {sizeStr(struct.size)}, data: {datavalue}")
+                data, count, dtype, comm = parseData(datavalue, structs)
                 # close previous variable if present
                 running_varsize = saveVariable(curVar, variables, segment, offset, running_varsize)
                 curVar = Variable(varname, segment, offset, struct.getSize(), comment, decl_str, decl_off, struct)
@@ -335,20 +335,20 @@ def parseListing(iter, config, structs):
                 varname = match.group(1)
                 structname = match.group(2)
                 vardata = match.group(3)
-                debug(f"Initialized structure variable, name: {varname}, structname: {structname}, data: {vardata}")
+                struct = getStruct(structs, structname)
+                debug(f"Initialized structure variable, name: {varname}, structname: {structname}, size: {sizeStr(struct.size)}, data: {vardata}")
                 running_varsize = saveVariable(curVar, variables, segment, offset, running_varsize)
                 data, count, dtype, comm = parseData(vardata, structs)
-                struct = getStruct(structs, structname)
                 curVar = Variable(varname, segment, offset, struct.getSize(), comment, decl_str, decl_off, struct)
                 curVar.addData(data, dtype, struct.getSize(), struct.name)
                 running_datasize = sumData(1, curVar, running_datasize)
             elif (match := Regex.STRUCTINIT.match(instr)) is not None: # unnamed initialized structure data
                 structname = match.group(1)
                 vardata = match.group(2)
-                debug(f"Initialized structure data, structname: {structname}, data: {vardata}")
                 struct = getStruct(structs, structname)
+                debug(f"Initialized structure data, structname: {structname}, size: {sizeStr(struct.size)}, data: {vardata}")
                 data, count, dtype, comm = parseData(vardata, structs)
-                if not (curVar and curVar.addData(data, dtype, struct.getSize())): 
+                if not (curVar and curVar.addData(data, dtype, struct.getSize(), struct.name)): 
                     # data rejected by current variable, or no variable active, need to create a dummy new one
                     debug("Need to create dummy variable")
                     running_varsize = saveVariable(curVar, variables, segment, offset, running_varsize)
@@ -362,18 +362,16 @@ def parseListing(iter, config, structs):
                 structname = match.group(2)
                 dupval = parseNum(match.group(3))
                 vardata = match.group(4)
-                debug(f"Initialized structure array, var: {varname}, struct: {structname}, dup: {dupval}, data: {vardata}")
-                running_varsize = saveVariable(curVar, variables, segment, offset, running_varsize)
                 struct = getStruct(structs, structname)
+                debug(f"Initialized structure array, var: {varname}, struct: {structname}, size: {sizeStr(struct.size)}, dup: {dupval}, data: {vardata}")
+                running_varsize = saveVariable(curVar, variables, segment, offset, running_varsize)
                 curVar = Variable(varname, segment, offset, struct.getSize(), comment, decl_str, decl_off, struct)
                 data, count, dtype, comm = parseData(vardata, structs)
                 # TODO: implement a better way of handling input by struct vars
-                if len(data) != struct.getMemberCount():
-                    if len(data) == 1 and data[0] == 0:
-                        data = [0] * struct.getMemberCount() * dupval
-                    else:
-                        error(f"Invalid data size {sizeStr(len(data))} to initialize struct of type {structname}")
-                curVar.addData(data, dtype, struct.getSize(), struct.name)
+                if len(data) < struct.size:
+                    padlen = struct.size - len(data)
+                    data.extend([None] * padlen)
+                curVar.addData(data * dupval, dtype, struct.getSize(), struct.name)
                 running_datasize = sumData(dupval, curVar, running_datasize)
             else:
                 debug("Data line ignored")
@@ -509,7 +507,7 @@ def main(lstpath, outdir, confpath, output_c, output_h):
 if __name__ == '__main__':
     argc = len(sys.argv)
     if argc < 4:
-        info("Syntax: lst2asm infile outdir conffile [--noc] [--noh] [--debug]")
+        info("Syntax: lst2ch infile outdir conffile [--noc] [--noh] [--debug]")
         sys.exit(1)
     lstpath = sys.argv[1]
     outdir = sys.argv[2]

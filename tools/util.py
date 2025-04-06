@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
-
 import re
 
+# Do you think this is a bad idea? I really should rewrite this with lark or ply, right? ;) 
 class Regex:
     NAME = '[_a-zA-Z0-9]+'
     DATA = 'db|dw|dd'
     NUMVAL = '[x0-9a-fA-F]+h?'
+    STRVAL = "'.+'"
     CTYPE = '(?:unsigned )?(?:char|int|void|__int32)'
     SPACES = r'\s+'
     SPACEOPT = r'\s*'
     ALIGN = re.compile('^align ([0-9]+)')
     JMPSLOT = re.compile('^jmp.*(slot|misc)_')
-    INSTR_AX = re.compile('^(cmp|add|and|sub|sbb) ax, ([_a-fA-F0-9]{1,5}h?)$')    
+    INSTR_AX = re.compile('^(cmp|add|and|sub|sbb) ax, ([_a-fA-F0-9]{1,5}h?)$')
     PROC = re.compile(f'^({NAME}){SPACES}proc{SPACES}(near|far)')
     ENDP = re.compile(f'^({NAME}){SPACES}endp')
     VAR = re.compile(f'^({NAME}){SPACES}({DATA}){SPACES}(.*)')
@@ -27,7 +28,7 @@ class Regex:
     SECRET = re.compile(f'^lst2ch:(.*)')
     STRUCT = re.compile(f'^({NAME}){SPACES}struc' + r'\s*;\s*\(\s*' +f'sizeof=({NUMVAL})')
     # <n[, n]...>
-    STRUCTDATA = re.compile(f'<(({NUMVAL},?{SPACEOPT})+)>')
+    STRUCTDATA = re.compile(f'<(((?:{NUMVAL}|{STRVAL}),?{SPACEOPT})+)>')
     # StructType <n[, n]...>
     STRUCTINIT = re.compile(f'({NAME}){SPACES}' + STRUCTDATA.pattern)
     # varName StructType <n[,n]...>

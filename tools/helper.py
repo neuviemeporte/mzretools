@@ -192,21 +192,24 @@ class Variable:
             if typename != curtypename:
                 debug(f"Data rejected by variable {self.name}, incoming typename {typename} does not match current: {curtypename}")
                 return False
+            # for struct vars including strings, the calculated length of the data may be less than the structure size, so pad it up
+            # TODO: try to pad up in the right place (detect string position and pad there), best at data parse time
+            if len(data) < itemsz:
+                padlen = itemsz - len(data)
+                data.extend([None] * padlen)
         debug(f"Adding {sizeStr(len(data))} of data to variable {self.name}, previously {sizeStr(len(self.data))}")
         self.dtype = dtype
         self.data.extend(data)
         debug(f"Data accepted by variable {self.name}, type {Datatype.NAME[self.dtype]}, item size {sizeStr(self.itemsz)}, var size {sizeStr(self.size())}")
+        if self.itype and self.dataLength() % self.itemsz != 0:
+            error(f"Data length ({self.dataLength()}) of variable {self.name} expected to be a multiple of item size: {self.itemsz}")
         return True
     def size(self):
         '''Number of bytes taken by this variable's data'''
         if self.dtype == Datatype.UNK:
             return -1
         elif self.itype:
-            count = self.itype.getMemberCount()
-            if self.dataLength() % count != 0:
-                error(f"Data length ({self.dataLength()}) of variable {self.name} expected to be a multiple of member count: {count}")
-            itemcount = self.dataLength() // count
-            return self.itype.getSize() * itemcount
+            return self.dataLength()
         elif self.dtype in [Datatype.ARRAY, Datatype.BSS, Datatype.PTR]:
             return len(self.data) * self.itemsz
         elif self.dtype == Datatype.CSTR:

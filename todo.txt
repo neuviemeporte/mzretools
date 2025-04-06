@@ -1,3 +1,4 @@
+- mzdiff: cache log lines, output only mismatched routine
 - detect routines split in two by segment opening, e.g. egame copyJoystickData seg002:0cbe-0cd5, keep routine in old segment?
 - implement segment deduction from es, les, lds
 - implement memory writes in mzmap, rollback at function return? 
