@@ -15,8 +15,7 @@
 using namespace std;
 namespace fs = std::filesystem;
 
-void hexDump(const Byte *buf, const Size size, const Size off, const bool header) {
-    ostringstream str;
+void hexDump(ostream &str, const Byte *buf, const Size size, const Size off, const bool header) {
     if (header) str << std::hex << std::setfill('0') << "buf[0x" << size
          << "] @ 0x" << reinterpret_cast<size_t>(buf)
          << " + 0x" << off << ": " << endl;
@@ -50,6 +49,11 @@ void hexDump(const Byte *buf, const Size size, const Size off, const bool header
             str << endl;
         }
     }
+}
+
+void hexDump(const Byte *buf, const Size size, const Size off, const bool header) {
+    ostringstream str;
+    hexDump(str, buf, size, off, header);
     output(str.str(), LOG_OTHER, LOG_INFO, OUT_DEFAULT, true);
 }
 

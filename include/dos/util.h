@@ -12,7 +12,9 @@
 
 #define ARRAY_SIZE(arr) (sizeof(arr) / sizeof(arr[0]))
 
+void hexDump(std::ostream &str, const Byte *buf, const Size size, const Size off = 0, const bool header = true);
 void hexDump(const Byte *buf, const Size size, const Size off = 0, const bool header = true);
+
 template<typename T, Size size = sizeof(T)> std::string hexString(const T &obj) {
     const Byte *buf = reinterpret_cast<const Byte*>(&obj);
     std::ostringstream str;

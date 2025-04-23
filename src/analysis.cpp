@@ -761,6 +761,89 @@ bool Analyzer::compareCode(const Executable &ref, Executable &tgt, const CodeMap
     return success;
 }
 
+bool Analyzer::compareData(const Executable &ref, const Executable &tgt, const CodeMap &refMap, const CodeMap &tgtMap, const std::string &segment) {
+    const Size hexDumpLength = 160;
+    const Segment refSeg = refMap.findSegment(segment);
+    if (refSeg.type != Segment::SEG_DATA) throw AnalysisError("Unable to find data segment with name: " + segment + " in reference map");
+    const Segment tgtSeg = tgtMap.findSegment(segment);
+    if (tgtSeg.type != Segment::SEG_DATA) throw AnalysisError("Unable to find data segment with name: " + segment + " in target map");
+    const Address refAddr{refSeg.address, 0}, tgtAddr{tgtSeg.address, 0};
+    // make sure start within executable bounds
+    if (refAddr.toLinear() >= ref.size()) 
+        throw AnalysisError("Reference segment " + segment + " at " + refAddr.toString() + " exceeds executable size " + sizeStr(ref.size()));
+    if (tgtAddr.toLinear() >= tgt.size()) 
+        throw AnalysisError("Target segment " + segment + " at " + tgtAddr.toString() + " exceeds executable size " + sizeStr(tgt.size()));        
+    verbose("Found data segment " + segment + " at " + refAddr.toString() + " / " + tgtAddr.toString());
+    Address refEnd = refAddr;
+    // find segment past the segment we are looking at, if any
+    for (const Segment &s : refMap.getSegments())
+        if (s.address > refEnd.segment) refEnd = Address{s.address, 0};
+    // use the executable size as the end address if no segment past the examined one exists
+    if (refEnd != refAddr) 
+        debug("Found reference end address from next segment: " + refEnd.toString());
+    else { // the examined segment is the last one in the executable 
+        const Size s = (ref.size() - refAddr.toLinear());
+        if (s < SEGMENT_SIZE) refEnd += s + 1;
+        else refEnd = { static_cast<Word>(refEnd.segment + 0x1000), 0 };
+        debug("Set reference end address from executable size: " + refEnd.toString()); 
+    }
+    // make sure reference end within executable bounds
+    if (refEnd.toLinear() >= ref.size()) 
+        throw AnalysisError("Reference end address at " + refEnd.toString() + " exceeds executable size " + sizeStr(ref.size()));
+    // infer and check target end address
+    const Size compareSize = refEnd - refAddr;
+    if (compareSize > SEGMENT_SIZE) throw AnalysisError("Compared segment size more than 64k");
+    const Address tgtEnd = Address{tgtAddr.toLinear() + compareSize};
+    if (tgtEnd.toLinear() >= tgt.size()) 
+        throw AnalysisError("Target end address at " + tgtEnd.toString() + " exceeds executable size " + sizeStr(tgt.size()));
+    verbose("Ending comparison at " + refEnd.toString() + " / " + tgtEnd.toString()); 
+    // grab pointers to beginning of data segment bytes
+    const Byte 
+        *refData = ref.codePointer(refAddr),
+        *tgtData = tgt.codePointer(tgtAddr);
+    // comparison loop
+    for (Size i = 0; i < compareSize; ++i) {
+        // difference found
+        if (refData[i] != tgtData[i]) { 
+            Address refMismatch = refAddr + i, tgtMismatch = tgtAddr + i;
+            verbose("Mismatch at location " + refMismatch.toString() + " / " + tgtMismatch.toString());
+            // find the variables around the mismatch location if possible
+            Variable before, after;
+            for (Size vi = 0; vi < refMap.variableCount(); ++vi) {
+                const Variable v = refMap.getVariable(vi);
+                if (!before.addr.isValid()) before.addr = v.addr;
+                else if (v.addr < refMismatch) before.addr = v.addr;
+                else if (v.addr == refMismatch) { before.addr = after.addr = v.addr; break; }
+                else { after.addr = v.addr; break; }
+            }
+            // show variable info if available
+            if (before.addr.isValid() && after.addr.isValid()) {
+                if (before.addr == after.addr) verbose("Mismatch on variable " + before.toString());
+                else verbose("Mismatch between variables " + before.toString() + " and " + after.toString());
+            }
+            else verbose("No variable information around mismatch");
+            // hex dump
+            if (getOutputLevel() <= LOG_VERBOSE) {
+                ostringstream refOss, tgtOss;
+                const Size 
+                    hexStart = i > (hexDumpLength / 2) ? i - (hexDumpLength / 2) : 0,
+                    hexSize = i + (hexDumpLength / 2) < compareSize ? hexDumpLength : compareSize - i;
+                hexDump(refOss, &refData[hexStart], hexSize, 0, false);
+                hexDump(tgtOss, &tgtData[hexStart], hexSize, 0, false);
+                istringstream refIss{refOss.str()}, tgtIss{tgtOss.str()};
+                string refLine, tgtLine;
+                while (getline(refIss, refLine) && getline(tgtIss, tgtLine)) {
+                    verbose(refLine + tgtLine);
+                }
+            }
+            verbose("Comparison result: mismatch", OUT_RED);
+            return false;
+        }
+    }
+    verbose("Comparison result: match", OUT_GREEN);
+    return true;
+}
+
 bool Analyzer::skipAllowed(const Instruction &refInstr, Instruction tgtInstr) {
     // first try skipping in the reference executable, skipping returns is not allowed
     if (refSkipCount + 1 <= options.refSkip && !refInstr.isReturn()) {
