@@ -762,7 +762,6 @@ bool Analyzer::compareCode(const Executable &ref, Executable &tgt, const CodeMap
 }
 
 bool Analyzer::compareData(const Executable &ref, const Executable &tgt, const CodeMap &refMap, const CodeMap &tgtMap, const std::string &segment) {
-    const Size hexDumpLength = 160;
     const Segment refSeg = refMap.findSegment(segment);
     if (refSeg.type != Segment::SEG_DATA) throw AnalysisError("Unable to find data segment with name: " + segment + " in reference map");
     const Segment tgtSeg = tgtMap.findSegment(segment);
@@ -824,17 +823,12 @@ bool Analyzer::compareData(const Executable &ref, const Executable &tgt, const C
             else verbose("No variable information around mismatch");
             // hex dump
             if (getOutputLevel() <= LOG_VERBOSE) {
-                ostringstream refOss, tgtOss;
-                const Size 
+                const Size
+                    hexDumpLength = 160,
                     hexStart = i > (hexDumpLength / 2) ? i - (hexDumpLength / 2) : 0,
-                    hexSize = i + (hexDumpLength / 2) < compareSize ? hexDumpLength : compareSize - i;
-                hexDump(refOss, &refData[hexStart], hexSize, 0, false);
-                hexDump(tgtOss, &tgtData[hexStart], hexSize, 0, false);
-                istringstream refIss{refOss.str()}, tgtIss{tgtOss.str()};
-                string refLine, tgtLine;
-                while (getline(refIss, refLine) && getline(tgtIss, tgtLine)) {
-                    verbose(refLine + tgtLine);
-                }
+                    hexEnd = i + (hexDumpLength / 2) < compareSize ? i + (hexDumpLength/2) : compareSize - i;
+                ostringstream oss;
+
             }
             verbose("Comparison result: mismatch", OUT_RED);
             return false;
