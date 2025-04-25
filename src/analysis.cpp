@@ -762,10 +762,17 @@ bool Analyzer::compareCode(const Executable &ref, Executable &tgt, const CodeMap
 }
 
 bool Analyzer::compareData(const Executable &ref, const Executable &tgt, const CodeMap &refMap, const CodeMap &tgtMap, const std::string &segment) {
-    const Segment refSeg = refMap.findSegment(segment);
+    const Word 
+        refLoadSeg = ref.getLoadSegment(),
+        tgtLoadSeg = tgt.getLoadSegment();
+    Segment refSeg = refMap.findSegment(segment);
     if (refSeg.type != Segment::SEG_DATA) throw AnalysisError("Unable to find data segment with name: " + segment + " in reference map");
-    const Segment tgtSeg = tgtMap.findSegment(segment);
+    const Address refOrig = refSeg.address;
+    refSeg.address -= refLoadSeg;
+    Segment tgtSeg = tgtMap.findSegment(segment);
     if (tgtSeg.type != Segment::SEG_DATA) throw AnalysisError("Unable to find data segment with name: " + segment + " in target map");
+    const Address tgtOrig = tgtSeg.address;
+    tgtSeg.address -= tgtLoadSeg;
     const Address refAddr{refSeg.address, 0}, tgtAddr{tgtSeg.address, 0};
     // make sure start within executable bounds
     if (refAddr.toLinear() >= ref.size()) 
@@ -775,14 +782,17 @@ bool Analyzer::compareData(const Executable &ref, const Executable &tgt, const C
     verbose("Found data segment " + segment + " at " + refAddr.toString() + " / " + tgtAddr.toString());
     Address refEnd = refAddr;
     // find segment past the segment we are looking at, if any
-    for (const Segment &s : refMap.getSegments())
+    for (Segment s : refMap.getSegments()) {
+        s.address -= ref.getLoadSegment();
         if (s.address > refEnd.segment) refEnd = Address{s.address, 0};
+    }
     // use the executable size as the end address if no segment past the examined one exists
     if (refEnd != refAddr) 
         debug("Found reference end address from next segment: " + refEnd.toString());
-    else { // the examined segment is the last one in the executable 
-        const Size s = (ref.size() - refAddr.toLinear());
-        if (s < SEGMENT_SIZE) refEnd += s + 1;
+    else { // the examined segment is the last known one in the executable 
+        const Size s = ref.size() - refAddr.toLinear() - 1;
+        if (s < SEGMENT_SIZE) refEnd += s;
+        // the examined segment occupies exactly 64k so move the end address to the beginning of the next segment
         else refEnd = { static_cast<Word>(refEnd.segment + 0x1000), 0 };
         debug("Set reference end address from executable size: " + refEnd.toString()); 
     }
@@ -798,10 +808,11 @@ bool Analyzer::compareData(const Executable &ref, const Executable &tgt, const C
     verbose("Ending comparison at " + refEnd.toString() + " / " + tgtEnd.toString()); 
     // grab pointers to beginning of data segment bytes
     const Byte 
-        *refData = ref.codePointer(refAddr),
-        *tgtData = tgt.codePointer(tgtAddr);
+        *refData = ref.codePointer(refOrig),
+        *tgtData = tgt.codePointer(tgtOrig);
     // comparison loop
     for (Size i = 0; i < compareSize; ++i) {
+        debug(hexVal(refData[i]) + " == " + hexVal(tgtData[i]));
         if (refData[i] == tgtData[i]) continue;
         // difference found
         Address refMismatch = refAddr + i, tgtMismatch = tgtAddr + i;
