@@ -742,15 +742,15 @@ bool Analyzer::compareCode(const Executable &ref, Executable &tgt, const CodeMap
 
     tgtQueue.dumpVisited("tgt.visited");
     // save target map file regardless of comparison result (can be incomplete)
-    const string tgtMapPath = replaceExtension(options.mapPath, "tgt");
-    if (!tgtMapPath.empty()) {
+    if (options.tgtMapPath.empty()) options.tgtMapPath = replaceExtension(options.mapPath, "tgt");
+    if (!options.tgtMapPath.empty()) {
         debug("Constructing target map from target queue contents");
         // TODO: generate variables for target
         CodeMap tgtMap{tgtQueue, tgt.getSegments(), {}, tgt.getLoadSegment(), tgt.size()};
         //tgtMap.setSegments(tgt.getSegments());
         //tgtMap.order();
-        info("Saving target map to " + tgtMapPath);
-        tgtMap.save(tgtMapPath, tgt.loadAddr().segment, true);
+        info("Saving target map to " + options.tgtMapPath);
+        tgtMap.save(options.tgtMapPath, tgt.loadAddr().segment, true);
     }
 
     if (success) {
@@ -802,37 +802,35 @@ bool Analyzer::compareData(const Executable &ref, const Executable &tgt, const C
         *tgtData = tgt.codePointer(tgtAddr);
     // comparison loop
     for (Size i = 0; i < compareSize; ++i) {
+        if (refData[i] == tgtData[i]) continue;
         // difference found
-        if (refData[i] != tgtData[i]) { 
-            Address refMismatch = refAddr + i, tgtMismatch = tgtAddr + i;
-            verbose("Mismatch at location " + refMismatch.toString() + " / " + tgtMismatch.toString());
-            // find the variables around the mismatch location if possible
-            Variable before, after;
-            for (Size vi = 0; vi < refMap.variableCount(); ++vi) {
-                const Variable v = refMap.getVariable(vi);
-                if (!before.addr.isValid()) before.addr = v.addr;
-                else if (v.addr < refMismatch) before.addr = v.addr;
-                else if (v.addr == refMismatch) { before.addr = after.addr = v.addr; break; }
-                else { after.addr = v.addr; break; }
-            }
-            // show variable info if available
-            if (before.addr.isValid() && after.addr.isValid()) {
-                if (before.addr == after.addr) verbose("Mismatch on variable " + before.toString());
-                else verbose("Mismatch between variables " + before.toString() + " and " + after.toString());
-            }
-            else verbose("No variable information around mismatch");
-            // hex dump
-            if (getOutputLevel() <= LOG_VERBOSE) {
-                const Size
-                    hexDumpLength = 160,
-                    hexStart = i > (hexDumpLength / 2) ? i - (hexDumpLength / 2) : 0,
-                    hexEnd = i + (hexDumpLength / 2) < compareSize ? i + (hexDumpLength/2) : compareSize - i;
-                ostringstream oss;
-
-            }
-            verbose("Comparison result: mismatch", OUT_RED);
-            return false;
+        Address refMismatch = refAddr + i, tgtMismatch = tgtAddr + i;
+        verbose("Mismatch at location " + refMismatch.toString() + " / " + tgtMismatch.toString());
+        // find the variables around the mismatch location if possible
+        Variable before, after;
+        for (Size vi = 0; vi < refMap.variableCount(); ++vi) {
+            const Variable v = refMap.getVariable(vi);
+            if (!before.addr.isValid()) before.addr = v.addr;
+            else if (v.addr < refMismatch) before.addr = v.addr;
+            else if (v.addr == refMismatch) { before.addr = after.addr = v.addr; break; }
+            else { after.addr = v.addr; break; }
         }
+        // show variable info if available
+        if (before.addr.isValid() && after.addr.isValid()) {
+            if (before.addr == after.addr) verbose("Mismatch on variable " + before.toString());
+            else verbose("Mismatch between variables " + before.toString() + " and " + after.toString());
+        }
+        else verbose("No variable information around mismatch");
+        // hex diff
+        if (getOutputLevel() <= LOG_VERBOSE) {
+            const Size
+                hexDumpLength = 160,
+                hexStart = i > (hexDumpLength / 2) ? i - (hexDumpLength / 2) : 0,
+                hexEnd = i + (hexDumpLength / 2) < compareSize ? i + (hexDumpLength/2) : compareSize - i;
+            hexDiff(refData, tgtData, hexStart, hexEnd, refSeg.address, tgtSeg.address);
+        }
+        verbose("Comparison result: mismatch", OUT_RED);
+        return false;
     }
     verbose("Comparison result: match", OUT_GREEN);
     return true;

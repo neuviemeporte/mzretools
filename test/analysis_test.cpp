@@ -641,3 +641,14 @@ TEST_F(AnalysisTest, EditDistance) {
     ASSERT_EQ(edit_distance_dp_thr(s1.data(), s1.size(), s3.data(), s3.size(), 5), maxDistance);
     ASSERT_EQ(edit_distance_dp_thr(s1.data(), s1.size(), s3.data(), s3.size(), 5), maxDistance);
 }
+
+TEST_F(AnalysisTest, DataCompare) {
+    const Word loadSegment = 0x1234;
+    Analyzer::Options opt;
+    Analyzer a{opt};
+    MzImage mz{"../bin/hello.exe", loadSegment};
+    Executable exe{mz};
+    CodeMap map{"hello.map", loadSegment};
+    ASSERT_FALSE(map.empty());
+    ASSERT_TRUE(a.compareData(exe, exe, map, map, "Data1"));
+}

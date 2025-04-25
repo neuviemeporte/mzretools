@@ -26,7 +26,8 @@ void usage() {
            "usage: mzdiff [options] reference.exe[:entrypoint] target.exe[:entrypoint]\n"
            "Compares two DOS MZ executables instruction by instruction, accounting for differences in code layout\n"
            "Options:\n"
-           "--map basemap    map file of reference executable (recommended, otherwise functionality limited)\n"
+           "--map ref.map    map file of reference executable (recommended, otherwise functionality limited)\n"
+           "--tmap tgt.map   map file of target executable (only used for output and in data comparison)\n"
            "--verbose        show more detailed information, including compared instructions\n"
            "--debug          show additional debug information\n"
            "--dbgcpu         include CPU-related debug information like instruction decoding\n"
@@ -136,8 +137,9 @@ int main(int argc, char *argv[]) {
     if (argc < 3) {
         usage();
     }
+    // parse cmdline args
     Analyzer::Options opt;
-    string baseSpec, pathMap, compareSpec, dataSegment;
+    string baseSpec, pathMap, compareSpec, dataSegment, pathTmap;
     int posarg = 0;
     for (int aidx = 1; aidx < argc; ++aidx) {
         string arg(argv[aidx]);
@@ -171,6 +173,10 @@ int main(int argc, char *argv[]) {
             if (aidx + 1 >= argc) fatal("Option requires an argument: --data");
             dataSegment = argv[++aidx];
         }
+        else if (arg == "--tmap") {
+            if (aidx + 1 >= argc) fatal("Option requires an argument: --tmap");
+            pathTmap = argv[++aidx];
+        }
         else if (arg.starts_with("--")) fatal("Unrecognized option: " + arg);
         else { // positional arguments
             switch (++posarg) {
@@ -180,16 +186,32 @@ int main(int argc, char *argv[]) {
             }
         }
     }
+    // actually do stuff
+    bool compareResult = false;
     try {
         Executable exeBase = loadExe(baseSpec, loadSeg, opt, true);
         Executable exeCompare = loadExe(compareSpec, loadSeg, opt, false);
         CodeMap map;
         if (!pathMap.empty()) {
-            map = {pathMap, loadSeg};
+            map = { pathMap, loadSeg };
         } 
         Analyzer a{opt};
-        bool compareResult = a.compareCode(exeBase, exeCompare, map);
-        return compareResult ? 0 : 1;
+        // code comparison
+        if (dataSegment.empty()) {
+            compareResult = a.compareCode(exeBase, exeCompare, map) ? 0 : 1;
+        }
+        // data comparison
+        else {
+            CodeMap tgtMap;
+            if (pathMap.empty()) fatal("Data comparison needs a map of the reference executable, use --map");
+            if (pathTmap.empty()) {
+                pathTmap = replaceExtension(pathMap, "tgt");
+                if (!checkFile(pathTmap).exists) fatal("No target map provided with --tmap for data comparison and guessed location " + pathTmap + " does not exist");
+                verbose("Using guessed target map location: " + pathTmap);
+            }
+            tgtMap = { pathTmap, loadSeg };
+            compareResult = a.compareData(exeBase, exeCompare, map, tgtMap, dataSegment);
+        }
     }
     catch (Error &e) {
         fatal(e.why());
@@ -200,5 +222,5 @@ int main(int argc, char *argv[]) {
     catch (...) {
         fatal("Unknown exception");
     }
-    return 0;
+    return compareResult ? 0 : 1;
 }

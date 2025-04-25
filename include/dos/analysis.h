@@ -89,7 +89,7 @@ public:
         Size routineSizeThresh; // minimum routine size (in instructions) threshold
         Size routineDistanceThresh; // maximum edit distance threshold (as ratio of routine size)
         Address stopAddr;
-        std::string mapPath;
+        std::string mapPath, tgtMapPath;
         Options() : strict(true), ignoreDiff(false), noCall(false), variant(false), checkAsm(false), noStats(false), refSkip(0), tgtSkip(0), ctxCount(10), 
             routineSizeThresh(15), routineDistanceThresh(10) {}
     };

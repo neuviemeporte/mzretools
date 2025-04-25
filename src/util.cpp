@@ -64,39 +64,53 @@ void hexDiff(const Byte *buf1, const Byte *buf2, const Offset start, const Offse
     const Size hexDumpItems = 16;
     ostringstream oss, buf1hex, buf1asc, buf2hex, buf2asc;
     Offset newlineOff = start;
-    for (Offset off = start; off < end; ++off) {
-        if (off && off % hexDumpItems == 0) { // new line
+    for (Offset off = start; off <= end + 1; ++off) {
+        const Offset fromStart = start - off;
+        const Size rowRemainder = fromStart % hexDumpItems;
+        bool newline = false;
+        // check for new line condition, output data gathered from previous row if present
+        if (fromStart && (rowRemainder == 0 || off > end)) { 
+            newline = true;
+            // take care of padding on the last row
+            if (rowRemainder != 0) for (Size i = 0; i < rowRemainder; ++i) {
+                buf1hex << "   ";
+                buf2hex << "   ";
+                buf1asc << " ";
+                buf2asc << " ";
+            }
             oss << std::hex << std::setfill('0') << std::setw(4) << buf1seg << ":" << std::setw(4) << newlineOff
-                << buf1hex.str() << " " << buf1asc.str() << " | "
+                << buf1hex.str() << '|' << buf1asc.str() << "| "
                 << std::setw(4) << buf2seg << ":" << std::setw(4) << newlineOff
-                << buf2hex.str() << " " << buf2asc.str() << " " << endl;
-            buf1hex.str(""); 
+                << buf2hex.str() << '|' << buf2asc.str() << '|' << endl;
+            buf1hex.str("");
             buf1hex.clear();
-            buf1asc.str(""); 
+            buf1asc.str("");
             buf1asc.clear();
-            buf2hex.str(""); 
+            buf2hex.str("");
             buf2hex.clear();
-            buf2asc.str(""); 
-            buf2asc.clear();            
+            buf2asc.str("");
+            buf2asc.clear();
             newlineOff += hexDumpItems;
+            // need the one iteration past end to output the final line AFTER grabbing the last byte, but break immediately after
+            if (off > end) break;
         }
-        // collect hexdumps
-        Byte b1 = buf1[off], b2 = buf2[off];
+        // collect data for hexdumps
+        const Byte b1 = buf1[off], b2 = buf2[off];
         if (b1 != b2) {
             buf1hex << output_color(OUT_RED); 
             buf1asc << output_color(OUT_RED);
             buf2hex << output_color(OUT_RED); 
             buf2asc << output_color(OUT_RED);
         }
-        buf1hex << " " << std::hex << std::setfill('0') << std::setw(2) << (int)b1;
-        buf2hex << " " << std::hex << std::setfill('0') << std::setw(2) << (int)b2;
+        buf1hex << (newline || !fromStart ? '|' : ' ') << std::hex << std::setfill('0') << std::setw(2) << (int)b1;
+        buf2hex << (newline || !fromStart ? '|' : ' ') << std::hex << std::setfill('0') << std::setw(2) << (int)b2;
         buf1asc << (printable(b1) ? (char)b1 : '.');
         buf2asc << (printable(b2) ? (char)b2 : '.');
         if (b1 != b2) {
-            buf1hex << output_color(OUT_DEFAULT); 
+            buf1hex << output_color(OUT_DEFAULT);
             buf1asc << output_color(OUT_DEFAULT);
-            buf2hex << output_color(OUT_DEFAULT); 
-            buf2asc << output_color(OUT_DEFAULT);                
+            buf2hex << output_color(OUT_DEFAULT);
+            buf2asc << output_color(OUT_DEFAULT);
         }
     }
     output(oss.str(), LOG_OTHER, LOG_INFO, OUT_DEFAULT, true);
