@@ -767,11 +767,11 @@ bool Analyzer::compareData(const Executable &ref, const Executable &tgt, const C
         tgtLoadSeg = tgt.getLoadSegment();
     Segment refSeg = refMap.findSegment(segment);
     if (refSeg.type != Segment::SEG_DATA) throw AnalysisError("Unable to find data segment with name: " + segment + " in reference map");
-    const Address refOrig = refSeg.address;
+    const Address refOrig{refSeg.address, 0};
     refSeg.address -= refLoadSeg;
     Segment tgtSeg = tgtMap.findSegment(segment);
     if (tgtSeg.type != Segment::SEG_DATA) throw AnalysisError("Unable to find data segment with name: " + segment + " in target map");
-    const Address tgtOrig = tgtSeg.address;
+    const Address tgtOrig{tgtSeg.address, 0};
     tgtSeg.address -= tgtLoadSeg;
     const Address refAddr{refSeg.address, 0}, tgtAddr{tgtSeg.address, 0};
     // make sure start within executable bounds
@@ -779,7 +779,7 @@ bool Analyzer::compareData(const Executable &ref, const Executable &tgt, const C
         throw AnalysisError("Reference segment " + segment + " at " + refAddr.toString() + " exceeds executable size " + sizeStr(ref.size()));
     if (tgtAddr.toLinear() >= tgt.size()) 
         throw AnalysisError("Target segment " + segment + " at " + tgtAddr.toString() + " exceeds executable size " + sizeStr(tgt.size()));        
-    verbose("Found data segment " + segment + " at " + refAddr.toString() + " / " + tgtAddr.toString());
+    verbose("Found data segment " + segment + ": reference " + refAddr.toString() + ", relocated " + refOrig.toString() + ", target: " + tgtAddr.toString() + ", relocated " + tgtOrig.toString());
     Address refEnd = refAddr;
     // find segment past the segment we are looking at, if any
     for (Segment s : refMap.getSegments()) {
@@ -812,7 +812,7 @@ bool Analyzer::compareData(const Executable &ref, const Executable &tgt, const C
         *tgtData = tgt.codePointer(tgtOrig);
     // comparison loop
     for (Size i = 0; i < compareSize; ++i) {
-        debug(hexVal(refData[i]) + " == " + hexVal(tgtData[i]));
+        //debug(hexVal(refData[i]) + " == " + hexVal(tgtData[i]));
         if (refData[i] == tgtData[i]) continue;
         // difference found
         Address refMismatch = refAddr + i, tgtMismatch = tgtAddr + i;
@@ -820,11 +820,14 @@ bool Analyzer::compareData(const Executable &ref, const Executable &tgt, const C
         // find the variables around the mismatch location if possible
         Variable before, after;
         for (Size vi = 0; vi < refMap.variableCount(); ++vi) {
-            const Variable v = refMap.getVariable(vi);
-            if (!before.addr.isValid()) before.addr = v.addr;
-            else if (v.addr < refMismatch) before.addr = v.addr;
-            else if (v.addr == refMismatch) { before.addr = after.addr = v.addr; break; }
-            else { after.addr = v.addr; break; }
+            Variable v = refMap.getVariable(vi);
+            v.addr.rebase(refLoadSeg);
+            debug("Var " + v.toString() + " vs mismatch " + refMismatch.toString());
+            if (v.addr.segment != refMismatch.segment) continue;
+            if (!before.addr.isValid()) before = v;
+            else if (v.addr < refMismatch) before = v;
+            else if (v.addr == refMismatch) { before = after = v; break; }
+            else { after = v; break; }
         }
         // show variable info if available
         if (before.addr.isValid() && after.addr.isValid()) {
