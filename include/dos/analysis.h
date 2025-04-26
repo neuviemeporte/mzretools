@@ -89,7 +89,7 @@ public:
         Size routineSizeThresh; // minimum routine size (in instructions) threshold
         Size routineDistanceThresh; // maximum edit distance threshold (as ratio of routine size)
         Address stopAddr;
-        std::string mapPath;
+        std::string mapPath, tgtMapPath;
         Options() : strict(true), ignoreDiff(false), noCall(false), variant(false), checkAsm(false), noStats(false), refSkip(0), tgtSkip(0), ctxCount(10), 
             routineSizeThresh(15), routineDistanceThresh(10) {}
     };
@@ -124,6 +124,7 @@ public:
     Analyzer(const Options &options, const Size maxData = 0) : options(options), offMap(maxData), comparedSize(0) {}
     CodeMap exploreCode(Executable &exe);
     bool compareCode(const Executable &ref, Executable &tgt, const CodeMap &refMap);
+    bool compareData(const Executable &ref, const Executable &tgt, const CodeMap &refMap, const CodeMap &tgtMap, const std::string &segment);
     bool findDuplicates(const SignatureLibrary signatures, Executable &tgt, CodeMap &tgtMap);
     void findDataRefs(const Executable &exe, const CodeMap &map);
     void seedQueue(const CodeMap &map, Executable &exe);

@@ -11,8 +11,9 @@
 #include "dos/mz.h"
 
 class Executable {
+    friend class AnalysisTest;
     // TODO: just keep the load module data, not the entire memory space
-    const Memory code;
+    Memory code;
     Word loadSegment;
     // actually the load module size
     Size codeSize;

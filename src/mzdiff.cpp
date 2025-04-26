@@ -23,22 +23,24 @@ OUTPUT_CONF(LOG_SYSTEM)
 
 void usage() {
     output("mzdiff v" + VERSION + "\n"
-           "usage: mzdiff [options] base.exe[:entrypoint] compare.exe[:entrypoint]\n"
+           "usage: mzdiff [options] reference.exe[:entrypoint] target.exe[:entrypoint]\n"
            "Compares two DOS MZ executables instruction by instruction, accounting for differences in code layout\n"
            "Options:\n"
-           "--map basemap  map file of reference executable (recommended, otherwise functionality limited)\n"
-           "--verbose      show more detailed information, including compared instructions\n"
-           "--debug        show additional debug information\n"
-           "--dbgcpu       include CPU-related debug information like instruction decoding\n"
-           "--idiff        ignore differences completely\n"
-           "--nocall       do not follow calls, useful for comparing single functions\n"
-           "--asm          descend into routines marked as assembly in the map, normally skipped\n"
-           "--nostat       do not display comparison statistics at the end\n"
-           "--rskip count  skip differences, ignore up to 'count' consecutive mismatching instructions in the reference executable\n"
-           "--tskip count  skip differences, ignore up to 'count' consecutive mismatching instructions in the target executable\n"
-           "--ctx count    display up to 'count' context instructions after a mismatch (default 10)\n"
-           "--loose        non-strict matching, allows e.g for literal argument differences\n"
-           "--variant      treat instruction variants that do the same thing as matching\n"
+           "--map ref.map    map file of reference executable (recommended, otherwise functionality limited)\n"
+           "--tmap tgt.map   map file of target executable (only used for output and in data comparison)\n"
+           "--verbose        show more detailed information, including compared instructions\n"
+           "--debug          show additional debug information\n"
+           "--dbgcpu         include CPU-related debug information like instruction decoding\n"
+           "--idiff          ignore differences completely\n"
+           "--nocall         do not follow calls, useful for comparing single functions\n"
+           "--asm            descend into routines marked as assembly in the map, normally skipped\n"
+           "--nostat         do not display comparison statistics at the end\n"
+           "--rskip count    ignore up to 'count' consecutive mismatching instructions in the reference executable\n"
+           "--tskip count    ignore up to 'count' consecutive mismatching instructions in the target executable\n"
+           "--ctx count      display up to 'count' context instructions after a mismatch (default 10)\n"
+           "--loose          non-strict matching, allows e.g for literal argument differences\n"
+           "--variant        treat instruction variants that do the same thing as matching\n"
+           "--data segname   compare data segment contents instead of code\n"
            "The optional entrypoint spec tells the tool at which offset to start comparing, and can be different\n"
            "for both executables if their layout does not match. It can be any of the following:\n"
            "  ':0x123' for a hex offset\n"
@@ -63,7 +65,7 @@ string mzInfo(const MzImage &mz) {
     return str.str();
 }
 
-Executable loadExe(const string &spec, const Word segment, Analyzer::Options &opt) {
+Executable loadExe(const string &spec, const Word segment, Analyzer::Options &opt, const bool base) {
     // TODO: support providing segment for entrypoint
     string path, entry;
     // split spec string into the path and the entrypoint specification, if present
@@ -76,6 +78,10 @@ Executable loadExe(const string &spec, const Word segment, Analyzer::Options &op
         entry = spec.substr(specPos + 1);
     }
 
+    if (path.empty()) {
+        if (base) fatal("Empty reference executable path");
+        else fatal("Empty target executable path");
+    }
     const auto stat = checkFile(path);
     if (!stat.exists) fatal("File does not exist: "s + path);
     else if (stat.size <= MZ_HEADER_SIZE) fatal("File too small ("s + to_string(stat.size) + "B): " + path); 
@@ -131,8 +137,9 @@ int main(int argc, char *argv[]) {
     if (argc < 3) {
         usage();
     }
+    // parse cmdline args
     Analyzer::Options opt;
-    string baseSpec, pathMap, compareSpec;
+    string baseSpec, pathMap, compareSpec, dataSegment, pathTmap;
     int posarg = 0;
     for (int aidx = 1; aidx < argc; ++aidx) {
         string arg(argv[aidx]);
@@ -162,6 +169,15 @@ int main(int argc, char *argv[]) {
         }
         else if (arg == "--loose") opt.strict = false;
         else if (arg == "--variant") opt.variant = true;
+        else if (arg == "--data") {
+            if (aidx + 1 >= argc) fatal("Option requires an argument: --data");
+            dataSegment = argv[++aidx];
+        }
+        else if (arg == "--tmap") {
+            if (aidx + 1 >= argc) fatal("Option requires an argument: --tmap");
+            pathTmap = argv[++aidx];
+        }
+        else if (arg.starts_with("--")) fatal("Unrecognized option: " + arg);
         else { // positional arguments
             switch (++posarg) {
             case 1: baseSpec = arg; break;
@@ -170,16 +186,32 @@ int main(int argc, char *argv[]) {
             }
         }
     }
+    // actually do stuff
+    bool compareResult = false;
     try {
-        Executable exeBase = loadExe(baseSpec, loadSeg, opt);
-        Executable exeCompare = loadExe(compareSpec, loadSeg, opt);
+        Executable exeBase = loadExe(baseSpec, loadSeg, opt, true);
+        Executable exeCompare = loadExe(compareSpec, loadSeg, opt, false);
         CodeMap map;
         if (!pathMap.empty()) {
-            map = {pathMap, loadSeg};
+            map = { pathMap, loadSeg };
         } 
         Analyzer a{opt};
-        bool compareResult = a.compareCode(exeBase, exeCompare, map);
-        return compareResult ? 0 : 1;
+        // code comparison
+        if (dataSegment.empty()) {
+            compareResult = a.compareCode(exeBase, exeCompare, map) ? 0 : 1;
+        }
+        // data comparison
+        else {
+            CodeMap tgtMap;
+            if (pathMap.empty()) fatal("Data comparison needs a map of the reference executable, use --map");
+            if (pathTmap.empty()) {
+                pathTmap = replaceExtension(pathMap, "tgt");
+                if (!checkFile(pathTmap).exists) fatal("No target map provided with --tmap for data comparison and guessed location " + pathTmap + " does not exist");
+                verbose("Using guessed target map location: " + pathTmap);
+            }
+            tgtMap = { pathTmap, loadSeg };
+            compareResult = a.compareData(exeBase, exeCompare, map, tgtMap, dataSegment);
+        }
     }
     catch (Error &e) {
         fatal(e.why());
@@ -190,5 +222,5 @@ int main(int argc, char *argv[]) {
     catch (...) {
         fatal("Unknown exception");
     }
-    return 0;
+    return compareResult ? 0 : 1;
 }

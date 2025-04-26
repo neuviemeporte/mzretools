@@ -11,12 +11,14 @@
 #include "dos/util.h"
 #include "dos/output.h"
 #include "dos/error.h"
+#include "dos/types.h"
 
 using namespace std;
 namespace fs = std::filesystem;
 
-void hexDump(const Byte *buf, const Size size, const Size off, const bool header) {
-    ostringstream str;
+inline bool printable(const Byte b) { return b >= 0x20 && b <= 0x7e; }
+
+void hexDump(ostream &str, const Byte *buf, const Size size, const Size off, const bool header) {
     if (header) str << std::hex << std::setfill('0') << "buf[0x" << size
          << "] @ 0x" << reinterpret_cast<size_t>(buf)
          << " + 0x" << off << ": " << endl;
@@ -44,13 +46,74 @@ void hexDump(const Byte *buf, const Size size, const Size off, const bool header
             for (size_t j = 1; j <= bpl; ++j) {
                 if (pos + j < bpl) { str << "   "; continue; }
                 const unsigned char c = buf[i - bpl + j];
-                if (c >= 0x20 && c <= 0x7e) str << c;
+                if (printable(c)) str << c;
                 else str << ".";
             }
             str << endl;
         }
     }
+}
+
+void hexDump(const Byte *buf, const Size size, const Size off, const bool header) {
+    ostringstream str;
+    hexDump(str, buf, size, off, header);
     output(str.str(), LOG_OTHER, LOG_INFO, OUT_DEFAULT, true);
+}
+
+void hexDiff(const Byte *buf1, const Byte *buf2, const Offset start, const Offset end, const Word buf1seg, const Word buf2seg) {
+    const Size hexDumpItems = 16;
+    ostringstream oss, buf1hex, buf1asc, buf2hex, buf2asc;
+    Offset newlineOff = start;
+    for (Offset off = start; off <= end + 1; ++off) {
+        const Offset fromStart = start - off;
+        const Size rowRemainder = fromStart % hexDumpItems;
+        bool newline = false;
+        // check for new line condition, output data gathered from previous row if present
+        if (fromStart && (rowRemainder == 0 || off > end)) { 
+            newline = true;
+            // take care of padding on the last row
+            if (rowRemainder != 0) for (Size i = 0; i < rowRemainder; ++i) {
+                buf1hex << "   ";
+                buf2hex << "   ";
+                buf1asc << " ";
+                buf2asc << " ";
+            }
+            oss << std::hex << std::setfill('0') << std::setw(4) << buf1seg << ":" << std::setw(4) << newlineOff
+                << buf1hex.str() << '|' << buf1asc.str() << "| "
+                << std::setw(4) << buf2seg << ":" << std::setw(4) << newlineOff
+                << buf2hex.str() << '|' << buf2asc.str() << '|' << endl;
+            buf1hex.str("");
+            buf1hex.clear();
+            buf1asc.str("");
+            buf1asc.clear();
+            buf2hex.str("");
+            buf2hex.clear();
+            buf2asc.str("");
+            buf2asc.clear();
+            newlineOff += hexDumpItems;
+            // need the one iteration past end to output the final line AFTER grabbing the last byte, but break immediately after
+            if (off > end) break;
+        }
+        // collect data for hexdumps
+        const Byte b1 = buf1[off], b2 = buf2[off];
+        if (b1 != b2) {
+            buf1hex << output_color(OUT_RED); 
+            buf1asc << output_color(OUT_RED);
+            buf2hex << output_color(OUT_RED); 
+            buf2asc << output_color(OUT_RED);
+        }
+        buf1hex << (newline || !fromStart ? '|' : ' ') << std::hex << std::setfill('0') << std::setw(2) << (int)b1;
+        buf2hex << (newline || !fromStart ? '|' : ' ') << std::hex << std::setfill('0') << std::setw(2) << (int)b2;
+        buf1asc << (printable(b1) ? (char)b1 : '.');
+        buf2asc << (printable(b2) ? (char)b2 : '.');
+        if (b1 != b2) {
+            buf1hex << output_color(OUT_DEFAULT);
+            buf1asc << output_color(OUT_DEFAULT);
+            buf2hex << output_color(OUT_DEFAULT);
+            buf2asc << output_color(OUT_DEFAULT);
+        }
+    }
+    output(oss.str(), LOG_OTHER, LOG_INFO, OUT_DEFAULT, true);
 }
 
 std::string signedHexVal(const SByte val, bool plus) {
