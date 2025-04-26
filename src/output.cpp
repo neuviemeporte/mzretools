@@ -26,6 +26,10 @@ void output(const std::string &msg, const LogModule mod, const LogPriority pri, 
     if (!suppressNewline) cout << endl;
 }
 
+LogPriority getOutputLevel() {
+    return globalPriority;
+}
+
 void setOutputLevel(const LogPriority minPriority) {
     globalPriority = minPriority;
 }

@@ -32,6 +32,7 @@ enum Color {
 };
 
 void output(const std::string &msg, const LogModule mod, const LogPriority pri = LOG_INFO, const Color color = OUT_DEFAULT, const bool suppressNewline = false);
+LogPriority getOutputLevel();
 void setOutputLevel(const LogPriority minPriority);
 void setModuleVisibility(const LogModule mod, const bool visible);
 bool moduleVisible(const LogModule mod);

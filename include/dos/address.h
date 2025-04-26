@@ -56,6 +56,7 @@ struct Address {
     Address& operator+=(const SWord adjust) { offset += adjust; return *this; }
     Address& operator+=(const SByte adjust) { offset += adjust; return *this; }
     Address& operator+=(const Byte adjust) { offset += adjust; return *this; }
+    Address& operator+=(const Size adjust) { offset += adjust; return *this; }
     Address& operator++() { offset++; return *this; }
     Address operator++(int) { Address old = *this; operator++(); return old; }
 

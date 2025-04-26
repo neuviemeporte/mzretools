@@ -48,6 +48,7 @@ protected:
         }
         return true;
     }
+    void writeExeData(Executable &exe, const Address &addr, const Byte value) { return exe.code.writeByte(addr.toLinear(), value); }
 };
 
 // TODO: divest tests of analysis.cpp as distinct test suite
@@ -640,4 +641,21 @@ TEST_F(AnalysisTest, EditDistance) {
     ASSERT_EQ(edit_distance_dp_thr(s1.data(), s1.size(), s3.data(), s3.size(), 5), maxDistance);
     ASSERT_EQ(edit_distance_dp_thr(s1.data(), s1.size(), s3.data(), s3.size(), 5), maxDistance);
     ASSERT_EQ(edit_distance_dp_thr(s1.data(), s1.size(), s3.data(), s3.size(), 5), maxDistance);
+}
+
+TEST_F(AnalysisTest, DataCompare) {
+    const Word loadSegment = 0x1234;
+    const string dsegName = "Data1";
+    Analyzer::Options opt;
+    Analyzer a{opt};
+    MzImage mz{"../bin/hello.exe", loadSegment};
+    Executable ref{mz}, tgt{mz};
+    CodeMap map{"hello.map", loadSegment};
+    ASSERT_FALSE(map.empty());
+    const Segment dseg = map.findSegment(dsegName);
+    ASSERT_EQ(dseg.type, Segment::SEG_DATA);
+    const Address mismatchAddr{dseg.address, 0x49};
+    const Byte *data = tgt.codePointer(mismatchAddr);
+    writeExeData(tgt, mismatchAddr, (*data)+1);
+    ASSERT_FALSE(a.compareData(ref, tgt, map, map, dsegName));
 }
