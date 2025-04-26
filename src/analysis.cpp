@@ -784,7 +784,7 @@ bool Analyzer::compareData(const Executable &ref, const Executable &tgt, const C
     // find segment past the segment we are looking at, if any
     for (Segment s : refMap.getSegments()) {
         s.address -= ref.getLoadSegment();
-        if (s.address > refEnd.segment) refEnd = Address{s.address, 0};
+        if (s.address > refEnd.segment && SEG_TO_OFFSET(s.address) < ref.size()) refEnd = Address{s.address, 0};
     }
     // use the executable size as the end address if no segment past the examined one exists
     if (refEnd != refAddr) 
