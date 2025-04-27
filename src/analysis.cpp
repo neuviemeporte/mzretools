@@ -842,6 +842,7 @@ bool Analyzer::compareData(const Executable &ref, const Executable &tgt, const C
                 hexDumpLength = options.dataCtxCount,
                 hexStart = i > (hexDumpLength / 2) ? i - (hexDumpLength / 2) : 0,
                 hexEnd = i + (hexDumpLength / 2) < compareSize ? i + (hexDumpLength/2) : compareSize - 1;
+            if ((hexDumpLength & 1) == 0) hexEnd--;
             debug("Starting hex diff at offset " + hexVal(hexStart) + ", ending at " + hexVal(hexEnd) + ", length = " + sizeStr(hexDumpLength) + ", compareSize = " + hexVal(compareSize) + ", i = " + hexVal(i));
             hexDiff(refData, tgtData, hexStart, hexEnd, refSeg.address, tgtSeg.address);
         }
