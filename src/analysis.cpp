@@ -800,6 +800,7 @@ bool Analyzer::compareData(const Executable &ref, const Executable &tgt, const C
     if (refEnd.toLinear() >= ref.size()) 
         throw AnalysisError("Reference end address at " + refEnd.toString() + " exceeds executable size " + sizeStr(ref.size()));
     // infer and check target end address
+    // TODO: calculcate target end too, warn on length mismatch?
     const Size compareSize = refEnd - refAddr;
     if (compareSize > SEGMENT_SIZE) throw AnalysisError("Compared segment size more than 64k");
     const Address tgtEnd = Address{tgtAddr.toLinear() + compareSize};
@@ -816,13 +817,13 @@ bool Analyzer::compareData(const Executable &ref, const Executable &tgt, const C
         if (refData[i] == tgtData[i]) continue;
         // difference found
         Address refMismatch = refAddr + i, tgtMismatch = tgtAddr + i;
-        verbose("Mismatch at location " + refMismatch.toString() + " / " + tgtMismatch.toString());
+        verbose("Mismatch at location " + output_color(OUT_RED) + refMismatch.toString() + " / " + tgtMismatch.toString() + output_color(OUT_DEFAULT) +  ", " + ratioStr(i, compareSize) + " into the segment");
         // find the variables around the mismatch location if possible
         Variable before, after;
         for (Size vi = 0; vi < refMap.variableCount(); ++vi) {
             Variable v = refMap.getVariable(vi);
             v.addr.rebase(refLoadSeg);
-            debug("Var " + v.toString() + " vs mismatch " + refMismatch.toString());
+            //debug("Var " + v.toString() + " vs mismatch " + refMismatch.toString());
             if (v.addr.segment != refMismatch.segment) continue;
             if (!before.addr.isValid()) before = v;
             else if (v.addr < refMismatch) before = v;
@@ -831,16 +832,17 @@ bool Analyzer::compareData(const Executable &ref, const Executable &tgt, const C
         }
         // show variable info if available
         if (before.addr.isValid() && after.addr.isValid()) {
-            if (before.addr == after.addr) verbose("Mismatch on variable " + before.toString());
-            else verbose("Mismatch between variables " + before.toString() + " and " + after.toString());
+            if (before.addr == after.addr) verbose("Mismatch on variable " + output_color(OUT_BLUE) + before.toString() + output_color(OUT_DEFAULT));
+            else verbose("Mismatch between variables " + output_color(OUT_BLUE) + before.toString() + output_color(OUT_DEFAULT) + " and " + output_color(OUT_BLUE) + after.toString() + output_color(OUT_DEFAULT));
         }
         else verbose("No variable information around mismatch");
         // hex diff
         if (getOutputLevel() <= LOG_VERBOSE) {
-            const Size
-                hexDumpLength = 160,
+            Size
+                hexDumpLength = options.dataCtxCount,
                 hexStart = i > (hexDumpLength / 2) ? i - (hexDumpLength / 2) : 0,
-                hexEnd = i + (hexDumpLength / 2) < compareSize ? i + (hexDumpLength/2) : compareSize - i;
+                hexEnd = i + (hexDumpLength / 2) < compareSize ? i + (hexDumpLength/2) : compareSize - 1;
+            debug("Starting hex diff at offset " + hexVal(hexStart) + ", ending at " + hexVal(hexEnd) + ", length = " + sizeStr(hexDumpLength) + ", compareSize = " + hexVal(compareSize) + ", i = " + hexVal(i));
             hexDiff(refData, tgtData, hexStart, hexEnd, refSeg.address, tgtSeg.address);
         }
         verbose("Comparison result: mismatch", OUT_RED);

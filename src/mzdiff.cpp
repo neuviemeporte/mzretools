@@ -38,6 +38,7 @@ void usage() {
            "--rskip count    ignore up to 'count' consecutive mismatching instructions in the reference executable\n"
            "--tskip count    ignore up to 'count' consecutive mismatching instructions in the target executable\n"
            "--ctx count      display up to 'count' context instructions after a mismatch (default 10)\n"
+           "--dctx count     display up to 'count' bytes around a data segment mismatch (default 160)\n"
            "--loose          non-strict matching, allows e.g for literal argument differences\n"
            "--variant        treat instruction variants that do the same thing as matching\n"
            "--data segname   compare data segment contents instead of code\n"
@@ -162,6 +163,10 @@ int main(int argc, char *argv[]) {
             if (aidx + 1 >= argc) fatal("Option requires an argument: --ctx");
             opt.ctxCount = stoi(argv[++aidx], nullptr, 10);
         }
+        else if (arg == "--dctx") {
+            if (aidx + 1 >= argc) fatal("Option requires an argument: --dctx");
+            opt.dataCtxCount = stoi(argv[++aidx], nullptr, 10);
+        }        
         else if (arg == "--map") {
             if (aidx + 1 >= argc) fatal("Option requires an argument: --map");
             pathMap = argv[++aidx];

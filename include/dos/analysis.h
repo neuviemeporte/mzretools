@@ -85,12 +85,12 @@ public:
     // TODO: introduce true strict (now it's "not loose"), compare by opcode
     struct Options {
         bool strict, ignoreDiff, noCall, variant, checkAsm, noStats;
-        Size refSkip, tgtSkip, ctxCount;
+        Size refSkip, tgtSkip, ctxCount, dataCtxCount;
         Size routineSizeThresh; // minimum routine size (in instructions) threshold
         Size routineDistanceThresh; // maximum edit distance threshold (as ratio of routine size)
         Address stopAddr;
         std::string mapPath, tgtMapPath;
-        Options() : strict(true), ignoreDiff(false), noCall(false), variant(false), checkAsm(false), noStats(false), refSkip(0), tgtSkip(0), ctxCount(10), 
+        Options() : strict(true), ignoreDiff(false), noCall(false), variant(false), checkAsm(false), noStats(false), refSkip(0), tgtSkip(0), ctxCount(10), dataCtxCount(160),
             routineSizeThresh(15), routineDistanceThresh(10) {}
     };
 private:
