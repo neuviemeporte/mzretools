@@ -198,7 +198,7 @@ int main(int argc, char *argv[]) {
         Analyzer a{opt};
         // code comparison
         if (dataSegment.empty()) {
-            compareResult = a.compareCode(exeBase, exeCompare, map) ? 0 : 1;
+            compareResult = a.compareCode(exeBase, exeCompare, map);
         }
         // data comparison
         else {
