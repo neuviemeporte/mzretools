@@ -16,6 +16,14 @@ OUTPUT_CONF(LOG_ANALYSIS)
 #define PARSE_DEBUG(msg)
 #endif
 
+std::string Variable::toString(const bool brief) const { 
+    ostringstream oss;
+    oss << name << "/" << addr.toString();
+    if (!brief && external) oss << " external";
+    if (!brief && bss) oss << " bss";
+    return oss.str();
+}
+
 void CodeMap::blocksFromQueue(const ScanQueue &sq, const bool unclaimedOnly) {
     const Offset startOffset = SEG_TO_OFFSET(loadSegment);
     Offset endOffset = startOffset + mapSize;
@@ -580,11 +588,21 @@ void CodeMap::loadFromMapFile(const std::string &path, const Word reloc) {
         }
         // try to interpret as a variable
         else if (!(match = Variable::stringMatch(line)).empty()) {
-            const string varname = match.str(1), segname = match.str(2), offstr = match.str(3);
+            const string varname = match.str(1), segname = match.str(2), offstr = match.str(3), attr = match.str(4);
             Segment varseg;
             if ((varseg = findSegment(segname)).type == Segment::SEG_NONE) throw ParseError("Line " + to_string(lineno) + ": unknown segment '" + segname + "'");
             Address varaddr{varseg.address, static_cast<Word>(stoi(offstr, nullptr, 16))};
-            vars.emplace_back(Variable{varname, varaddr});
+            Variable var{varname, varaddr};
+            if (!attr.empty()) {
+                istringstream sstr{attr};
+                string attr_val;
+                while (sstr >> attr_val) {
+                    if (attr_val == "external") var.external = true;
+                    else if (attr_val == "bss") var.bss = true;
+                    else throw ParseError("Line " + to_string(lineno) + ": invalid variable attribute: '" + attr_val + "'");
+                }
+            }
+            vars.push_back(var);
             continue;
         }
         // otherwise try interpreting as a routine description

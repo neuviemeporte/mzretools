@@ -42,6 +42,7 @@ void usage() {
            "--loose          non-strict matching, allows e.g for literal argument differences\n"
            "--variant        treat instruction variants that do the same thing as matching\n"
            "--data segname   compare data segment contents instead of code\n"
+           "--extdata        include variables marked as external in data comparison\n"
            "The optional entrypoint spec tells the tool at which offset to start comparing, and can be different\n"
            "for both executables if their layout does not match. It can be any of the following:\n"
            "  ':0x123' for a hex offset\n"
@@ -172,16 +173,17 @@ int main(int argc, char *argv[]) {
             pathMap = argv[++aidx];
             opt.mapPath = pathMap;
         }
+        else if (arg == "--tmap") {
+            if (aidx + 1 >= argc) fatal("Option requires an argument: --tmap");
+            pathTmap = argv[++aidx];
+        }
         else if (arg == "--loose") opt.strict = false;
         else if (arg == "--variant") opt.variant = true;
         else if (arg == "--data") {
             if (aidx + 1 >= argc) fatal("Option requires an argument: --data");
             dataSegment = argv[++aidx];
         }
-        else if (arg == "--tmap") {
-            if (aidx + 1 >= argc) fatal("Option requires an argument: --tmap");
-            pathTmap = argv[++aidx];
-        }
+        else if (arg == "--extdata") opt.extData = true;
         else if (arg.starts_with("--")) fatal("Unrecognized option: " + arg);
         else { // positional arguments
             switch (++posarg) {

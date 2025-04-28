@@ -832,6 +832,10 @@ bool Analyzer::compareData(const Executable &ref, const Executable &tgt, const C
         }
         // show variable info if available
         if (before.addr.isValid() && after.addr.isValid()) {
+            if (before.external && !options.extData) {
+                verbose("Variable " + before.toString() + " marked external, ignoring mismatch");
+                continue;
+            }
             if (before.addr == after.addr) verbose("Mismatch on variable " + output_color(OUT_BLUE) + before.toString() + output_color(OUT_DEFAULT));
             else verbose("Mismatch between variables " + output_color(OUT_BLUE) + before.toString() + output_color(OUT_DEFAULT) + " and " + output_color(OUT_BLUE) + after.toString() + output_color(OUT_DEFAULT));
         }

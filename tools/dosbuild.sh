@@ -140,8 +140,7 @@ until [ -z "$1" ]; do
         ;;
     *)
         case $argtype in
-            i) [ -f "$arg" ] || syntax "Input file does not exist: $arg" 
-               [ "$infiles" ] && infiles+=" "
+            i) [ "$infiles" ] && infiles+=" "
                infiles+="$arg"
                ;;
             o) 
@@ -171,12 +170,10 @@ fi
 # examine input and output base directories, must make them available in dosbox
 infile_dir=''
 infiles_dos=''
+libs_dos=''
 for f in $infiles; do
-    [ -f "$f" ] || { echo "Input file $f does not exist!"; exit 1; }
     curdir=$(basedir $f)
-    if [ "$infile_dir" ]; then
-        [ $curdir != $infile_dir ] && fatal "Input file $f not in input directory $infile_dir"
-    else
+    if [ -z "$infile_dir" ]; then
         infile_dir=$curdir
     fi
     [ "$infiles_dos" ] && infiles_dos+=" "
@@ -193,11 +190,21 @@ if [ "$infile_dir" = "$outfile_dir" ]; then
     outfile_drive='d'
 fi
 outfile_dos="${outfile_drive}:\\$(dossep ${outfile#${outfile_dir}/})"
-debug "infile_dir = '$infile_dir', infiles_dos = '$infiles_dos', outfile_dir = '$outfile_dir', outfile_dos = '$outfile_dos', infile_rsp = '$infile_rsp'"
+for l in $libs; do
+    [ "$libs_dos" ] && libs_dos+=" "
+    if [[ "$l" == "${outfile_dir}"* ]]; then
+        libs_dos+="${outfile_drive}:\\$(dossep ${l#${outfile_dir}/})"
+    else
+        libs_dos+="$l"
+    fi
+done
+debug "infile_dir='$infile_dir', infiles_dos='$infiles_dos', outfile_dir='$outfile_dir', outfile_dos='$outfile_dos', libs_dos='$libs_dos', infile_rsp='$infile_rsp'"
 if [ "$tool" != "test" ]; then
     [ -d "$infile_dir" ] || fatal "Input directory does not exist: $infile_dir"
     [ -d "$outfile_dir" ] || fatal "Output directory does not exist: $outfile_dir"
 fi
+outfile_base="${outfile_dos%.*}"
+outfile_map="$outfile_base.map"
 
 # compose tool cmdline in dos based on tool type
 cmdline=$tool
@@ -232,10 +239,12 @@ case $tool in
             echo "" >> $infile_rsp
         fi
         echo "$outfile_dos" >> $infile_rsp
-        echo ";" >> $infile_rsp
-        # TODO: wrap libs with + too?
-        if [ "$libs" ]; then
-            echo $libs >> $infile_rsp
+        echo "$outfile_map" >> $infile_rsp
+        # libraries can be specified together with the object files, in which case they are called "load libraries" and linked in their entirety,
+        # or in this specific section of the command line or response file, when they are "regular libraries" and only the object files required 
+        # for external reference resolution will be linked in
+        if [ "$libs_dos" ]; then
+            echo $libs_dos >> $infile_rsp
         else
             echo ";" >> $infile_rsp
         fi
