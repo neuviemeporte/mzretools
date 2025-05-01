@@ -12,7 +12,7 @@ CONF_FILE=$CONF_DIR/toolchain.conf
 BAT_FILE=$TOOLCHAIN_DIR/build.bat
 DEBUG=0
 # always print toolchain stdout
-VERBOSE=0
+VERBOSE=1
 cmdline=$@
 
 function syntax() {

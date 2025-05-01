@@ -801,11 +801,17 @@ bool Analyzer::compareData(const Executable &ref, const Executable &tgt, const C
         throw AnalysisError("Reference end address at " + refEnd.toString() + " exceeds executable size " + sizeStr(ref.size()));
     // infer and check target end address
     // TODO: calculcate target end too, warn on length mismatch?
-    const Size compareSize = refEnd - refAddr;
+    Size compareSize = refEnd - refAddr;
+    verbose("Calculated size of compared segment: " + sizeStr(compareSize));
     if (compareSize > SEGMENT_SIZE) throw AnalysisError("Compared segment size more than 64k");
-    const Address tgtEnd = Address{tgtAddr.toLinear() + compareSize};
-    if (tgtEnd.toLinear() >= tgt.size()) 
-        throw AnalysisError("Target end address at " + tgtEnd.toString() + " exceeds executable size " + sizeStr(tgt.size()));
+    Address tgtEnd{tgtSeg.address, refEnd.offset};
+    if (tgtEnd.toLinear() >= tgt.size()) {
+        const Size excess = tgtEnd.toLinear() - tgt.size();
+        warn("Target end address at " + tgtEnd.toString() + " exceeds executable size " + sizeStr(tgt.size()) + " by " + sizeStr(excess) + ", limiting range");
+        compareSize -= excess;
+        refEnd.offset -= excess;
+        tgtEnd.offset -= excess;
+    }
     verbose("Ending comparison at " + refEnd.toString() + " / " + tgtEnd.toString()); 
     // grab pointers to beginning of data segment bytes
     const Byte 
@@ -832,10 +838,6 @@ bool Analyzer::compareData(const Executable &ref, const Executable &tgt, const C
         }
         // show variable info if available
         if (before.addr.isValid() && after.addr.isValid()) {
-            if (before.external && !options.extData) {
-                verbose("Variable " + before.toString() + " marked external, ignoring mismatch");
-                continue;
-            }
             if (before.addr == after.addr) verbose("Mismatch on variable " + output_color(OUT_BLUE) + before.toString() + output_color(OUT_DEFAULT));
             else verbose("Mismatch between variables " + output_color(OUT_BLUE) + before.toString() + output_color(OUT_DEFAULT) + " and " + output_color(OUT_BLUE) + after.toString() + output_color(OUT_DEFAULT));
         }
@@ -850,6 +852,10 @@ bool Analyzer::compareData(const Executable &ref, const Executable &tgt, const C
             debug("Starting hex diff at offset " + hexVal(hexStart) + ", ending at " + hexVal(hexEnd) + ", length = " + sizeStr(hexDumpLength) + ", compareSize = " + hexVal(compareSize) + ", i = " + hexVal(i));
             hexDiff(refData, tgtData, hexStart, hexEnd, refSeg.address, tgtSeg.address);
         }
+        if (!options.extData && before.addr.isValid() && before.external) {
+            verbose("Variable " + before.toString() + " marked external, ignoring mismatch");
+            continue;
+        }        
         verbose("Comparison result: mismatch", OUT_RED);
         return false;
     }
