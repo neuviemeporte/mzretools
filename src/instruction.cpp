@@ -387,7 +387,7 @@ void Instruction::load(const Byte *data)  {
 // - this is useful for branch instructions like call and the various jumps, whose operand is the number of bytes to jump forward or back, 
 // relative to the byte past the instruction
 Word Instruction::absoluteOffset() const {
-    return addr.offset + length + relativeOffset();
+    return (Word)((int32_t)addr.offset + (int32_t)length + relativeOffset());
 }
 
 // return the branch destination address 
@@ -623,11 +623,14 @@ std::string Instruction::toString(const bool extended) const {
         // of the byte past the current instruction to form an absolute offset
         if (isNearBranch() && operandIsImmediate(op1.type)) {
             const Word aoff = absoluteOffset();
+            const Word endAddr = addr.offset + length;
             str << hexVal(aoff, true, false);
             if (extended) {
-                SWord roff = relativeOffset();
-                if (roff < 0) { roff = -roff; str << " (" << hexVal(roff, true, false) << " up)"; }
-                else str << " (" << hexVal(roff, true, false) << " down)";
+                if (aoff < endAddr) {
+                    str << " (" << hexVal(static_cast<Word>(endAddr - aoff), true, false) << " up)";
+                } else {
+                    str << " (" << hexVal(static_cast<Word>(aoff - endAddr), true, false) << " down)";
+                }
             }
         }
         else {
