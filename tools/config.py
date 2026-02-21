@@ -37,6 +37,14 @@ class Config:
             if name in self.config:
                 v = self.config[name]
                 debug(f"{name}: {v}")
+                # make sure no duplicates in lists
+                if name in ['in_segments', 'code_segments', 'data_segments', 'preserves', 'externs', 'publics']:
+                    seen = set()
+                    for item in v:
+                        if item in seen:
+                            error(f"Duplicate item in {name}: {item}")
+                        else:
+                            seen.add(item)
                 setattr(self, name, v)
         if 'data_size' in self.config:
             v = parseNum(self.config['data_size'])
