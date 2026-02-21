@@ -13,10 +13,11 @@
 struct Variable {
     std::string name;
     Address addr;
+    bool external, bss;
     static std::smatch stringMatch(const std::string &str);
     Variable() {}
-    Variable(const std::string &name, const Address &addr) : name(name), addr(addr) {}
-    std::string toString() const { return name + "/" + addr.toString(); }
+    Variable(const std::string &name, const Address &addr) : name(name), addr(addr), external(false), bss(false) {}
+    std::string toString(const bool brief = true) const;
     bool operator<(const Variable &other) const { return addr < other.addr; }
 };
 

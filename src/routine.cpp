@@ -157,7 +157,7 @@ void Routine::recalculateExtents() {
 }
 
 std::smatch Variable::stringMatch(const std::string &str) {
-    static const regex VAR_RE{"^([_a-zA-Z0-9]+): ([_a-zA-Z0-9]+) VAR ([0-9a-fA-F]{1,4})"};
+    static const regex VAR_RE{"^([_a-zA-Z0-9]+): ([_a-zA-Z0-9]+) VAR ([0-9a-fA-F]{1,4})(.*)"};
     smatch match;
     regex_match(str, match, VAR_RE);
     return match;
