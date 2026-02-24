@@ -13,6 +13,9 @@ def debug(str, end='\n'):
 def info(str):
     print(str)
 
+def warn(str):
+    print(f"WARNING: {str}")
+
 def error(str):
     print(f"ERROR: {str}")
     raise RuntimeError

@@ -11,16 +11,10 @@ import sys
 import os.path
 import re
 import traceback
+from output import debug, info, warn, error, setDebug
 
 def syntax():
     print('Syntax: lstmerge.py c_file lst_file out_file')
-    sys.exit(1)
-
-def debug(msg, end='\n'):
-    print(msg, end=end)
-
-def error(msg):
-    print(f"ERROR: {msg}")
     sys.exit(1)
 
 
@@ -31,7 +25,7 @@ def load_lst(lst_path):
     PROC_RE = re.compile(r'([_0-9a-zA-Z]+)\s+proc\s+(?:near|far)')
     ENDP_RE = re.compile(r'([_0-9a-zA-Z]+)\s+endp')
     SPACE_RE = re.compile(r'\s+')
-    lst_file = open(lst_path, 'r')
+    lst_file = open(lst_path, 'r', encoding='cp437')
     lineno = 0
     cur_proc = None
     procs = {}
@@ -48,17 +42,19 @@ def load_lst(lst_path):
             continue
         debug(f"{lineno}: seg {segname} off 0x{offset:X} code '{codestr}'")
         if (match := PROC_RE.match(codestr)) is not None:
-            procname = match.group(1)
+            procname = match.group(1).lstrip('_')
             debug(f"--- proc {procname}")
             if cur_proc is not None:
                 error(f"proc {cur_proc} not ended before proc {procname}")
             cur_proc = procname
             procs[cur_proc] = [(segname, offset, indent, codestr)]
         elif (match := ENDP_RE.match(codestr)) is not None:
-            procname = match.group(1)
+            procname = match.group(1).lstrip('_')
             debug(f"--- endp {procname}")
             if cur_proc is None:
-                error(f"proc {cur_proc} not ended before endp {procname}")
+                error(f"proc {procname} ended outside of any proc")
+            if procname != cur_proc:
+                error(f"proc {procname} ended while in proc {cur_proc}")
             procs[cur_proc].append((segname, offset, indent, codestr))
             cur_proc = None
         elif cur_proc: 
@@ -71,9 +67,10 @@ def write_lines(out_file, cur_routine, lst_procs, routine_lines, stop_offset=-1)
     #breakpoint()
     proc = lst_procs[cur_routine]
     if not proc:
-        error(f"Unable to find routine {cur_routine} in lst procs")
+        error(f"Ran out of listing lines before end of routine {cur_routine}")
     # dump disassembly first in a C comment
-    out_file.write('/*\n')
+    out_lines = 0
+    did_comment = False
     while proc:
         (segname, offset, indent, codestr) = proc[0]
         if stop_offset > 0 and offset > stop_offset:
@@ -83,29 +80,44 @@ def write_lines(out_file, cur_routine, lst_procs, routine_lines, stop_offset=-1)
         if indent > 1:
             indent_str = "    "
         lst_line = f"{segname}:{offset:04X}{indent_str}{codestr}\n"
+        # only write comment heading if needed
+        if not did_comment:
+            out_file.write('/*\n')
+            out_lines += 1
+            did_comment = True
         out_file.write(lst_line)
+        out_lines += 1
         debug(lst_line, '')
-    out_file.write('*/\n')
+    if did_comment:
+        out_file.write('*/\n')
+        out_lines += 1
     # followed by C code
     while routine_lines:
         out_file.write(routine_lines[0])
+        out_lines += 1
         debug(routine_lines[0], '')
         routine_lines.pop(0)
+    return out_lines
 
 # main processing: parse the disassembly listing, then go over the lines of the C code file, writing out the code to the output file, interleaved with corresponding disassembly in comments
-def process(c_file, lst_path, out_file):
-    ROUTINE_RE = re.compile(r'(void|int)\s([_a-zA-Z0-9]+)\(.*\)')
-    OFFSET_RE = re.compile(r'(.*)//\s*(?:0x)?([0-9a-fA-F]+)$')
+def process(c_file, lst_path, out_path):
+    ROUTINE_RE = re.compile(r'(void|int|uint32)(?:\*)?\s([_a-zA-Z0-9]+)\(.*\)')
+    OFFSET1_RE = re.compile(r'(.*)//\s*(?:0x)?([0-9a-fA-F]+)$')
+    OFFSET2_RE = re.compile(r'(.*)/\*\s*(?:0x)?([0-9a-fA-F]+)\s*\*/')
     COMMENT_RE = re.compile(r'\s*//')
+    TRACE_RE   = re.compile(r'\s*TRACE')
     lst_procs = load_lst(lst_path)
+    out_file = open(out_path, "w")
     lineno = 0
     depth = 0
     cur_routine = None
     routine_lines = []
     stop_offset = None
+    out_lines = 0
     debug(f"=== Processing C file {c_file.name} to {out_file.name}")
     for line in c_file:
         lineno += 1
+        debug(f"{lineno}: '{line.rstrip()}'")
         depth_delta = line.count('{') - line.count('}')
         if depth + depth_delta < 0:
             error(f"Invalid bracing (depth = {depth}, delta {depth_delta}) on line {lineno}")
@@ -114,7 +126,8 @@ def process(c_file, lst_path, out_file):
             debug(f"{lineno} closing routine {cur_routine}")
             routine_lines.append(line)
             # write out any remaining disassembly and C code 
-            write_lines(out_file, cur_routine, lst_procs, routine_lines)
+            debug(f"Dumping lines due to routine end: {cur_routine}")
+            out_lines += write_lines(out_file, cur_routine, lst_procs, routine_lines)
             out_file.write('\n')
             cur_routine = None
         depth += depth_delta
@@ -126,13 +139,11 @@ def process(c_file, lst_path, out_file):
                 cur_routine = name
                 routine_lines.clear()
                 routine_lines.append(line)
+                stop_offset = None
             else:
-                debug(f"Ignoring routine not found in lstfile")
+                warn(f"Ignoring routine not found in lstfile: {name}")
         # offset mark comment within routine
-        elif cur_routine and (match := OFFSET_RE.match(line)) is not None:
-            # previous meaningful line was an offset too, dump the lines leading up to it
-            if stop_offset:
-                write_lines(out_file, cur_routine, lst_procs, routine_lines, stop_offset)
+        elif cur_routine and ((match := OFFSET1_RE.match(line)) is not None or (match := OFFSET2_RE.match(line)) is not None):
             # store any C code on the offset line, if present
             lead = match.group(1).rstrip()
             stop_offset = int(match.group(2), 16)
@@ -140,25 +151,42 @@ def process(c_file, lst_path, out_file):
             debug(f"{lineno}: found offset: 0x{stop_offset:x}")
             # if there is code on the offset line, dump listing and code up to and including the line. Otherwise, delay the dump until the next line
             if lead and not lead.isspace():
-                write_lines(out_file, cur_routine, lst_procs, routine_lines, stop_offset - 1)
+                debug(f"Dumping lines due to code present on offset line")
+                out_lines += write_lines(out_file, cur_routine, lst_procs, routine_lines, stop_offset - 1)
                 stop_offset = None
-        # ignore comment lines
-        elif (match := COMMENT_RE.match(line)) is not None:
+        # ignore comment and trace lines
+        elif COMMENT_RE.match(line) or TRACE_RE.match(line):
             continue
         # other code line inside a routine
         elif cur_routine:
             routine_lines.append(line)
             # offset mark found before this line; dump listing and C code including this line
             if stop_offset:
-                write_lines(out_file, cur_routine, lst_procs, routine_lines, stop_offset)
+                debug(f"Dumping lines due to stop offset being set: 0x{stop_offset:x} while processing routine line")
+                out_lines += write_lines(out_file, cur_routine, lst_procs, routine_lines, stop_offset)
                 stop_offset = None
+    out_file.close()
+    if out_lines == 0:
+        debug(f"Empty output, removing {out_path}")
+        os.remove(out_path)
 
 def main():
     if len(sys.argv) < 4:
         syntax()
-    c_path = sys.argv[1]
-    lst_path = sys.argv[2]
-    out_path = sys.argv[3]
+    c_path = None
+    lst_path = None
+    out_path = None
+    for arg in sys.argv[1:]:
+        if arg == '--debug':
+            setDebug(True)
+        elif not c_path:
+            c_path = arg
+        elif not lst_path:
+            lst_path = arg
+        elif not out_path:
+            out_path = arg
+        else:
+            error(f'Unrecognized argument: {arg}')
     if not os.path.isfile(c_path):
         print(f'Error: {c_path} does not exist!')
         sys.exit(1)
@@ -166,8 +194,8 @@ def main():
         print(f'Error: {lst_path} does not exist!')
         sys.exit(1)
     try:
-        with open(c_path, 'r') as c_file, open(out_path, 'w') as out_file:
-            process(c_file, lst_path, out_file)
+        with open(c_path, 'r') as c_file:
+            process(c_file, lst_path, out_path)
     except:
         # e = sys.exc_info()
         # print('exception', e)
