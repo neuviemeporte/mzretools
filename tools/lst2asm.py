@@ -112,6 +112,7 @@ def main(lstpath, asmpath, confpath):
     output = Output(asmfile)
     lst_iter = LstIterator(lstfile)
     output_procs = []
+    extern_names = set(config.externs)
 
     while True:
         # lstfile eof
@@ -135,7 +136,11 @@ def main(lstpath, asmpath, confpath):
             # routine start
             if (match := Regex.PROC.match(instr)) is not None: # procedure start
                 cur_proc = match.group(1)
-                if noProc and (noPreserve or cur_proc not in config.preserves):
+                cur_proc_is_extern = cur_proc in extern_names
+                if cur_proc_is_extern and (stub or noProc) and (noPreserve or cur_proc not in config.preserves):
+                    debug(f"Ignoring start of externed routine {cur_proc}")
+                    skipWrite = True
+                elif noProc and (noPreserve or cur_proc not in config.preserves):
                     debug(f"Ignoring start of non-preserved routine {cur_proc}")
                     skipWrite = True
             # routine end
@@ -145,7 +150,11 @@ def main(lstpath, asmpath, confpath):
                     error(f"End of routine {endproc} while not inside a routine?")
                 elif endproc != cur_proc:
                     error(f"End of routine {endproc} while inside routine {cur_proc}?")
-                if noProc and (noPreserve or cur_proc not in config.preserves):
+                cur_proc_is_extern = cur_proc in extern_names
+                if cur_proc_is_extern and (stub or noProc) and (noPreserve or cur_proc not in config.preserves):
+                    debug(f"Ignoring end of externed routine {cur_proc}")
+                    skipWrite = True
+                elif noProc and (noPreserve or cur_proc not in config.preserves):
                     skipWrite = True                
                 # prepend near return to write list on procedure end for stubs
                 elif stub and (noPreserve or cur_proc not in config.preserves): 
@@ -159,6 +168,9 @@ def main(lstpath, asmpath, confpath):
                     debug(f"Ignoring instructions outside routine")
                     skipWrite = True
             # instructions inside a procedure
+            elif cur_proc in extern_names and (stub or noProc) and (noPreserve or cur_proc not in config.preserves):
+                debug(f"Ignoring instructions of externed routine {cur_proc}")
+                skipWrite = True
             elif stub and (noPreserve or cur_proc not in config.preserves):
                 debug(f"Ignoring instructions in stubbed routine {cur_proc}")
                 skipWrite = True
