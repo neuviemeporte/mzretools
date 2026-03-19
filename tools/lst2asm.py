@@ -93,9 +93,12 @@ def main(lstpath, asmpath, confpath):
     # write out preamble + all externs and publics first
     for p in config.preamble:
         asmfile.write(p + "\n")
+    extern_names = set(config.externs)
     for e in config.externs:
         asmfile.write(f'EXTRN _{e}:PROC\n')
     for p in config.publics:
+        if p in extern_names:
+            continue
         # only write out publics for symbols not in preserves, or if preserves are... preserved
         if p not in config.preserves or not noPreserve:
             asmfile.write(f'PUBLIC _{p}\n')
@@ -112,7 +115,6 @@ def main(lstpath, asmpath, confpath):
     output = Output(asmfile)
     lst_iter = LstIterator(lstfile)
     output_procs = []
-    extern_names = set(config.externs)
 
     while True:
         # lstfile eof
