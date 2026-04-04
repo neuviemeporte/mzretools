@@ -28,7 +28,8 @@ query = sys.argv[1]
 db = lancedb.connect("ragdb")
 table = db.open_table("code_samples")
 actual = table.search(query).limit(1).to_pydantic(DecompilationPair)[0]
-print(actual)
+print(f"/*\n{actual.asm_code}*/")
+print(actual.c_code, end='')
 
 
 # .limit(3) gets the top 3 closest matches
