@@ -4,15 +4,16 @@ import lancedb
 from lancedb.pydantic import LanceModel, Vector
 from lancedb.embeddings import get_registry
 from output import *
+from rag_common import *
 
 def syntax():
     print("Usage: rag_query.py <query>")
     sys.exit(1)
 
-if len(sys.argv) != 2:
+if len(sys.argv) < 2:
     syntax()
 
-model = get_registry().get("ollama").create(name="nomic-embed-text", host="http://172.30.160.1:11434")
+model = get_registry().get(embed_provider).create(name=embed_model, host=model_host)
 
 # define the schema
 class DecompilationPair(LanceModel):
@@ -25,12 +26,17 @@ class DecompilationPair(LanceModel):
     vector: Vector(model.ndims()) = model.VectorField()
 
 query = sys.argv[1]
-db = lancedb.connect("ragdb")
-table = db.open_table("code_samples")
-actual = table.search(query).limit(1).to_pydantic(DecompilationPair)[0]
-print(f"/*\n{actual.asm_code}*/")
-print(actual.c_code, end='')
-
+limit = int(sys.argv[2]) if len(sys.argv) > 2 else 3
+print(f"Querying for '{query}' with a limit of {limit}")
+db = lancedb.connect(db_name)
+table = db.open_table(table_name)
+actual = table.search(query).limit(limit).to_pydantic(DecompilationPair)
+i = 0
+for a in actual:
+    i += 1
+    print(f"=== Sample {i}")
+    print(f"/*\n{a.asm_code}*/")
+    print(a.c_code, end='')
 
 # .limit(3) gets the top 3 closest matches
 #results = table.search(query_asm).limit(3).to_list()

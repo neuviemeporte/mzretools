@@ -6,17 +6,10 @@ import textwrap
 from lancedb.pydantic import LanceModel, Vector
 from lancedb.embeddings import get_registry
 from output import *
-
-setDebug(True)
-db_name = "ragdb"
-table_name = "code_samples"
-model_host = "http://172.30.160.1:11434"
-embed_provider = "ollama"
-embed_model = "nomic-embed-text"
-line_limit = 100
+from rag_common import *
 
 def syntax():
-    print("Syntax: rag_index.py <input_file>")
+    print("Syntax: rag_index.py [--debug] <input_file>")
     print("This takes a file with sample assembly + C code equivalents, splits it into chunks,\n"
           "runs them through an embedding model and appends the embeddings to LanceDB")
     sys.exit(1)
@@ -44,7 +37,10 @@ def add_sample(samples, depth_samples, depth, asm_code, c_code):
             samples.append({"asm_code": depth_asm, "c_code": depth_c})
         else:
             debug(f"Rejecting depth reduction sample (depth {depth + 1}, line count {line_count}):\n--- asm:\n{depth_asm}--- c:\n{depth_c}---")
-        del depth_samples[depth + 1]
+        # remove depth samples for all depths deeper than the one just reduced - no need to keep anymore as we just stepped out of the enclosing one
+        for k in [x for x in depth_samples.keys() if x > depth]:
+            debug(f"Deleting sample for depth {k}")
+            del depth_samples[k]
     if depth != 0:
         # add this code sample to all depths below and including the current one
         for d in range(1, depth + 1):
@@ -61,6 +57,9 @@ depth_samples = {}
 file_count = 0
 while sys.argv:
     input_file = sys.argv.pop(0)
+    if input_file == '--debug':
+        setDebug(True)
+        continue
     old_count = len(code_samples)
     # extract code samples from the input file, expecting disassembly in /*...*/ comments, followed by C code
     with open(input_file, "r") as file:
@@ -87,8 +86,9 @@ while sys.argv:
             elif line_stripped == '*/':
                 # end of comment block, c code follows
                 in_asm = False
+                
             elif in_asm:
-                debug(f"Appending assembly code to asm_code: {line_stripped}")
+                debug(f"Appending assembly code to asm_code: '{line_stripped}'")
                 asm_code += offset_re.sub('', line)
             else:
                 # ignore C // comment lines (offset markings, might confuse model)
@@ -97,7 +97,7 @@ while sys.argv:
                 cur_depth = c_depth + line.count('{') - line.count('}')
                 if cur_depth < 0:
                     error(f"Negative indentation on line {lineno}: '{line}'")
-                debug(f"Appending c code to c_code: {line_stripped}, depth: {cur_depth}")
+                debug(f"Appending c code to c_code: '{line_stripped}', depth: {cur_depth}")
                 c_depth = cur_depth
                 c_code += line
         # final item after eof
@@ -105,8 +105,6 @@ while sys.argv:
         info(f"Loaded {len(code_samples) - old_count} samples from {input_file}")
 
 info(f"Loaded {len(code_samples)} samples in total from {file_count} files")
-
-sys.exit(1)
 
 # choose embedding model
 model = get_registry().get(embed_provider).create(name=embed_model, host=model_host)
