@@ -337,6 +337,20 @@ rm -f $emu_logfile
 SDL_VIDEODRIVER=dummy dosbox -conf $CONF_FILE $BAT_FILE -exit &> $emu_logfile
 # check if successful by examining if output file exists
 if [ "$tool" != "test" ]; then
+    # Find and rename files to the expected lowercase paths
+    # to work around issues on case-sensitive filesystems.
+    if [ ! -f "$outfile" ]; then
+        outfile_upper=$(find "$outfile_dir" -maxdepth 1 -iname "$(basename $outfile)" -print -quit 2>/dev/null)
+        if [ -n "$outfile_upper" ] && [ -f "$outfile_upper" ]; then
+            mv "$outfile_upper" "$outfile"
+        fi
+    fi
+    if [ ! -f "$logfile" ]; then
+        logfile_upper=$(find "$infile_dir" -maxdepth 1 -iname "log.txt" -print -quit 2>/dev/null)
+        if [ -n "$logfile_upper" ] && [ -f "$logfile_upper" ]; then
+            mv "$logfile_upper" "$logfile"
+        fi
+    fi
     if [ ! -f "$outfile" ]; then
         if [ -f "$logfile" ]; then
             cat $logfile; 
