@@ -12,12 +12,15 @@ CONF_FILE=$CONF_DIR/toolchain.conf
 BAT_FILE=$TOOLCHAIN_DIR/build.bat
 DEBUG=0
 # always print toolchain stdout
-VERBOSE=1
+VERBOSE=0
 cmdline=$@
 
 function syntax() {
-    [ "$1" ] && echo "Error: $1"
-    echo "Syntax: dosbuild.sh cc|link|as toolchain -i infiles... -o outfile [-f flags...] [-l libs...]"
+    [ "$1" ] && echo "dosbuild.sh error: $1"
+    echo "Syntax: dosbuild.sh cc|link|as toolchain -i infiles... -o outfile [-f flags...] [-l libs...] [-v] [-d]"
+    echo "The toolchain should be the name of a directory under ${TOOLCHAIN_DIR}/ containing the DOS compile toolchain, such as MS C or Turbo C"
+    echo "-v: verbose mode, prints full output of DOS toolchain (normally printed only on error)"
+    echo "-d: debug mode, additional output from the script itself"
     exit 1
 }
 
@@ -27,7 +30,7 @@ function debug() {
 
 function fatal() {
     if ((DEBUG)); then echo $cmdline; fi
-    echo "Error: $1"
+    echo "dosbuild.sh error: $1"
     exit 1
 }
 
@@ -137,6 +140,10 @@ until [ -z "$1" ]; do
     -f) argtype=f
         ;;
     -l) argtype=l
+        ;;
+    -d) DEBUG=1
+        ;;
+    -v) VERBOSE=1
         ;;
     *)
         case $argtype in
