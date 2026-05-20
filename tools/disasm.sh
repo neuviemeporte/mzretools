@@ -27,15 +27,17 @@ until [ -z "$1" ]; do
     shift; 
 done
 output "Header length is $hdrlen"
+origin=0
 if [ "$skip" ]; then
     ((hdrlen+=skip))
     hdrhex=$(printf "0x%x" $hdrlen)
-    output "Skipping $hdrhex bytes"
+    origin=$skip
+    output "Skipping $hdrhex bytes, origin $origin"
 fi
 if ((noff)); then
     # offset obfuscation mode - useful for comparing disassembly listings
     # squeeze spaces, remove instruction encoding column, replace offsets with obfuscation string
     ndisasm -e $hdrlen $infile | tr -s ' ' | cut -d ' ' -f 3- | sed -e 's/0x[0-9a-fA-F]\+/0x?/g'
 else
-    ndisasm -e $hdrlen $infile
+    ndisasm -e $hdrlen -o $origin $infile
 fi
