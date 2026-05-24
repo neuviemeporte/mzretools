@@ -12,11 +12,6 @@
 #include <stack>
 #include <regex>
 
-// TODO: 
-// - highlight in bright red differences in literal arguments, e.g mov cl, 0x5 =~ mov cl, 0xa, not offsets though
-// - instruction skipping prints instructions in incorrect order
-// - assertion failure when invalid instruction hit in context print
-// - why aren't jumps saved to search queue?
 using namespace std;
 
 OUTPUT_CONF(LOG_SYSTEM)
@@ -26,31 +21,39 @@ void usage() {
            "usage: mzdiff [options] reference.exe[:entrypoint] target.exe[:entrypoint]\n"
            "Compares two DOS MZ executables instruction by instruction, accounting for differences in code layout\n"
            "Options:\n"
-           "--map ref.map    map file of reference executable (recommended, otherwise functionality limited)\n"
-           "--tmap tgt.map   map file of target executable (only used for output and in data comparison)\n"
-           "--verbose        show more detailed information, including compared instructions\n"
-           "--debug          show additional debug information\n"
-           "--dbgcpu         include CPU-related debug information like instruction decoding\n"
-           "--idiff          ignore differences completely\n"
-           "--nocall         do not follow calls, useful for comparing single functions\n"
-           "--asm            descend into routines marked as assembly in the map, normally skipped\n"
-           "--nostat         do not display comparison statistics at the end\n"
-           "--rskip count    ignore up to 'count' consecutive mismatching instructions in the reference executable\n"
-           "--tskip count    ignore up to 'count' consecutive mismatching instructions in the target executable\n"
-           "--ctx count      display up to 'count' context instructions after a mismatch (default 10)\n"
-           "--dctx count     display up to 'count' bytes around a data segment mismatch (default 160)\n"
-           "--loose          non-strict matching, allows e.g for literal argument differences\n"
-           "--variant        treat instruction variants that do the same thing as matching\n"
-           "--data segname   compare data segment contents instead of code\n"
-           "--extdata        include variables marked as external in data comparison\n"
-           "The optional entrypoint spec tells the tool at which offset to start comparing, and can be different\n"
-           "for both executables if their layout does not match. It can be any of the following:\n"
-           "  ':0x123' for a hex offset\n"
-           "  ':0x123-0x567' for a hex range\n"
-           "  ':[ab12??ea]' for a hexa string to search for and use its offset. The string must consist of an even amount\n"
-           "   of hexa characters, and '\?\?' will match any byte value.\n"
-           "In case of a range being specified as the spec, the search will stop with a success on reaching the latter offset.\n"
-           "If the spec is not present, the tool will use the CS:IP address from the MZ header as the entrypoint.",
+           "--map path        map file of reference executable (recommended, otherwise functionality limited)\n"
+           "--tmap path[:tag] map file of target executable (optional)\n"
+           "--verbose         show more detailed information, including compared instructions\n"
+           "--debug           show additional debug information\n"
+           "--dbgcpu          include CPU-related debug information like instruction decoding\n"
+           "--idiff           ignore differences completely\n"
+           "--nocall          do not follow calls, useful for comparing single functions\n"
+           "--asm             descend into routines marked as assembly in the map, normally skipped\n"
+           "--nostat          do not display comparison statistics at the end\n"
+           "--rskip count     ignore up to 'count' consecutive mismatching instructions in the reference executable\n"
+           "--tskip count     ignore up to 'count' consecutive mismatching instructions in the target executable\n"
+           "--ctx count       display up to 'count' context instructions after a mismatch (default 10)\n"
+           "--dctx count      display up to 'count' bytes around a data segment mismatch (default 160)\n"
+           "--loose           non-strict matching, allows e.g for literal argument differences\n"
+           "--variant         treat instruction variants that do the same thing as matching\n"
+           "--data segname    compare data segment contents instead of code\n"
+           "--extdata         include variables marked as external in data comparison\n"
+           "1) The optional entrypoint spec tells the tool at which offset to start comparing, and can be different\n"
+           "   for both executables if their layout does not match. It can be any of the following:\n"
+           "    ':0x123' for a hex offset\n"
+           "    ':0x123-0x567' for a hex range\n"
+           "    ':[ab12??ea]' for a hexa string to search for and use its offset. The string must consist of an even amount\n"
+           "     of hexa characters, and '\?\?' will match any byte value.\n"
+           "  In case of a range being specified as the spec, the search will stop with a success on reaching the latter offset.\n"
+           "  If the spec is not present, the tool will use the CS:IP address from the MZ header as the entrypoint.\n"
+           "2) The target map file is used as a reference for variable location in data segment comparison mode,\n"
+           "   or as an optional reference to lookup target executable locations for comparison if they could not be determined\n"
+           "   from watching encountered calls. In the latter case, the path can be followed by an optional tag which indicates\n"
+           "   the format of the map file:\n"
+           "     'ida' for an IDA listing file\n"
+           "     'link' for an MS LINK mapfile\n"
+           "3) The tool also saves a map file of the target executable that's been discovered in the course of the comparison\n"
+           "   to the path of the reference map with the extension changed to '.tgt'",
            LOG_OTHER, LOG_ERROR);
     exit(1);
 }
@@ -204,12 +207,23 @@ int main(int argc, char *argv[]) {
         } 
         Analyzer a{opt};
         // code comparison
+        CodeMap tgtMap;
         if (dataSegment.empty()) {
-            compareResult = a.compareCode(exeBase, exeCompare, map);
+            if (!pathTmap.empty()) {
+                static const regex TMAP_RE{R"(([^:]+)(?::([a-zA-Z]+))?)"};
+                std::smatch match;
+                if (!regex_match(pathTmap, match, TMAP_RE)) fatal("Invalid target map path: " + pathTmap);
+                const string path = match[1].str(), tag = match[2].str();
+                verbose("Loading target map from " + path + ", tag: " + tag);
+                CodeMap::Type type = CodeMap::MAP_MZRE;
+                if (tag == "ida") type = CodeMap::MAP_IDALST;
+                else if (tag == "link") type = CodeMap::MAP_MSLINK;
+                tgtMap = { path, loadSeg, type };
+            }
+            compareResult = a.compareCode(exeBase, exeCompare, map, tgtMap);
         }
         // data comparison
         else {
-            CodeMap tgtMap;
             if (pathMap.empty()) fatal("Data comparison needs a map of the reference executable, use --map");
             if (pathTmap.empty()) {
                 pathTmap = replaceExtension(pathMap, "tgt");

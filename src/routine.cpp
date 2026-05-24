@@ -143,7 +143,7 @@ void Routine::recalculateExtents() {
         return b.begin == ep;
     });
     if (mainBlock == reachable.end()) {
-        debug("Unable to find main block for routine "s + dump(false));
+        debug("Unable to calculate extents for routine "s + dump(false));
         extents.end = extents.begin;
         return;
     }

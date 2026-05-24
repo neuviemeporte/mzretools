@@ -1,3 +1,4 @@
+- mzdiff: print routine names from map on calls, perhaps on target side too (--tmap)
 - mzdiff: cache log lines, output only mismatched routine
 - detect routines split in two by segment opening, e.g. egame copyJoystickData seg002:0cbe-0cd5, keep routine in old segment?
 - implement segment deduction from es, les, lds
@@ -11,3 +12,6 @@
 - add segments to routine map constructor, trace current segment, place unclaimed blocks in current rather than load segment
 - OMF parser, extract segments, function signatures etc
 - add load() call to mzimage constructor, will probably break tests
+- instruction skipping prints instructions in incorrect order
+- assertion failure when invalid instruction hit in context print
+- why aren't jumps saved to search queue?

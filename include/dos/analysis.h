@@ -123,7 +123,7 @@ private:
 public:
     Analyzer(const Options &options, const Size maxData = 0) : options(options), offMap(maxData), comparedSize(0) {}
     CodeMap exploreCode(Executable &exe);
-    bool compareCode(const Executable &ref, Executable &tgt, const CodeMap &refMap);
+    bool compareCode(const Executable &ref, Executable &tgt, const CodeMap &refMap, const CodeMap &tgtMap = {});
     bool compareData(const Executable &ref, const Executable &tgt, const CodeMap &refMap, const CodeMap &tgtMap, const std::string &segment);
     bool findDuplicates(const SignatureLibrary signatures, Executable &tgt, CodeMap &tgtMap);
     void findDataRefs(const Executable &exe, const CodeMap &map);

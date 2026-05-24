@@ -647,7 +647,7 @@ Address Analyzer::findTargetLocation(const Executable &ref, const Executable &tg
 }
 
 // TODO: implement register value tracing like in exploreCode
-bool Analyzer::compareCode(const Executable &ref, Executable &tgt, const CodeMap &refMap) {
+bool Analyzer::compareCode(const Executable &ref, Executable &tgt, const CodeMap &refMap, const CodeMap &tgtMap) {
     verbose("Comparing code between reference (entrypoint "s + ref.entrypoint().toString() + ") and target (entrypoint " + tgt.entrypoint().toString() + ") executables");
     debug("Routine map of reference binary has " + to_string(refMap.routineCount()) + " entries");
     // find name of reference entrypoint routine for seeding queues
@@ -708,14 +708,30 @@ bool Analyzer::compareCode(const Executable &ref, Executable &tgt, const CodeMap
                 excludedNames.insert(routine.name);
                 continue;
             }
-            // get corresponding address for comparison in target binary
+            // target location not seen for this routine from observing call destinations, try to guess corresponding address for comparison in target binary
             if (!tgtCsip.isValid()) {
-                // last resort, try to search by instruction opcodes if not present in offset map from observing call destinations
-                tgtCsip = findTargetLocation(ref, tgt);
+                // first attempt, try to get by routine name from target map if provided, this only works for the entrypoint
+                if (!tgtMap.empty() && refCsip == routine.entrypoint()) {
+                    Routine tgtRoutine = tgtMap.getRoutine(routine.name);
+                    if (!tgtRoutine.isValid()) {
+                        // try again with leading underscore if unsuccessful
+                        tgtRoutine = tgtMap.getRoutine("_" + routine.name);
+                    }
+                    if (tgtRoutine.isValid()) {
+                        tgtCsip = tgtRoutine.entrypoint();
+                        verbose("Found location of " + routine.name + " by name in target map: " + tgtCsip.toString());
+                    }
+                }
+                // TODO: try skipping current routine and pick another from search queue in hope this might be seen later?
                 if (!tgtCsip.isValid()) {
-                    error("Could not find equivalent address for "s + refCsip.toString() + " in address map for target executable");
-                    success = false;
-                    break;
+                    // last resort, try to search by instruction opcodes
+                    tgtCsip = findTargetLocation(ref, tgt);
+                    if (!tgtCsip.isValid()) {
+                        error("Could not find equivalent address for "s + refCsip.toString() + " in address map for target executable");
+                        success = false;
+                        break;
+                    }
+                    warn("Unable to determine location of routine " + routine.name + " in target executable. Last resort pattern searching found likely location " + tgtCsip.toString() + ", but it may be completely wrong so false negative or positive is possible!", OUT_BRIGHTRED);
                 }
                 // add routine entrypoint to target queue, otherwise it will not get marked as visited when comparing
                 if (refCsip == routine.entrypoint()) {
@@ -746,11 +762,11 @@ bool Analyzer::compareCode(const Executable &ref, Executable &tgt, const CodeMap
     if (!options.tgtMapPath.empty()) {
         debug("Constructing target map from target queue contents");
         // TODO: generate variables for target
-        CodeMap tgtMap{tgtQueue, tgt.getSegments(), {}, tgt.getLoadSegment(), tgt.size()};
+        CodeMap outMap{tgtQueue, tgt.getSegments(), {}, tgt.getLoadSegment(), tgt.size()};
         //tgtMap.setSegments(tgt.getSegments());
         //tgtMap.order();
-        info("Saving target map to " + options.tgtMapPath);
-        tgtMap.save(options.tgtMapPath, tgt.loadAddr().segment, true);
+        info("Saving output map to " + options.tgtMapPath);
+        outMap.save(options.tgtMapPath, tgt.loadAddr().segment, true);
     }
 
     if (success) {
