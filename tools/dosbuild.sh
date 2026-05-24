@@ -9,7 +9,7 @@
 TOOLCHAIN_DIR=dos
 CONF_DIR=conf
 CONF_FILE=$CONF_DIR/toolchain.conf
-BAT_FILE=$TOOLCHAIN_DIR/build.bat
+BAT_FILE=$TOOLCHAIN_DIR/bld$(printf '%04d' $(($$%10000))).bat
 DEBUG=0
 # always print toolchain stdout
 VERBOSE=0
@@ -318,14 +318,22 @@ debug "cmdline: $cmdline"
 #echo "--- build running $tool from $chain"
 # create dos bat file for launching inside the emulator
 
+logname=$(basename ${BAT_FILE%.bat}.log)
+logfile=$infile_dir/$logname
+emu_logfile=${BAT_FILE%.bat}_emu.log
+
+tmpdir=$(mktemp -d)
+
 cat > $BAT_FILE <<EOF
 set PATH=Z:\;C:\\$chain\\bin;C:\\$chain\binb;C:\\$chain\bound;C:\\$chain
 set INCLUDE=C:\\$chain\\include
 set LIB=C:\\$chain\\lib
 mount d $infile_dir
 mount e $outfile_dir
+mount f $tmpdir
+set TMP=F:\\
 d:
-$cmdline > log.txt
+$cmdline > $logname
 EOF
 
 if ((DEBUG)); then 
@@ -335,8 +343,6 @@ if ((DEBUG)); then
 fi
 
 # remove logfile from previous run if exists to avoid reporting bogus errors in case of build failure
-logfile=$infile_dir/log.txt
-emu_logfile=build.log
 rm -f $logfile
 rm -f $emu_logfile
 # start bat file in emulator in headless mode
@@ -353,7 +359,7 @@ if [ "$tool" != "test" ]; then
         fi
     fi
     if [ ! -f "$logfile" ]; then
-        logfile_upper=$(find "$infile_dir" -maxdepth 1 -iname "log.txt" -print -quit 2>/dev/null)
+        logfile_upper=$(find "$infile_dir" -maxdepth 1 -iname "$logname" -print -quit 2>/dev/null)
         if [ -n "$logfile_upper" ] && [ -f "$logfile_upper" ]; then
             mv "$logfile_upper" "$logfile"
         fi
@@ -388,4 +394,6 @@ else
 fi
 
 debug "success"
+rm -f $BAT_FILE $emu_logfile $logfile
+rm -rf $tmpdir
 exit 0
