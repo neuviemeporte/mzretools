@@ -201,13 +201,13 @@ int main(int argc, char *argv[]) {
     try {
         Executable exeBase = loadExe(baseSpec, loadSeg, opt, true);
         Executable exeCompare = loadExe(compareSpec, loadSeg, opt, false);
-        CodeMap map;
+        CodeMap &map = exeBase.map();
         if (!pathMap.empty()) {
             map = { pathMap, loadSeg };
         } 
         Analyzer a{opt};
         // code comparison
-        CodeMap tgtMap;
+        CodeMap &tgtMap = exeCompare.map();
         if (dataSegment.empty()) {
             if (!pathTmap.empty()) {
                 static const regex TMAP_RE{R"(([^:]+)(?::([a-zA-Z]+))?)"};
@@ -220,7 +220,7 @@ int main(int argc, char *argv[]) {
                 else if (tag == "link") type = CodeMap::MAP_MSLINK;
                 tgtMap = { path, loadSeg, type };
             }
-            compareResult = a.compareCode(exeBase, exeCompare, map, tgtMap);
+            compareResult = a.compareCode(exeBase, exeCompare);
         }
         // data comparison
         else {
@@ -231,7 +231,7 @@ int main(int argc, char *argv[]) {
                 verbose("Using guessed target map location: " + pathTmap);
             }
             tgtMap = { pathTmap, loadSeg };
-            compareResult = a.compareData(exeBase, exeCompare, map, tgtMap, dataSegment);
+            compareResult = a.compareData(exeBase, exeCompare, dataSegment);
         }
     }
     catch (Error &e) {

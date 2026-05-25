@@ -366,7 +366,8 @@ static string compareStatus(const Instruction &i1, const Instruction &i2, const 
 
 // for executables whose layout is known in advance (but we still want to determine the routine boundaries), like when we built it ourselves
 // and have the linker map, seed the scan queue for code exploration with all known routine entrypoint locations
-void Analyzer::seedQueue(const CodeMap &map, Executable &exe) {
+void Analyzer::seedQueue(Executable &exe) {
+    const CodeMap &map = exe.map();
     debug("Seeding scan queue from code map");
     CpuState initRegs{exe.entrypoint(), exe.stackAddr()};
     scanQueue = ScanQueue{exe.loadAddr(), exe.size(), {}};
@@ -421,7 +422,7 @@ void Analyzer::claimNops(const Instruction &i, const Executable &exe) {
 // TODO: trace usage of bp register (sub/add) to determine stack frame size of routines
 // TODO: store references to potential jump tables (e.g. jmp cs:[bx+0xc08]), if unclaimed after initial search, try treating entries as pointers and run second search before coalescing blocks?
 // TODO: this is single-shot, need to wipe object state before done so that same analyzer can be used again
-CodeMap Analyzer::exploreCode(Executable &exe) {
+void Analyzer::exploreCode(Executable &exe) {
     CpuState initRegs{exe.entrypoint(), exe.stackAddr()};
     
     debug("initial register values:\n"s + initRegs.toString());
@@ -560,9 +561,8 @@ CodeMap Analyzer::exploreCode(Executable &exe) {
 #endif
 
     // create routine map from contents of search queue
-    auto ret = CodeMap{scanQueue, exe.getSegments(), vars, exe.getLoadSegment(), exe.size()};
+    exe.map() = CodeMap{scanQueue, exe.getSegments(), vars, exe.getLoadSegment(), exe.size()};
     // TODO: stats like for compare
-    return ret;
 }
 
 void Analyzer::checkMissedRoutines(const CodeMap &refMap) {
@@ -647,7 +647,9 @@ Address Analyzer::findTargetLocation(const Executable &ref, const Executable &tg
 }
 
 // TODO: implement register value tracing like in exploreCode
-bool Analyzer::compareCode(const Executable &ref, Executable &tgt, const CodeMap &refMap, const CodeMap &tgtMap) {
+bool Analyzer::compareCode(const Executable &ref, Executable &tgt) {
+    const CodeMap &refMap = ref.map(), 
+                  &tgtMap = tgt.map();
     verbose("Comparing code between reference (entrypoint "s + ref.entrypoint().toString() + ") and target (entrypoint " + tgt.entrypoint().toString() + ") executables");
     debug("Routine map of reference binary has " + to_string(refMap.routineCount()) + " entries");
     // find name of reference entrypoint routine for seeding queues
@@ -771,13 +773,15 @@ bool Analyzer::compareCode(const Executable &ref, Executable &tgt, const CodeMap
 
     if (success) {
         verbose(output_color(OUT_GREEN) + "Comparison result: match" + output_color(OUT_DEFAULT));
-        comparisonSummary(ref, refMap, true);
+        comparisonSummary(ref, true);
     }
     else verbose(output_color(OUT_RED) + "Comparison result: mismatch" + output_color(OUT_DEFAULT));
     return success;
 }
 
-bool Analyzer::compareData(const Executable &ref, const Executable &tgt, const CodeMap &refMap, const CodeMap &tgtMap, const std::string &segment) {
+bool Analyzer::compareData(const Executable &ref, const Executable &tgt, const std::string &segment) {
+    const CodeMap &refMap = ref.map(), 
+                  &tgtMap = tgt.map();
     const Word 
         refLoadSeg = ref.getLoadSegment(),
         tgtLoadSeg = tgt.getLoadSegment();
@@ -1043,7 +1047,7 @@ bool Analyzer::comparisonLoop(const Executable &ref, Executable &tgt, const Code
 
         // compare instructions
         if (!compareInstructions(ref, tgt, refInstr, tgtInstr)) {
-            if (!options.noStats) comparisonSummary(ref, refMap, false);
+            if (!options.noStats) comparisonSummary(ref, false);
             return false;
         }
 
@@ -1425,7 +1429,8 @@ void Analyzer::calculateStats(const CodeMap &routineMap) {
 }
 
 // display comparison statistics
-void Analyzer::comparisonSummary(const Executable &ref, const CodeMap &routineMap, const bool showMissed) {
+void Analyzer::comparisonSummary(const Executable &ref, const bool showMissed) {
+    const CodeMap &routineMap = ref.map();
     // TODO: display total size of code segments between load module and routine map size
     if (routineMap.empty()) return;
     const Size 
@@ -1520,7 +1525,8 @@ struct Duplicate {
     }
 };
 
-bool Analyzer::findDuplicates(const SignatureLibrary signatures, Executable &tgt, CodeMap &tgtMap) {
+bool Analyzer::findDuplicates(const SignatureLibrary signatures, Executable &tgt) {
+    CodeMap &tgtMap = tgt.map();
     if (signatures.empty()) throw ArgError("Empty signature library provided for duplicate search");
     if (tgtMap.empty()) throw ArgError("Empty routine map provided for duplicate search");
     info("Searching for duplicates of " + to_string(signatures.signatureCount()) + " signatures among " + to_string(tgtMap.routineCount()) + " candidates, minimum instructions: " + to_string(options.routineSizeThresh) + ", maximum distance ratio: " + to_string(options.routineDistanceThresh) + "%");
@@ -1665,7 +1671,8 @@ bool Analyzer::findDuplicates(const SignatureLibrary signatures, Executable &tgt
 }
 
 // brute force search for potential locations where addresses of variables might be located in the executable, these should be changed from hardcoded numbers to proper pointers/references when reconstructing the executable
-void Analyzer::findDataRefs(const Executable &exe, const CodeMap &map) {
+void Analyzer::findDataRefs(const Executable &exe) {
+    const CodeMap &map = exe.map();
     const auto &segments = map.getSegments();
     const Size 
         codeSize = exe.size(),

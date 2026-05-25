@@ -122,12 +122,12 @@ private:
 
 public:
     Analyzer(const Options &options, const Size maxData = 0) : options(options), offMap(maxData), comparedSize(0) {}
-    CodeMap exploreCode(Executable &exe);
-    bool compareCode(const Executable &ref, Executable &tgt, const CodeMap &refMap, const CodeMap &tgtMap = {});
-    bool compareData(const Executable &ref, const Executable &tgt, const CodeMap &refMap, const CodeMap &tgtMap, const std::string &segment);
-    bool findDuplicates(const SignatureLibrary signatures, Executable &tgt, CodeMap &tgtMap);
-    void findDataRefs(const Executable &exe, const CodeMap &map);
-    void seedQueue(const CodeMap &map, Executable &exe);
+    void exploreCode(Executable &exe);
+    bool compareCode(const Executable &ref, Executable &tgt);
+    bool compareData(const Executable &ref, const Executable &tgt, const std::string &segment);
+    bool findDuplicates(const SignatureLibrary signatures, Executable &tgt);
+    void findDataRefs(const Executable &exe);
+    void seedQueue(Executable &exe);
 
 private:
     bool skipAllowed(const Instruction &refInstr, Instruction tgtInstr);
@@ -143,7 +143,7 @@ private:
     void diffContext(const Executable &ref, const Executable &tgt) const;
     void skipContext(const Executable &ref, const Executable &tgt) const;
     void calculateStats(const CodeMap &routineMap);
-    void comparisonSummary(const Executable &ref, const CodeMap &routineMap, const bool showMissed);
+    void comparisonSummary(const Executable &ref, const bool showMissed);
     void processDataReference(const Executable &exe, const Instruction i, const CpuState &regs);
     void claimNops(const Instruction &i, const Executable &exe);
 };
