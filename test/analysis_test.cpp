@@ -665,5 +665,10 @@ TEST_F(AnalysisTest, DataCompare) {
     const Address mismatchAddr{dseg.address, 0x49};
     const Byte *data = tgt.codePointer(mismatchAddr);
     writeExeData(tgt, mismatchAddr, (*data)+1);
+<<<<<<< HEAD
     ASSERT_FALSE(a.compareData(ref, tgt, dsegName));
 }
+=======
+    ASSERT_FALSE(a.compareData(ref, tgt, map, map, dsegName));
+}
+>>>>>>> master

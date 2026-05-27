@@ -391,13 +391,24 @@ def calculateExtracts(config, procs, proc_ignored, remaining_size):
     '''iterate over extract items to calculate size of completed (reconstructed) code'''
     ported_size = 0
     ported_routines = 0
+    ported_proc_names = set()
+
     for e in config.extract:
         if not e.ported or not e.segment in config.code_segments:
             continue
         if e.end == 'endp':
             ported_routines += 1
+            if isinstance(e.start, str):
+                ported_proc_names.add(e.start)
         esize = e.block.end - e.block.begin
         ported_size += esize
+
+    for p in procs:
+        if p.name in config.externs and p.name not in ported_proc_names:
+            ported_proc_names.add(p.name)
+            ported_routines += 1
+            ported_size += p.size
+
     total_routines = len(procs) + proc_ignored
     remain_routines = total_routines - proc_ignored
     needport_routines = remain_routines - ported_routines
