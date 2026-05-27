@@ -619,17 +619,18 @@ std::string Instruction::toString(const bool extended) const {
         // segment override prefix if present
         if (prefix > PRF_NONE && prefix < PRF_CHAIN_REPNZ && operandIsMem(op1.type))
             str << PRF_NAME[prefix];
-        // for near branch instructions (call, jump, loop), the immediate relative offset operand is added to the address 
-        // of the byte past the current instruction to form an absolute offset
+        // for near branch instructions (call, jump, loop), the immediate relative offset operand is added to the
+        // address of the byte past the current instruction to form an absolute offset.
+        // In extended text output, show distance relative to the displayed instruction offset for readability.
         if (isNearBranch() && operandIsImmediate(op1.type)) {
             const Word aoff = absoluteOffset();
-            const Word endAddr = addr.offset + length;
+            const Word startAddr = addr.offset;
             str << hexVal(aoff, true, false);
             if (extended) {
-                if (aoff < endAddr) {
-                    str << " (" << hexVal(static_cast<Word>(endAddr - aoff), true, false) << " up)";
+                if (aoff < startAddr) {
+                    str << " (" << hexVal(static_cast<Word>(startAddr - aoff), true, false) << " up)";
                 } else {
-                    str << " (" << hexVal(static_cast<Word>(aoff - endAddr), true, false) << " down)";
+                    str << " (" << hexVal(static_cast<Word>(aoff - startAddr), true, false) << " down)";
                 }
             }
         }
