@@ -528,15 +528,22 @@ TEST_F(CpuTest, BranchOffset) {
     Instruction i1{a, code}, i2{a, code + i1.length};
     ASSERT_EQ(i1.relativeOffset(), 34);
     ASSERT_EQ(i1.absoluteOffset(), base + 2 + 0x22);
-    ASSERT_EQ(i1.toString(true), "jnz 0x6b24 (0x22 down)");
+    ASSERT_EQ(i1.toString(true), "jnz 0x6b24 (0x24 down)");
     ASSERT_EQ(i2.relativeOffset(), -34);
     ASSERT_EQ(i2.absoluteOffset(), base + 2 - 0x22);
-    ASSERT_EQ(i2.toString(true), "jnz 0x6ae0 (0x22 up)");
+    ASSERT_EQ(i2.toString(true), "jnz 0x6ae0 (0x20 up)");
     Instruction i3{a, code + 4}, i4{a, code + 7};
     ASSERT_EQ(i3.relativeOffset(), 27324);
     ASSERT_EQ(i3.absoluteOffset(), base + 3 + 27324);
-    ASSERT_EQ(i3.toString(true), "call 0xd5bf (0x6abc down)");
+    ASSERT_EQ(i3.toString(true), "call 0xd5bf (0x6abf down)");
     ASSERT_EQ(i4.relativeOffset(), -27324);
     ASSERT_EQ(i4.absoluteOffset(), base + 3 - 27324);
-    ASSERT_EQ(i4.toString(true), "call 0x47 (0x6abc up)");
+    ASSERT_EQ(i4.toString(true), "call 0x47 (0x6ab9 up)");
+
+    // Regression: display distance from instruction start offset (not end of instruction).
+    const Address ex{0x0, 0x41a4};
+    const Byte exCode[] = {0xe8, 0x9e, 0x99}; // target 0xdb45, displacement 0x999e from next-ip
+    Instruction exCall{ex, exCode};
+    ASSERT_EQ(exCall.absoluteOffset(), 0xdb45);
+    ASSERT_EQ(exCall.toString(true), "call 0xdb45 (0x99a1 down)");
 }

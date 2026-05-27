@@ -387,7 +387,7 @@ void Instruction::load(const Byte *data)  {
 // - this is useful for branch instructions like call and the various jumps, whose operand is the number of bytes to jump forward or back, 
 // relative to the byte past the instruction
 Word Instruction::absoluteOffset() const {
-    return addr.offset + length + relativeOffset();
+    return (Word)((int32_t)addr.offset + (int32_t)length + relativeOffset());
 }
 
 // return the branch destination address 
@@ -619,15 +619,19 @@ std::string Instruction::toString(const bool extended) const {
         // segment override prefix if present
         if (prefix > PRF_NONE && prefix < PRF_CHAIN_REPNZ && operandIsMem(op1.type))
             str << PRF_NAME[prefix];
-        // for near branch instructions (call, jump, loop), the immediate relative offset operand is added to the address 
-        // of the byte past the current instruction to form an absolute offset
+        // for near branch instructions (call, jump, loop), the immediate relative offset operand is added to the
+        // address of the byte past the current instruction to form an absolute offset.
+        // In extended text output, show distance relative to the displayed instruction offset for readability.
         if (isNearBranch() && operandIsImmediate(op1.type)) {
             const Word aoff = absoluteOffset();
+            const Word startAddr = addr.offset;
             str << hexVal(aoff, true, false);
             if (extended) {
-                SWord roff = relativeOffset();
-                if (roff < 0) { roff = -roff; str << " (" << hexVal(roff, true, false) << " up)"; }
-                else str << " (" << hexVal(roff, true, false) << " down)";
+                if (aoff < startAddr) {
+                    str << " (" << hexVal(static_cast<Word>(startAddr - aoff), true, false) << " up)";
+                } else {
+                    str << " (" << hexVal(static_cast<Word>(aoff - startAddr), true, false) << " down)";
+                }
             }
         }
         else {
