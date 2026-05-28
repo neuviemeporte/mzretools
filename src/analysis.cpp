@@ -906,7 +906,51 @@ bool Analyzer::skipAllowed(const Instruction &refInstr, Instruction tgtInstr) {
     return false;
 }
 
+// For calls and memory referencing instructions, attempt to find the name of the equivalent symbol from the executable's code map
+// Returns an empty string if the instruction does not reference a symbol, and "?" if the name could not be determined
+string Analyzer::symbolName(const Executable &exe, const Instruction &i) const {
+    if (exe.map().empty()) return {};
+
+    if (i.isNearCall()) {
+        // find routine from the segment of the currently investigated routine whose entrypoint matches the instruction's operand
+        const Routine r = exe.map().findByEntrypoint(Address{routine.entrypoint().segment, i.absoluteOffset()});
+        return r.name;
+    }
+    else if (i.isFarCall()) {
+        // find far routine from the 32bit address in the instruction's operand
+        const Routine r = exe.map().findByEntrypoint(i.op1.farAddr());
+        return r.name;
+    }
+    // byte offsets implausible?
+    else if (operandIsMemWithWordOffset(i.op1.type) || operandIsMemWithWordOffset(i.op2.type)) {
+        const Word offset = operandIsMemWithWordOffset(i.op1.type) ? i.op1.wordValue() : i.op2.wordValue();
+        string ret;
+        for (const Variable &v : exe.map().getVariables(offset)) ret += (ret.empty() ? "" : "|") + v.name;
+        return ret;
+    }
+    return {};
+}
+
+static string formatSymbolStr(const string &refSymbol, const string &tgtSymbol) {
+    ostringstream str;
+    if (!refSymbol.empty()) { 
+        // target symbol names often come from linker maps which have leading underscores, so check ref<->tgt symbol matching vs underscore variant too
+        const string refUnderscore{"_" + refSymbol};
+        const bool diffRefTgt = !tgtSymbol.empty() && tgtSymbol != refSymbol && tgtSymbol != refUnderscore;
+        if (diffRefTgt) str << output_color(OUT_BRIGHTRED);
+        str << " ; " << refSymbol;
+        if (diffRefTgt) str << " / " << tgtSymbol;
+        else if (tgtSymbol.empty()) str << " / ?";
+        str << output_color(OUT_DEFAULT);
+    } 
+    else if (!tgtSymbol.empty()) {
+        str << output_color(OUT_BRIGHTRED) + " ; ! / " << tgtSymbol << output_color(OUT_DEFAULT);
+    }
+    return str.str();
+}
+
 bool Analyzer::compareInstructions(const Executable &ref, const Executable &tgt, const Instruction &refInstr, Instruction tgtInstr) {
+    const string symbolStr = formatSymbolStr(symbolName(ref, refInstr), symbolName(tgt, tgtInstr));
     skipType = SKIP_NONE;
     matchType = instructionsMatch(ref, tgt, refInstr, tgtInstr);
     switch (matchType) {
@@ -918,7 +962,7 @@ bool Analyzer::compareInstructions(const Executable &ref, const Executable &tgt,
             refSkipCount = tgtSkipCount = 0;
             refSkipOrigin = tgtSkipOrigin = Address();
         }
-        verbose(compareStatus(refInstr, tgtInstr, true));
+        verbose(compareStatus(refInstr, tgtInstr, true) + symbolStr);
         break;
     case CMP_MISMATCH:
         // attempt to skip a mismatch, if permitted by the options
@@ -927,17 +971,17 @@ bool Analyzer::compareInstructions(const Executable &ref, const Executable &tgt,
             if (refSkipCount || tgtSkipCount) {
                 skipContext(ref, tgt);
             }
-            verbose(output_color(OUT_RED) + compareStatus(refInstr, tgtInstr, true) + output_color(OUT_DEFAULT));
+            verbose(output_color(OUT_RED) + compareStatus(refInstr, tgtInstr, true) + output_color(OUT_DEFAULT) + symbolStr);
             error("Instruction mismatch in routine " + routine.name + " at " + compareStatus(refInstr, tgtInstr, false));
             diffContext(ref, tgt);
             return false;
         }
         break;
     case CMP_DIFFVAL:
-        verbose(output_color(OUT_YELLOW) + compareStatus(refInstr, tgtInstr, true) + output_color(OUT_DEFAULT));
+        verbose(output_color(OUT_YELLOW) + compareStatus(refInstr, tgtInstr, true) + output_color(OUT_DEFAULT) + symbolStr);
         break;
     case CMP_DIFFTGT:
-        verbose(output_color(OUT_BRIGHTRED) + compareStatus(refInstr, tgtInstr, true) + output_color(OUT_DEFAULT));
+        verbose(output_color(OUT_BRIGHTRED) + compareStatus(refInstr, tgtInstr, true) + output_color(OUT_DEFAULT) + symbolStr);
         break;
     }
     return true;

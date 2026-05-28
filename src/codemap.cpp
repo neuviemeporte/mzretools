@@ -10,6 +10,8 @@ using namespace std;
 
 OUTPUT_CONF(LOG_ANALYSIS)
 
+#define DEBUG
+
 #ifdef DEBUG
 #define PARSE_DEBUG(msg) debug(msg)
 #else
@@ -174,6 +176,12 @@ Variable CodeMap::getVariable(const Address &addr) const {
     });
     if (it != vars.end()) return *it;
     return Variable{"", {}};
+}
+
+vector<Variable> CodeMap::getVariables(const Word &offset) const {
+    vector<Variable> ret;
+    for (const auto &v : vars) if (v.addr.offset == offset) ret.push_back(v);
+    return ret;
 }
 
 Routine CodeMap::findByEntrypoint(const Address &ep) const {

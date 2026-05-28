@@ -131,6 +131,7 @@ public:
 
 private:
     bool skipAllowed(const Instruction &refInstr, Instruction tgtInstr);
+    std::string symbolName(const Executable &exe, const Instruction &i) const;
     bool compareInstructions(const Executable &ref, const Executable &tgt, const Instruction &refInstr, Instruction tgtInstr);
     void advanceComparison(const Instruction &refInstr, Instruction tgtInstr);
     bool checkComparisonStop();

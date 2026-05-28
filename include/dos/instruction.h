@@ -312,6 +312,7 @@ public:
     bool isJump() const { return iclass == INS_JMP || iclass == INS_JMP_IF || iclass == INS_JMP_FAR; }
     bool isUnconditionalJump() const { return iclass == INS_JMP || iclass == INS_JMP_FAR; }
     bool isCall() const { return iclass == INS_CALL || iclass == INS_CALL_FAR; }
+    bool isNearCall() const { return iclass == INS_CALL; }
     bool isFarCall() const { return iclass == INS_CALL_FAR; }
     bool isLoop() const { return iclass == INS_LOOP || iclass == INS_LOOPZ || iclass == INS_LOOPNZ; }
     bool isBranch() const { return isJump() || isCall() || isLoop(); }
