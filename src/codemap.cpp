@@ -773,7 +773,9 @@ void CodeMap::loadFromLinkFile(const std::string &path, const Word reloc) {
             const Address addr{
                 static_cast<Word>(std::stoi(tokens[0], nullptr, 16)), 
                 static_cast<Word>(std::stoi(tokens[1], nullptr, 16))};
-            const string name = tokens[2];
+            string name = tokens[2];
+            // strip leading underscore if present
+            if (name.front() == '_') name.erase(0,1);
             PARSE_DEBUG("Public definition on line " + to_string(lineno) + ", addr " + addr.toString() + ", name '" + name + "'");
             Segment pubSeg = findSegment(addr.segment);
             if (pubSeg.type == Segment::SEG_NONE) {
