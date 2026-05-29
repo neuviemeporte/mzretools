@@ -8,6 +8,7 @@
 #include "dos/address.h"
 #include "dos/memory.h"
 #include "dos/routine.h"
+#include "dos/codemap.h"
 #include "dos/mz.h"
 
 class Executable {
@@ -21,6 +22,7 @@ class Executable {
     Block codeExtents;
     std::vector<Segment> segments;
     std::string origPath;
+    CodeMap codeMap;
 
 public:
     explicit Executable(const MzImage &mz);
@@ -43,6 +45,8 @@ public:
     Word getLoadSegment() const { return loadSegment; }
     Address find(const ByteString &pattern, Block where = {}) const;
     std::vector<Signature> getSignatures(const Block &range) const;
+    CodeMap& map() { return codeMap; }
+    const CodeMap& map() const { return codeMap; }
 
 private:
     void init();

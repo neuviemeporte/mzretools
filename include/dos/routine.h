@@ -8,7 +8,7 @@
 #include "dos/address.h"
 
 using RoutineIdx = int;
-static constexpr RoutineIdx 
+static constexpr RoutineIdx
     BAD_ROUTINE = -1,
     NULL_ROUTINE = 0,
     VISITED_ID = 1;

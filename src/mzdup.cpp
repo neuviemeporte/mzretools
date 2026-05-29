@@ -68,11 +68,12 @@ int main(int argc, char *argv[]) {
         SignatureLibrary sigs{sigFilePath};
         MzImage tgtMz{tgtExePath, loadSegment};
         Executable tgt{tgtMz};
-        CodeMap tgtMap{tgtMapPath, loadSegment};
+        CodeMap &tgtMap = tgt.map();
+        tgtMap = CodeMap{tgtMapPath, loadSegment};
         if (tgtMap.codeSize() != tgtMz.loadModuleSize()) throw LogicError("Reference map size " + sizeStr(tgtMap.codeSize()) + " does not match size of executable load module: " + sizeStr(tgtMz.loadModuleSize()));
         Analyzer a{options};
         // search for duplicates, write updated target map if any found
-        if (a.findDuplicates(sigs, tgt, tgtMap)) tgtMap.save(tgtMapPath + ".dup", loadSegment, true);
+        if (a.findDuplicates(sigs, tgt)) tgtMap.save(tgtMapPath + ".dup", loadSegment, true);
     }
     catch (Error &e) {
         fatal(e.why());

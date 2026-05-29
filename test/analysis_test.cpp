@@ -206,8 +206,13 @@ TEST_F(AnalysisTest, CodeMapFromQueue) {
 }
 
 TEST_F(AnalysisTest, CodeMapFromLinkMap) {
+    // parse an example MS LINK map file from linking a real dos exe
     const string path{"../bin/link.map"};
     CodeMap linkMap{path, 0, CodeMap::MAP_MSLINK};
+    ASSERT_EQ(linkMap.codeSize(), 0xc88f);
+    ASSERT_EQ(linkMap.segmentCount(), 2);
+    ASSERT_EQ(linkMap.routineCount(), 141);
+    ASSERT_EQ(linkMap.variableCount(), 250);
 }
 
 TEST_F(AnalysisTest, BigCodeMap) {
@@ -224,7 +229,8 @@ TEST_F(AnalysisTest, FindRoutines) {
     mz.load(loadSegment);
     Executable exe{mz};
     Analyzer a{Analyzer::Options()};
-    const CodeMap discoveredMap = a.exploreCode(exe);
+    a.exploreCode(exe);
+    const CodeMap discoveredMap = exe.map();
     TRACE(discoveredMap.getSummary().text);
     ASSERT_FALSE(discoveredMap.empty());
     discoveredMap.save("hello.map", loadSegment, true);
@@ -272,7 +278,8 @@ TEST_F(AnalysisTest, FindFarRoutines) {
     mz.load(loadSegment);
     Executable exe{mz};
     Analyzer a{Analyzer::Options()};
-    const CodeMap discoveredMap = a.exploreCode(exe);
+    a.exploreCode(exe);
+    const CodeMap discoveredMap = exe.map();
     TRACE(discoveredMap.getSummary().text);
     ASSERT_FALSE(discoveredMap.empty());
 
@@ -300,7 +307,8 @@ TEST_F(AnalysisTest, FindWithRollback) {
     MzImage mz{code};
     Executable exe{mz};
     Analyzer a{Analyzer::Options()};
-    const CodeMap discoveredMap = a.exploreCode(exe);
+    a.exploreCode(exe);
+    const CodeMap discoveredMap = exe.map();
     TRACE(discoveredMap.getSummary().text);
     ASSERT_FALSE(discoveredMap.empty());
     ASSERT_GE(discoveredMap.routineCount(), 5);
@@ -374,23 +382,25 @@ TEST_F(AnalysisTest, CodeCompare) {
     mz.load(loadSegment);
     Executable e1{mz}, e2{mz};
     const string mapPath = "hello.map";
-    auto map = CodeMap{mapPath, loadSegment};
+    CodeMap &map = e1.map();
+    map = CodeMap{mapPath, loadSegment};
     Analyzer::Options opt;
     opt.mapPath = mapPath;
     Analyzer a{opt};
 
     // compare identical 
     TRACELN("Test #1, comparison match");
-    ASSERT_TRUE(a.compareCode(e1, e2, map));
+    ASSERT_TRUE(a.compareCode(e1, e2));
     // cross-check target map
-    CodeMap tgtMap("hello.tgt");
+    CodeMap &tgtMap = e2.map();
+    tgtMap = CodeMap("hello.tgt");
     ASSERT_TRUE(crossCheck(map, tgtMap, 0));
 
     // compare different
     TRACELN("Test #2, comparison mismatch");
     e1.setEntrypoint(Address(0x115e)); // getnum
     e2.setEntrypoint(Address(0x8d0)); // _fflush
-    ASSERT_FALSE(a.compareCode(e1, e2, map));
+    ASSERT_FALSE(a.compareCode(e1, e2));
 }
 
 TEST_F(AnalysisTest, CodeCompareSkip) {
@@ -414,13 +424,13 @@ TEST_F(AnalysisTest, CodeCompareSkip) {
     opt.refSkip = 2;
     opt.tgtSkip = 2;
     Analyzer a1(opt);
-    ASSERT_FALSE(a1.compareCode(e1, e2, {}));
+    ASSERT_FALSE(a1.compareCode(e1, e2));
 
     // test success case
     opt.refSkip = 3;
     opt.tgtSkip = 2;
     Analyzer a2(opt);
-    ASSERT_TRUE(a2.compareCode(e1, e2, {}));
+    ASSERT_TRUE(a2.compareCode(e1, e2));
     
     const vector<Byte> ref2Code = {
         0x41, // inc cx
@@ -434,13 +444,13 @@ TEST_F(AnalysisTest, CodeCompareSkip) {
     opt.refSkip = 3;
     opt.tgtSkip = 0;
     Analyzer a3(opt);
-    ASSERT_TRUE(a3.compareCode(e1, e4, {}));
+    ASSERT_TRUE(a3.compareCode(e1, e4));
 
     // test only tgt skip
     opt.refSkip = 0;
     opt.tgtSkip = 2;
     Analyzer a4(opt);
-    ASSERT_TRUE(a4.compareCode(e3, e2, {}));
+    ASSERT_TRUE(a4.compareCode(e3, e2));
 }
 
 TEST_F(AnalysisTest, CodeCompareUnreachable) {
@@ -458,11 +468,11 @@ TEST_F(AnalysisTest, CodeCompareUnreachable) {
     r1.unreachable.push_back({3, 3});
     r1.reachable.push_back({4, 5});
     // construct routine map for code
-    CodeMap map1;
+    CodeMap &map1 = e1.map();
     auto &rv1 = getRoutines(map1);
     rv1.push_back(r1);
     Analyzer a1(opt);
-    ASSERT_TRUE(a1.compareCode(e1, e2, map1));
+    ASSERT_TRUE(a1.compareCode(e1, e2));
     
     // different size of unreachable region, but make it possible to derive the offset mapping from a jump destination
     TRACELN("=== case 2");
@@ -474,10 +484,10 @@ TEST_F(AnalysisTest, CodeCompareUnreachable) {
     r2.unreachable.push_back({4, 4});
     r2.reachable.push_back({5, 6});
     // construct routine map for code
-    CodeMap map2;
+    CodeMap &map2 = e3.map();
     auto &rv2 = getRoutines(map2);
     rv2.push_back(r2);
-    ASSERT_TRUE(a1.compareCode(e3, e4, map2));
+    ASSERT_TRUE(a1.compareCode(e3, e4));
 
     // impossible to derive the offset mapping from a jump destination and instructions don't match
     TRACELN("=== case 3");
@@ -489,10 +499,10 @@ TEST_F(AnalysisTest, CodeCompareUnreachable) {
     r3.unreachable.push_back({3, 3});
     r3.reachable.push_back({4, 5});
     // construct routine map for code
-    CodeMap map3;
+    CodeMap &map3 = e5.map();
     auto &rv3 = getRoutines(map3);
     rv3.push_back(r3);
-    ASSERT_FALSE(a1.compareCode(e5, e6, map3));
+    ASSERT_FALSE(a1.compareCode(e5, e6));
 
     // TODO: implement test for different sized region and no jump after lookahead impemented, currently throws 
 }
@@ -604,7 +614,8 @@ TEST_F(AnalysisTest, FindDuplicates) {
     opt.routineSizeThresh = 20;
     opt.routineDistanceThresh = 10;
     Analyzer a{opt};
-    CodeMap rm = a.exploreCode(exe);
+    a.exploreCode(exe);
+    CodeMap &rm = exe.map();
     TRACELN("Found routines: " + to_string(rm.routineCount()));
     for (int i = 0; i < rm.routineCount(); ++i) {
         ASSERT_FALSE(rm.getRoutine(i).duplicate);
@@ -621,7 +632,7 @@ TEST_F(AnalysisTest, FindDuplicates) {
         ASSERT_EQ(sigs.getSignature(i).size(), loadedSigs.getSignature(i).size());
     }
     // find duplicates using extracted signatures
-    ASSERT_TRUE(a.findDuplicates(sigs, exe, rm));
+    ASSERT_TRUE(a.findDuplicates(sigs, exe));
     rm.save("hello.map.dup", loadSegment, true);
     Size foundDuplicates = 0;
     for (int i = 0; i < rm.routineCount(); ++i) {
@@ -650,12 +661,14 @@ TEST_F(AnalysisTest, DataCompare) {
     Analyzer a{opt};
     MzImage mz{"../bin/hello.exe", loadSegment};
     Executable ref{mz}, tgt{mz};
-    CodeMap map{"hello.map", loadSegment};
+    CodeMap &map = ref.map();
+    map = CodeMap{"hello.map", loadSegment};
+    tgt.map() = map;
     ASSERT_FALSE(map.empty());
     const Segment dseg = map.findSegment(dsegName);
     ASSERT_EQ(dseg.type, Segment::SEG_DATA);
     const Address mismatchAddr{dseg.address, 0x49};
     const Byte *data = tgt.codePointer(mismatchAddr);
     writeExeData(tgt, mismatchAddr, (*data)+1);
-    ASSERT_FALSE(a.compareData(ref, tgt, map, map, dsegName));
+    ASSERT_FALSE(a.compareData(ref, tgt, dsegName));
 }

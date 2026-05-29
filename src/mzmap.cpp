@@ -139,11 +139,13 @@ int main(int argc, char *argv[]) {
             Analyzer a = Analyzer(Analyzer::Options());
             // optionally seed search queue with link map
             if (!linkmapPath.empty()) {
-                CodeMap linkmap{linkmapPath, loadSegment, CodeMap::MAP_MSLINK};
+                CodeMap &linkmap = exe.map();
+                linkmap = CodeMap{linkmapPath, loadSegment, CodeMap::MAP_MSLINK};
                 info("Using linker map file " + linkmapPath + " to seed scan: " + to_string(linkmap.segmentCount()) + " segments, " + to_string(linkmap.routineCount()) + " routines, " + to_string(linkmap.variableCount()) + " variables");
-                a.seedQueue(linkmap, exe);
+                a.seedQueue(exe);
             }
-            CodeMap map = a.exploreCode(exe);
+            a.exploreCode(exe);
+            const CodeMap &map = exe.map();
             if (map.empty()) {
                 fatal("Unable to find any routines");
                 return 1;

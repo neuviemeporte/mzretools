@@ -872,14 +872,14 @@ Register Instruction::Operand::regId() const {
 
 Word Instruction::Operand::wordValue() const {
     Word ret = 0;
-    if (size == OPRSZ_WORD) ret = immval.u16;
-    else if (size == OPRSZ_BYTE) ret = immval.u8;
+    if (immsize == OPRSZ_WORD) ret = immval.u16;
+    else if (immsize == OPRSZ_BYTE) ret = immval.u8;
     return ret;
 }
 
 DWord Instruction::Operand::dwordValue() const {
     DWord ret = 0;
-    switch (size) {
+    switch (immsize) {
     case OPRSZ_DWORD: ret = immval.u32; break;
     case OPRSZ_WORD: ret = immval.u16; break;
     case OPRSZ_BYTE: ret = immval.u8; break;

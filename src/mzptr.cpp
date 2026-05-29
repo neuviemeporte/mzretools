@@ -47,12 +47,13 @@ int main(int argc, char *argv[]) {
     try {
         MzImage mz{exePath, loadSegment};
         Executable exe{mz};
-        CodeMap map{mapPath, loadSegment};
+        CodeMap &map = exe.map();
+        map = CodeMap{mapPath, loadSegment};
         if (map.codeSize() != mz.loadModuleSize()) throw LogicError("Map size " + sizeStr(map.codeSize()) + " does not match size of executable load module: " + sizeStr(mz.loadModuleSize()));        
         verbose("Loaded executable of size " + sizeStr(mz.loadModuleSize()) + ", parsed map of size " + sizeStr(map.codeSize()));
         Analyzer::Options options;
         Analyzer a{options};
-        a.findDataRefs(exe, map);
+        a.findDataRefs(exe);
     }
     catch (Error &e) {
         fatal(e.why());

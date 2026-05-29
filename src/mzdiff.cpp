@@ -28,6 +28,7 @@ void usage() {
            "--dbgcpu          include CPU-related debug information like instruction decoding\n"
            "--idiff           ignore differences completely\n"
            "--nocall          do not follow calls, useful for comparing single functions\n"
+           "--nosym           do not display symbol names in the disassembly"
            "--asm             descend into routines marked as assembly in the map, normally skipped\n"
            "--nostat          do not display comparison statistics at the end\n"
            "--rskip count     ignore up to 'count' consecutive mismatching instructions in the reference executable\n"
@@ -153,6 +154,7 @@ int main(int argc, char *argv[]) {
         else if (arg == "--dbgcpu") setModuleVisibility(LOG_CPU, true);
         else if (arg == "--idiff") opt.ignoreDiff = true;
         else if (arg == "--nocall") opt.noCall = true;
+        else if (arg == "--nosym") opt.noSym = true;
         else if (arg == "--asm") opt.checkAsm = true;
         else if (arg == "--nostat") opt.noStats = true;
         else if (arg == "--rskip") {
@@ -201,13 +203,13 @@ int main(int argc, char *argv[]) {
     try {
         Executable exeBase = loadExe(baseSpec, loadSeg, opt, true);
         Executable exeCompare = loadExe(compareSpec, loadSeg, opt, false);
-        CodeMap map;
+        CodeMap &map = exeBase.map();
         if (!pathMap.empty()) {
             map = { pathMap, loadSeg };
         } 
         Analyzer a{opt};
         // code comparison
-        CodeMap tgtMap;
+        CodeMap &tgtMap = exeCompare.map();
         if (dataSegment.empty()) {
             if (!pathTmap.empty()) {
                 static const regex TMAP_RE{R"(([^:]+)(?::([a-zA-Z]+))?)"};
@@ -220,7 +222,7 @@ int main(int argc, char *argv[]) {
                 else if (tag == "link") type = CodeMap::MAP_MSLINK;
                 tgtMap = { path, loadSeg, type };
             }
-            compareResult = a.compareCode(exeBase, exeCompare, map, tgtMap);
+            compareResult = a.compareCode(exeBase, exeCompare);
         }
         // data comparison
         else {
@@ -231,7 +233,7 @@ int main(int argc, char *argv[]) {
                 verbose("Using guessed target map location: " + pathTmap);
             }
             tgtMap = { pathTmap, loadSeg };
-            compareResult = a.compareData(exeBase, exeCompare, map, tgtMap, dataSegment);
+            compareResult = a.compareData(exeBase, exeCompare, dataSegment);
         }
     }
     catch (Error &e) {
