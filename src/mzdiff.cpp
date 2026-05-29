@@ -28,7 +28,7 @@ void usage() {
            "--dbgcpu          include CPU-related debug information like instruction decoding\n"
            "--idiff           ignore differences completely\n"
            "--nocall          do not follow calls, useful for comparing single functions\n"
-           "--nosym           do not display symbol names in the disassembly"
+           "--nosym           do not display symbol names in the disassembly\n"
            "--asm             descend into routines marked as assembly in the map, normally skipped\n"
            "--nostat          do not display comparison statistics at the end\n"
            "--rskip count     ignore up to 'count' consecutive mismatching instructions in the reference executable\n"

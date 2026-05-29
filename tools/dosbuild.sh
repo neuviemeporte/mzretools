@@ -219,7 +219,11 @@ if [ "$tool" != "test" ]; then
 fi
 outfile_base="${outfile_dos%.*}"
 outfile_map="$outfile_base.map"
+map_file="${outfile_name%.*}.map"
 map_path="${outfile%.*}.map"
+debug "outfile_map='$outfile_map'"
+debug "map_file='$map_file'"
+debug "map_path='$map_path'"
 
 # compose tool cmdline in dos based on tool type
 cmdline=$tool
@@ -350,6 +354,16 @@ if ((DEBUG)); then
     echo "---"
 fi
 
+# Find and rename files to the expected lowercase paths to work around issues on case-sensitive filesystems.
+function fix_case() {
+    local path=$1
+    [ -f "$path" ] && return
+    local base=$(basename $path)
+    local dir=$(dirname $path)
+    casefile=$(find "$dir" -maxdepth 1 -iname "$base" -print -quit 2>/dev/null)
+    [[ -n "$casefile" && -f "$casefile" ]] && mv "$casefile" "$path"
+}
+
 # remove logfile from previous run if exists to avoid reporting bogus errors in case of build failure
 rm -f $logfile
 rm -f $emu_logfile
@@ -358,20 +372,9 @@ rm -f $emu_logfile
 SDL_VIDEODRIVER=dummy dosbox -conf $CONF_FILE $BAT_FILE -exit &> $emu_logfile
 # check if successful by examining if output file exists
 if [ "$tool" != "test" ]; then
-    # Find and rename files to the expected lowercase paths
-    # to work around issues on case-sensitive filesystems.
-    if [ ! -f "$outfile" ]; then
-        outfile_upper=$(find "$outfile_dir" -maxdepth 1 -iname "$(basename $outfile)" -print -quit 2>/dev/null)
-        if [ -n "$outfile_upper" ] && [ -f "$outfile_upper" ]; then
-            mv "$outfile_upper" "$outfile"
-        fi
-    fi
-    if [ ! -f "$logfile" ]; then
-        logfile_upper=$(find "$infile_dir" -maxdepth 1 -iname "$logname" -print -quit 2>/dev/null)
-        if [ -n "$logfile_upper" ] && [ -f "$logfile_upper" ]; then
-            mv "$logfile_upper" "$logfile"
-        fi
-    fi
+    fix_case $outfile
+    fix_case $logfile
+    [[ $chain =~ ^msc && $tool = "link" ]] && fix_case $map_path
     if [ ! -f "$outfile" ]; then
         if [ -f "$logfile" ]; then
             cat $logfile; 
@@ -385,6 +388,7 @@ if [ "$tool" != "test" ]; then
     outfile_tmp="${outfile}.tmp"
     mv "$outfile" "$outfile_tmp"
     mv "$outfile_tmp" "$outfile"
+    map_path=$(find "$outfile_dir" -maxdepth 1 -iname "$map_file" -print -quit 2>/dev/null)
     if [[ $chain =~ ^msc && $tool = "link" && -f "$map_path" ]]; then
         debug "fixing mapfile $map_path"
         mv "$map_path" "$outfile_tmp"
