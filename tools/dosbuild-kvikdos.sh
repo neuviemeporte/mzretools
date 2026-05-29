@@ -64,23 +64,6 @@ function resolve_kvikdos_bin() {
         KVIKDOS_BIN="$KVIKDOS_SUBMODULE_DIR/kvikdos"
         return 0
     fi
-    if [ -f "$KVIKDOS_SUBMODULE_DIR/Makefile" ]; then
-        : "${KVIKDOS_BUILD_LOCK:=/tmp/dosbuild-kvikdos-build.lock}"
-        exec 9>"$KVIKDOS_BUILD_LOCK"
-        flock 9
-        if [ ! -x "$KVIKDOS_SUBMODULE_DIR/kvikdos" ]; then
-            (cd "$KVIKDOS_SUBMODULE_DIR" && make) || {
-                flock -u 9
-                return 1
-            }
-            chmod +x "$KVIKDOS_SUBMODULE_DIR/kvikdos" 2>/dev/null || true
-        fi
-        flock -u 9
-        if [ -x "$KVIKDOS_SUBMODULE_DIR/kvikdos" ]; then
-            KVIKDOS_BIN="$KVIKDOS_SUBMODULE_DIR/kvikdos"
-            return 0
-        fi
-    fi
     if command -v kvikdos >/dev/null 2>&1; then
         KVIKDOS_BIN="$(command -v kvikdos)"
         return 0
@@ -89,7 +72,7 @@ function resolve_kvikdos_bin() {
 }
 
 resolve_kvikdos_bin
-[ -n "$KVIKDOS_BIN" ] || fatal "kvikdos not found (set KVIKDOS_BIN)"
+[ -n "$KVIKDOS_BIN" ] || fatal "kvikdos not found; run mzretools/build.sh or set KVIKDOS_BIN"
 [ -x "$KVIKDOS_BIN" ] || fatal "kvikdos is not executable: $KVIKDOS_BIN"
 
 # extract tool name (compiler/linker/assembler) and toolchain from cmdline
