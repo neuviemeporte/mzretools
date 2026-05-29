@@ -7,6 +7,9 @@
 # - get rid of infile/outfile, just build in-tree? then make install copies to the output dir
 
 TOOLCHAIN_DIR=dos
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(dirname "$SCRIPT_DIR")"
+KVIKDOS_SUBMODULE_DIR="$ROOT_DIR/tools/emulators/kvikdos"
 DEBUG=0
 # always print toolchain stdout
 VERBOSE=0
@@ -53,13 +56,39 @@ function output_unresolved() {
     echo
 }
 
-if [ -z "$KVIKDOS_BIN" ]; then
-    if [ -x /home/xor/kvikdos/kvikdos ]; then
-        KVIKDOS_BIN=/home/xor/kvikdos/kvikdos
-    else
-        KVIKDOS_BIN=$(command -v kvikdos 2>/dev/null)
+function resolve_kvikdos_bin() {
+    if [ -n "$KVIKDOS_BIN" ] && [ -x "$KVIKDOS_BIN" ]; then
+        return 0
     fi
-fi
+    if [ -x "$KVIKDOS_SUBMODULE_DIR/kvikdos" ]; then
+        KVIKDOS_BIN="$KVIKDOS_SUBMODULE_DIR/kvikdos"
+        return 0
+    fi
+    if [ -f "$KVIKDOS_SUBMODULE_DIR/Makefile" ]; then
+        : "${KVIKDOS_BUILD_LOCK:=/tmp/dosbuild-kvikdos-build.lock}"
+        exec 9>"$KVIKDOS_BUILD_LOCK"
+        flock 9
+        if [ ! -x "$KVIKDOS_SUBMODULE_DIR/kvikdos" ]; then
+            (cd "$KVIKDOS_SUBMODULE_DIR" && make) || {
+                flock -u 9
+                return 1
+            }
+            chmod +x "$KVIKDOS_SUBMODULE_DIR/kvikdos" 2>/dev/null || true
+        fi
+        flock -u 9
+        if [ -x "$KVIKDOS_SUBMODULE_DIR/kvikdos" ]; then
+            KVIKDOS_BIN="$KVIKDOS_SUBMODULE_DIR/kvikdos"
+            return 0
+        fi
+    fi
+    if command -v kvikdos >/dev/null 2>&1; then
+        KVIKDOS_BIN="$(command -v kvikdos)"
+        return 0
+    fi
+    return 1
+}
+
+resolve_kvikdos_bin
 [ -n "$KVIKDOS_BIN" ] || fatal "kvikdos not found (set KVIKDOS_BIN)"
 [ -x "$KVIKDOS_BIN" ] || fatal "kvikdos is not executable: $KVIKDOS_BIN"
 
