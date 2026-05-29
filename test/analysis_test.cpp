@@ -208,6 +208,9 @@ TEST_F(AnalysisTest, CodeMapFromQueue) {
 TEST_F(AnalysisTest, CodeMapFromLinkMap) {
     const string path{"../bin/link.map"};
     CodeMap linkMap{path, 0, CodeMap::MAP_MSLINK};
+    ASSERT_EQ(linkMap.segmentCount(), 92);
+    const Size publics = linkMap.routineCount() + linkMap.variableCount();
+    ASSERT_EQ(publics, 1832);
 }
 
 TEST_F(AnalysisTest, BigCodeMap) {
@@ -665,10 +668,5 @@ TEST_F(AnalysisTest, DataCompare) {
     const Address mismatchAddr{dseg.address, 0x49};
     const Byte *data = tgt.codePointer(mismatchAddr);
     writeExeData(tgt, mismatchAddr, (*data)+1);
-<<<<<<< HEAD
     ASSERT_FALSE(a.compareData(ref, tgt, dsegName));
 }
-=======
-    ASSERT_FALSE(a.compareData(ref, tgt, map, map, dsegName));
-}
->>>>>>> master
