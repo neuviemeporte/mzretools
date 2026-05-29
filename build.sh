@@ -1,5 +1,4 @@
 #!/bin/bash
-set -euo pipefail
 
 if [ ! -f googletest/CMakeLists.txt ]; then
     git submodule init && git submodule update  
