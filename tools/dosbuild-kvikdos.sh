@@ -263,6 +263,10 @@ case $tool in
         # for external reference resolution will be linked in
         if [ "$libs_dos" ]; then
             echo $libs_dos >> $infile_rsp
+        elif [[ $chain =~ ^msc ]]; then
+            # In direct kvikdos mode, LINK does not always resolve default C runtime
+            # from LIB env when no libs are explicitly listed; pin SLIBCE explicitly.
+            echo "C:\\lib\\SLIBCE.LIB" >> $infile_rsp
         else
             echo ";" >> $infile_rsp
         fi
