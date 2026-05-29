@@ -1,3 +1,6 @@
 [submodule "googletest"]
 	path = googletest
 	url = https://github.com/google/googletest.git
+[submodule "tools/emulators/kvikdos"]
+	path = tools/emulators/kvikdos
+	url = https://github.com/xor2003/kvikdos.git

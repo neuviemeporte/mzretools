@@ -1,15 +1,20 @@
 #!/bin/bash
 #
-# This script invokes development binaries (compiler, linker, assembler) in DOSBox.
+# This script invokes development binaries (compiler, linker, assembler) in kvikdos.
 #
+# TODO: 
+# - linking can be simplified by using CL instead of LINK
+# - get rid of infile/outfile, just build in-tree? then make install copies to the output dir
+
 TOOLCHAIN_DIR=dos
-CONF_DIR=conf
-CONF_FILE=$CONF_DIR/toolchain.conf
-BAT_FILE=$TOOLCHAIN_DIR/bld$(printf '%04d' $(($$%10000))).bat
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(dirname "$SCRIPT_DIR")"
+KVIKDOS_SUBMODULE_DIR="$ROOT_DIR/tools/emulators/kvikdos"
 DEBUG=0
 # always print toolchain stdout
 VERBOSE=0
 cmdline=$@
+KVIKDOS_BIN=${KVIKDOS_BIN:-$KVIKDOS_SUBMODULE_DIR/kvikdos}
 
 function syntax() {
     [ "$1" ] && echo "dosbuild.sh error: $1"
@@ -51,8 +56,7 @@ function output_unresolved() {
     echo
 }
 
-which dosbox &> /dev/null || fatal "Dosbox not installed"
-[ -f "$CONF_FILE" ] || fatal "Dosbox configuration file does not exist: $CONF_FILE"
+[ -x "$KVIKDOS_BIN" ] || fatal "kvikdos is not executable: $KVIKDOS_BIN"
 
 # extract tool name (compiler/linker/assembler) and toolchain from cmdline
 tool=$1
@@ -113,9 +117,7 @@ if [ "$tool" != "test" ]; then
     fi
     ((toolok)) || fatal "Tool '$tool' not supported by toolchain '$chain'"
     tool_exe=$(find -L "$TOOLCHAIN_DIR" -iname "$tool.exe" 2>/dev/null | head -1)
-    debug "tool='$tool'"
-    debug "chain='$chain'"
-    debug "tool_exe='$tool_exe'"
+    debug "tool = $tool, chain = $chain, tool_exe = $tool_exe"
     [ -f "$tool_exe" ] || fatal "Unable to find '$tool.exe' in $TOOLCHAIN_DIR"
 else
     debug "Running test application"
@@ -166,18 +168,16 @@ until [ -z "$1" ]; do
     esac
     shift
 done
-debug "infiles='$infiles'"
-debug "outfile='$outfile'"
-debug "flags='$flags'"
-debug "libs='$libs'"
+debug "in: '$infiles', out: '$outfile', flags: '$flags', libs: '$libs'"
 [ "$infiles" ] || syntax "empty infiles"
 if [ "$tool" != "test" ]; then
     [ "$outfile" ] || syntax "empty outfiles"
 fi
 
-# examine input and output base directories, must make them available in dosbox
+# examine input and output base directories, must make them available in kvikdos
 infile_dir=''
 infiles_dos=''
+infiles_dos_qualified=''
 libs_dos=''
 for f in $infiles; do
     curdir=$(basedir $f)
@@ -186,14 +186,16 @@ for f in $infiles; do
     fi
     [ "$infiles_dos" ] && infiles_dos+=" "
     infiles_dos+="$(dossep ${f#${infile_dir}/})"
+    [ "$infiles_dos_qualified" ] && infiles_dos_qualified+=" "
+    infiles_dos_qualified+="D:\\$(dossep ${f#${infile_dir}/})"
 done
-# remove output file if it exists from the previous run, we use its existence to check for success/failure
-[ -f "$outfile" ] && rm $outfile
+[ -f "$outfile" ] && rm $outfile # remove output file if it exists from the previous run, we use its existence to check for success/failure
 outfile_dir=$(basedir $outfile)
 outfile_name=$(basename $outfile)
 outfile_noext="${outfile_name%.*}"
 rspname=${outfile_noext}.rsp
 infile_rsp=$infile_dir/$rspname
+rsp_dos="D:\\$rspname"
 outfile_drive='e'
 if [ "$infile_dir" = "$outfile_dir" ]; then
     outfile_drive='d'
@@ -203,23 +205,19 @@ for l in $libs; do
     [ "$libs_dos" ] && libs_dos+=" "
     if [[ "$l" == "${outfile_dir}"* ]]; then
         libs_dos+="${outfile_drive}:\\$(dossep ${l#${outfile_dir}/})"
-    else
+    elif [[ "$l" == *:\\* ]] || [[ "$l" == *"/"* ]]; then
         libs_dos+="$l"
+    else
+        libs_dos+="C:\\lib\\$l"
     fi
 done
-debug "infile_dir='$infile_dir'"
-debug "infiles_dos='$infiles_dos'"
-debug "outfile_dir='$outfile_dir'"
-debug "outfile_dos='$outfile_dos'"
-debug "libs_dos='$libs_dos'"
-debug "infile_rsp='$infile_rsp'"
+debug "infile_dir='$infile_dir', infiles_dos='$infiles_dos', outfile_dir='$outfile_dir', outfile_dos='$outfile_dos', libs_dos='$libs_dos', infile_rsp='$infile_rsp'"
 if [ "$tool" != "test" ]; then
     [ -d "$infile_dir" ] || fatal "Input directory does not exist: $infile_dir"
     [ -d "$outfile_dir" ] || fatal "Output directory does not exist: $outfile_dir"
 fi
 outfile_base="${outfile_dos%.*}"
 outfile_map="$outfile_base.map"
-map_path="${outfile%.*}.map"
 
 # compose tool cmdline in dos based on tool type
 cmdline=$tool
@@ -260,6 +258,10 @@ case $tool in
         # for external reference resolution will be linked in
         if [ "$libs_dos" ]; then
             echo $libs_dos >> $infile_rsp
+        elif [[ $chain =~ ^msc ]]; then
+            # In direct kvikdos mode, LINK does not always resolve default C runtime
+            # from LIB env when no libs are explicitly listed; pin SLIBCE explicitly.
+            echo "C:\\lib\\SLIBCE.LIB" >> $infile_rsp
         else
             echo ";" >> $infile_rsp
         fi
@@ -298,7 +300,7 @@ case $tool in
         [ "$flags" ] && cmdline+=" $flags"
         fatal "tlink not implemented"
         # cmdline+=" $infiles_dos,$outfile_dos,,,"
-        ;;
+        ;;        
     masm)
         compiler_dir=$MASM_DIR
         [ "$flags" ] && cmdline+=" $flags"
@@ -311,7 +313,7 @@ case $tool in
         ;;        
     wcc386)
         [ "$flags" ] && cmdline+=" $flags"
-        cmdline+=" /fo=$outfile_dos $infiles_dos"
+        cmdline+=" /fo=$outfile_dos $infiles_dos"    
         ;;
     test)
         cmdline=$infiles_dos
@@ -323,39 +325,73 @@ case $tool in
 esac
 debug "cmdline: $cmdline"
 
-#echo "--- build running $tool from $chain"
-# create dos bat file for launching inside the emulator
-
-logname=$(basename ${BAT_FILE%.bat}.log)
-logfile=$infile_dir/$logname
-emu_logfile=${BAT_FILE%.bat}_emu.log
-
+# run tool directly in kvikdos, without intermediate .bat wrapper
 tmpdir=$(mktemp -d)
+emu_logfile="$infile_dir/${outfile_noext}.kvikdos.log"
+logfile="$emu_logfile"
+rm -f "$emu_logfile"
 
-cat > $BAT_FILE <<EOF
-set PATH=Z:\;C:\\$chain\\bin;C:\\$chain\binb;C:\\$chain\bound;C:\\$chain
-set INCLUDE=C:\\$chain\\include
-set LIB=C:\\$chain\\lib
-mount d $infile_dir
-mount e $outfile_dir
-mount f $tmpdir
-set TMP=F:\\
-d:
-$cmdline > $logname
-EOF
+tool_exe_rel=${tool_exe#"$TOOLCHAIN_DIR"/}
+tool_prog="C:\\$(dossep "$tool_exe_rel")"
+tool_args=()
+flags_arr=()
+libs_arr=()
+[ "$flags" ] && read -r -a flags_arr <<< "$flags"
+[ "$libs_dos" ] && read -r -a libs_arr <<< "$libs_dos"
 
-if ((DEBUG)); then 
-    echo "--- $BAT_FILE"
-    cat $BAT_FILE; 
-    echo "---"
-fi
+case $tool in
+    cl|qcl)
+        tool_args+=("${flags_arr[@]}" /c "/Fo$outfile_dos")
+        for a in $infiles_dos_qualified; do tool_args+=("$a"); done
+        ;;
+    tcc|bcc)
+        tool_args+=("${flags_arr[@]}")
+        [[ $outfile_dos =~ \.(obj|OBJ) ]] && tool_args+=("-c" "-o$outfile_dos")
+        [[ $outfile_dos =~ \.(exe|EXE) ]] && tool_args+=("-e$outfile_dos" "-LC:\\$chain\\lib")
+        for a in $infiles_dos_qualified; do tool_args+=("$a"); done
+        ;;
+    link|qlink)
+        tool_args+=("${flags_arr[@]}" "@${rsp_dos}")
+        ;;
+    lib)
+        tool_args+=("@${rsp_dos}")
+        ;;
+    masm|tasm)
+        tool_args+=("${flags_arr[@]}" "${infiles_dos_qualified// /,},$outfile_dos,,;")
+        ;;
+    wcc386)
+        tool_args+=("${flags_arr[@]}" "/fo=$outfile_dos")
+        for a in $infiles_dos_qualified; do tool_args+=("$a"); done
+        ;;
+    test)
+        tool_prog="${infiles_dos%% *}"
+        ;;
+esac
 
-# remove logfile from previous run if exists to avoid reporting bogus errors in case of build failure
-rm -f $logfile
-rm -f $emu_logfile
-# start bat file in emulator in headless mode
 [ "$tool" != "test" ] && echo "$cmdline"
-SDL_VIDEODRIVER=dummy dosbox -conf $CONF_FILE $BAT_FILE -exit &> $emu_logfile
+toolchain_abs="$(cd "$TOOLCHAIN_DIR" && pwd)"
+infile_abs="$(cd "$infile_dir" && pwd)"
+outfile_abs="$(cd "$outfile_dir" && pwd)"
+tmp_abs="$(cd "$tmpdir" && pwd)"
+case "$toolchain_abs" in */) ;; *) toolchain_abs="${toolchain_abs}/" ;; esac
+case "$infile_abs" in */) ;; *) infile_abs="${infile_abs}/" ;; esac
+case "$outfile_abs" in */) ;; *) outfile_abs="${outfile_abs}/" ;; esac
+case "$tmp_abs" in */) ;; *) tmp_abs="${tmp_abs}/" ;; esac
+"$KVIKDOS_BIN" \
+    --hlt-ok \
+    "--mount=C:$toolchain_abs" \
+    "--mount=D:$infile_abs" \
+    "--mount=E:$outfile_abs" \
+    "--mount=F:$tmp_abs" \
+    --drive=d \
+    --cwd-dos='D:\\' \
+    "--path-dos=C:\\bin;C:\\bbin;C:\\bound;C:\\" \
+    "--env=PATH=C:\\bin;C:\\bbin;C:\\bound;C:\\" \
+    "--env=INCLUDE=C:\\INCLUDE" \
+    "--env=LIB=C:\\lib" \
+    "--env=TMP=F:\\" \
+    "--prog=$tool_prog" \
+    "$tool_prog" "${tool_args[@]}" &> "$emu_logfile"
 # check if successful by examining if output file exists
 if [ "$tool" != "test" ]; then
     # Find and rename files to the expected lowercase paths
@@ -366,34 +402,18 @@ if [ "$tool" != "test" ]; then
             mv "$outfile_upper" "$outfile"
         fi
     fi
-    if [ ! -f "$logfile" ]; then
-        logfile_upper=$(find "$infile_dir" -maxdepth 1 -iname "$logname" -print -quit 2>/dev/null)
-        if [ -n "$logfile_upper" ] && [ -f "$logfile_upper" ]; then
-            mv "$logfile_upper" "$logfile"
-        fi
-    fi
     if [ ! -f "$outfile" ]; then
-        if [ -f "$logfile" ]; then
-            cat $logfile; 
-        else
-            cat $emu_logfile
-            echo "Build failed and no logfile found, check emulator configuration"
-        fi
+        cat "$emu_logfile"
         exit 1;
     fi
     # trick to get rid of uppercase filename on WSL
     outfile_tmp="${outfile}.tmp"
     mv "$outfile" "$outfile_tmp"
     mv "$outfile_tmp" "$outfile"
-    if [[ $chain =~ ^msc && $tool = "link" && -f "$map_path" ]]; then
-        debug "fixing mapfile $map_path"
-        mv "$map_path" "$outfile_tmp"
-        mv "$outfile_tmp" "$map_path"
-    fi
     # the linker can create an output file even in presence of errors so check log
     if grep -i "error" $logfile &> /dev/null; then
         rm $outfile
-        cat $logfile; 
+        cat "$logfile"
         # special handling for MS C linker output
         [[ $chain =~ ^msc && $tool = "link" ]] && output_unresolved "$logfile"
         exit 1;
@@ -402,11 +422,11 @@ if [ "$tool" != "test" ]; then
         cat $logfile;
     fi
 else
-    cat $logfile
-    grep -ie "failed" $logfile &> /dev/null && exit 1
+    cat "$logfile"
+    grep -ie "failed" "$logfile" &> /dev/null && exit 1
 fi
 
 debug "success"
-rm -f $BAT_FILE $emu_logfile $logfile
+rm -f "$emu_logfile"
 rm -rf $tmpdir
 exit 0
