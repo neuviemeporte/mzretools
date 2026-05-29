@@ -950,7 +950,8 @@ static string formatSymbolStr(const string &refSymbol, const string &tgtSymbol) 
 }
 
 bool Analyzer::compareInstructions(const Executable &ref, const Executable &tgt, const Instruction &refInstr, Instruction tgtInstr) {
-    const string symbolStr = formatSymbolStr(symbolName(ref, refInstr), symbolName(tgt, tgtInstr));
+    string symbolStr;
+    if (!options.noSym) symbolStr = formatSymbolStr(symbolName(ref, refInstr), symbolName(tgt, tgtInstr));
     skipType = SKIP_NONE;
     matchType = instructionsMatch(ref, tgt, refInstr, tgtInstr);
     switch (matchType) {
