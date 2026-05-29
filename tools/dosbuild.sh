@@ -2,15 +2,11 @@
 #
 # This script invokes development binaries (compiler, linker, assembler) in DOSBox.
 #
-# TODO: 
-# - linking can be simplified by using CL instead of LINK
-# - get rid of infile/outfile, just build in-tree? then make install copies to the output dir
-
 TOOLCHAIN_DIR=dos
 CONF_DIR=conf
 CONF_FILE=$CONF_DIR/toolchain.conf
 BAT_FILE=$TOOLCHAIN_DIR/bld$(printf '%04d' $(($$%10000))).bat
-DEBUG=0
+DEBUG=1
 # always print toolchain stdout
 VERBOSE=0
 cmdline=$@
@@ -117,7 +113,9 @@ if [ "$tool" != "test" ]; then
     fi
     ((toolok)) || fatal "Tool '$tool' not supported by toolchain '$chain'"
     tool_exe=$(find $TOOLCHAIN_DIR -iname "$tool.exe")
-    debug "tool = $tool, chain = $chain, tool_exe = $tool_exe"
+    debug "tool='$tool'"
+    debug "chain='$chain'"
+    debug "tool_exe='$tool_exe'"
     [ -f "$tool_exe" ] || fatal "Unable to find '$tool.exe' in $TOOLCHAIN_DIR"
 else
     debug "Running test application"
@@ -168,7 +166,10 @@ until [ -z "$1" ]; do
     esac
     shift
 done
-debug "in: '$infiles', out: '$outfile', flags: '$flags', libs: '$libs'"
+debug "infiles='$infiles'"
+debug "outfile='$outfile'"
+debug "flags='$flags'"
+debug "libs='$libs'"
 [ "$infiles" ] || syntax "empty infiles"
 if [ "$tool" != "test" ]; then
     [ "$outfile" ] || syntax "empty outfiles"
@@ -186,7 +187,8 @@ for f in $infiles; do
     [ "$infiles_dos" ] && infiles_dos+=" "
     infiles_dos+="$(dossep ${f#${infile_dir}/})"
 done
-[ -f "$outfile" ] && rm $outfile # remove output file if it exists from the previous run, we use its existence to check for success/failure
+# remove output file if it exists from the previous run, we use its existence to check for success/failure
+[ -f "$outfile" ] && rm $outfile
 outfile_dir=$(basedir $outfile)
 outfile_name=$(basename $outfile)
 outfile_noext="${outfile_name%.*}"
@@ -205,13 +207,19 @@ for l in $libs; do
         libs_dos+="$l"
     fi
 done
-debug "infile_dir='$infile_dir', infiles_dos='$infiles_dos', outfile_dir='$outfile_dir', outfile_dos='$outfile_dos', libs_dos='$libs_dos', infile_rsp='$infile_rsp'"
+debug "infile_dir='$infile_dir'"
+debug "infiles_dos='$infiles_dos'"
+debug "outfile_dir='$outfile_dir'"
+debug "outfile_dos='$outfile_dos'"
+debug "libs_dos='$libs_dos'"
+debug "infile_rsp='$infile_rsp'"
 if [ "$tool" != "test" ]; then
     [ -d "$infile_dir" ] || fatal "Input directory does not exist: $infile_dir"
     [ -d "$outfile_dir" ] || fatal "Output directory does not exist: $outfile_dir"
 fi
 outfile_base="${outfile_dos%.*}"
 outfile_map="$outfile_base.map"
+map_path="${outfile%.*}.map"
 
 # compose tool cmdline in dos based on tool type
 cmdline=$tool
@@ -303,7 +311,7 @@ case $tool in
         ;;        
     wcc386)
         [ "$flags" ] && cmdline+=" $flags"
-        cmdline+=" /fo=$outfile_dos $infiles_dos"    
+        cmdline+=" /fo=$outfile_dos $infiles_dos"
         ;;
     test)
         cmdline=$infiles_dos
@@ -377,6 +385,11 @@ if [ "$tool" != "test" ]; then
     outfile_tmp="${outfile}.tmp"
     mv "$outfile" "$outfile_tmp"
     mv "$outfile_tmp" "$outfile"
+    if [[ $chain =~ ^msc && $tool = "link" && -f "$map_path" ]]; then
+        debug "fixing mapfile $map_path"
+        mv "$map_path" "$outfile_tmp"
+        mv "$outfile_tmp" "$map_path"
+    fi
     # the linker can create an output file even in presence of errors so check log
     if grep -i "error" $logfile &> /dev/null; then
         rm $outfile
