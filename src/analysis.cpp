@@ -934,9 +934,7 @@ string Analyzer::symbolName(const Executable &exe, const Instruction &i) const {
 static string formatSymbolStr(const string &refSymbol, const string &tgtSymbol) {
     ostringstream str;
     if (!refSymbol.empty()) { 
-        // target symbol names often come from linker maps which have leading underscores, so check ref<->tgt symbol matching vs underscore variant too
-        const string refUnderscore{"_" + refSymbol};
-        const bool diffRefTgt = !tgtSymbol.empty() && tgtSymbol != refSymbol && tgtSymbol != refUnderscore;
+        const bool diffRefTgt = !tgtSymbol.empty() && tgtSymbol != refSymbol;
         if (diffRefTgt) str << output_color(OUT_BRIGHTRED);
         str << " ; " << refSymbol;
         if (diffRefTgt) str << " / " << tgtSymbol;
