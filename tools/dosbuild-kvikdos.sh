@@ -7,11 +7,14 @@
 # - get rid of infile/outfile, just build in-tree? then make install copies to the output dir
 
 TOOLCHAIN_DIR=dos
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(dirname "$SCRIPT_DIR")"
+KVIKDOS_SUBMODULE_DIR="$ROOT_DIR/tools/emulators/kvikdos"
 DEBUG=0
 # always print toolchain stdout
 VERBOSE=0
 cmdline=$@
-KVIKDOS_BIN=${KVIKDOS_BIN:-}
+KVIKDOS_BIN=${KVIKDOS_BIN:-$KVIKDOS_SUBMODULE_DIR/kvikdos}
 
 function syntax() {
     [ "$1" ] && echo "dosbuild.sh error: $1"
@@ -53,14 +56,6 @@ function output_unresolved() {
     echo
 }
 
-if [ -z "$KVIKDOS_BIN" ]; then
-    if [ -x /home/xor/kvikdos/kvikdos ]; then
-        KVIKDOS_BIN=/home/xor/kvikdos/kvikdos
-    else
-        KVIKDOS_BIN=$(command -v kvikdos 2>/dev/null)
-    fi
-fi
-[ -n "$KVIKDOS_BIN" ] || fatal "kvikdos not found (set KVIKDOS_BIN)"
 [ -x "$KVIKDOS_BIN" ] || fatal "kvikdos is not executable: $KVIKDOS_BIN"
 
 # extract tool name (compiler/linker/assembler) and toolchain from cmdline
