@@ -912,8 +912,8 @@ string Analyzer::symbolName(const Executable &exe, const Instruction &i) const {
     if (exe.map().empty()) return {};
 
     if (i.isNearCall()) {
-        // find routine from the segment of the currently investigated routine whose entrypoint matches the instruction's operand
-        const Routine r = exe.map().findByEntrypoint(Address{routine.entrypoint().segment, i.absoluteOffset()});
+        // find routine from the segment of the current instruction whose entrypoint matches the instruction's operand
+        const Routine r = exe.map().findByEntrypoint(Address{i.addr.segment, i.absoluteOffset()});
         return r.name;
     }
     else if (i.isFarCall()) {

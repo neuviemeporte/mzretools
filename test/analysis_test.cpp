@@ -206,11 +206,13 @@ TEST_F(AnalysisTest, CodeMapFromQueue) {
 }
 
 TEST_F(AnalysisTest, CodeMapFromLinkMap) {
+    // parse an example MS LINK map file from linking a real dos exe
     const string path{"../bin/link.map"};
     CodeMap linkMap{path, 0, CodeMap::MAP_MSLINK};
-    ASSERT_EQ(linkMap.segmentCount(), 92);
-    const Size publics = linkMap.routineCount() + linkMap.variableCount();
-    ASSERT_EQ(publics, 1832);
+    ASSERT_EQ(linkMap.codeSize(), 0xc88f);
+    ASSERT_EQ(linkMap.segmentCount(), 2);
+    ASSERT_EQ(linkMap.routineCount(), 141);
+    ASSERT_EQ(linkMap.variableCount(), 250);
 }
 
 TEST_F(AnalysisTest, BigCodeMap) {

@@ -290,7 +290,7 @@ case $tool in
         [ "$flags" ] && cmdline+=" $flags"
         fatal "tlink not implemented"
         # cmdline+=" $infiles_dos,$outfile_dos,,,"
-        ;;        
+        ;;
     masm)
         compiler_dir=$MASM_DIR
         [ "$flags" ] && cmdline+=" $flags"
