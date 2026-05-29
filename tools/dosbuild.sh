@@ -116,7 +116,7 @@ if [ "$tool" != "test" ]; then
         fatal "Toochain not recognized: $chain"
     fi
     ((toolok)) || fatal "Tool '$tool' not supported by toolchain '$chain'"
-    tool_exe=$(find $TOOLCHAIN_DIR -iname "$tool.exe")
+    tool_exe=$(find -L "$TOOLCHAIN_DIR" -iname "$tool.exe" 2>/dev/null | head -1)
     debug "tool = $tool, chain = $chain, tool_exe = $tool_exe"
     [ -f "$tool_exe" ] || fatal "Unable to find '$tool.exe' in $TOOLCHAIN_DIR"
 else

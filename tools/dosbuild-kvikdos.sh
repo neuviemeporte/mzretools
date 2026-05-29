@@ -121,7 +121,7 @@ if [ "$tool" != "test" ]; then
         fatal "Toochain not recognized: $chain"
     fi
     ((toolok)) || fatal "Tool '$tool' not supported by toolchain '$chain'"
-    tool_exe=$(find $TOOLCHAIN_DIR -iname "$tool.exe")
+    tool_exe=$(find -L "$TOOLCHAIN_DIR" -iname "$tool.exe" 2>/dev/null | head -1)
     debug "tool = $tool, chain = $chain, tool_exe = $tool_exe"
     [ -f "$tool_exe" ] || fatal "Unable to find '$tool.exe' in $TOOLCHAIN_DIR"
 else
@@ -182,6 +182,7 @@ fi
 # examine input and output base directories, must make them available in kvikdos
 infile_dir=''
 infiles_dos=''
+infiles_dos_qualified=''
 libs_dos=''
 for f in $infiles; do
     curdir=$(basedir $f)
@@ -190,6 +191,8 @@ for f in $infiles; do
     fi
     [ "$infiles_dos" ] && infiles_dos+=" "
     infiles_dos+="$(dossep ${f#${infile_dir}/})"
+    [ "$infiles_dos_qualified" ] && infiles_dos_qualified+=" "
+    infiles_dos_qualified+="D:\\$(dossep ${f#${infile_dir}/})"
 done
 [ -f "$outfile" ] && rm $outfile # remove output file if it exists from the previous run, we use its existence to check for success/failure
 outfile_dir=$(basedir $outfile)
@@ -197,6 +200,7 @@ outfile_name=$(basename $outfile)
 outfile_noext="${outfile_name%.*}"
 rspname=${outfile_noext}.rsp
 infile_rsp=$infile_dir/$rspname
+rsp_dos="D:\\$rspname"
 outfile_drive='e'
 if [ "$infile_dir" = "$outfile_dir" ]; then
     outfile_drive='d'
@@ -206,8 +210,10 @@ for l in $libs; do
     [ "$libs_dos" ] && libs_dos+=" "
     if [[ "$l" == "${outfile_dir}"* ]]; then
         libs_dos+="${outfile_drive}:\\$(dossep ${l#${outfile_dir}/})"
-    else
+    elif [[ "$l" == *:\\* ]] || [[ "$l" == *"/"* ]]; then
         libs_dos+="$l"
+    else
+        libs_dos+="C:\\lib\\$l"
     fi
 done
 debug "infile_dir='$infile_dir', infiles_dos='$infiles_dos', outfile_dir='$outfile_dir', outfile_dos='$outfile_dos', libs_dos='$libs_dos', infile_rsp='$infile_rsp'"
@@ -337,26 +343,26 @@ libs_arr=()
 case $tool in
     cl|qcl)
         tool_args+=("${flags_arr[@]}" /c "/Fo$outfile_dos")
-        for a in $infiles_dos; do tool_args+=("$a"); done
+        for a in $infiles_dos_qualified; do tool_args+=("$a"); done
         ;;
     tcc|bcc)
         tool_args+=("${flags_arr[@]}")
         [[ $outfile_dos =~ \.(obj|OBJ) ]] && tool_args+=("-c" "-o$outfile_dos")
         [[ $outfile_dos =~ \.(exe|EXE) ]] && tool_args+=("-e$outfile_dos" "-LC:\\$chain\\lib")
-        for a in $infiles_dos; do tool_args+=("$a"); done
+        for a in $infiles_dos_qualified; do tool_args+=("$a"); done
         ;;
     link|qlink)
-        tool_args+=("${flags_arr[@]}" "@${rspname}")
+        tool_args+=("${flags_arr[@]}" "@${rsp_dos}")
         ;;
     lib)
-        tool_args+=("@${rspname}")
+        tool_args+=("@${rsp_dos}")
         ;;
     masm|tasm)
-        tool_args+=("${flags_arr[@]}" "$infiles_dos,$outfile_dos,,;")
+        tool_args+=("${flags_arr[@]}" "${infiles_dos_qualified// /,},$outfile_dos,,;")
         ;;
     wcc386)
         tool_args+=("${flags_arr[@]}" "/fo=$outfile_dos")
-        for a in $infiles_dos; do tool_args+=("$a"); done
+        for a in $infiles_dos_qualified; do tool_args+=("$a"); done
         ;;
     test)
         tool_prog="${infiles_dos%% *}"
@@ -368,12 +374,23 @@ toolchain_abs="$(cd "$TOOLCHAIN_DIR" && pwd)"
 infile_abs="$(cd "$infile_dir" && pwd)"
 outfile_abs="$(cd "$outfile_dir" && pwd)"
 tmp_abs="$(cd "$tmpdir" && pwd)"
+case "$toolchain_abs" in */) ;; *) toolchain_abs="${toolchain_abs}/" ;; esac
+case "$infile_abs" in */) ;; *) infile_abs="${infile_abs}/" ;; esac
+case "$outfile_abs" in */) ;; *) outfile_abs="${outfile_abs}/" ;; esac
+case "$tmp_abs" in */) ;; *) tmp_abs="${tmp_abs}/" ;; esac
 "$KVIKDOS_BIN" \
     --hlt-ok \
-    "--mount=C::$toolchain_abs" \
-    "--mount=D::$infile_abs" \
-    "--mount=E::$outfile_abs" \
-    "--mount=F::$tmp_abs" \
+    "--mount=C:$toolchain_abs" \
+    "--mount=D:$infile_abs" \
+    "--mount=E:$outfile_abs" \
+    "--mount=F:$tmp_abs" \
+    --drive=d \
+    --cwd-dos='D:\\' \
+    "--path-dos=C:\\bin;C:\\bbin;C:\\bound;C:\\" \
+    "--env=PATH=C:\\bin;C:\\bbin;C:\\bound;C:\\" \
+    "--env=INCLUDE=C:\\INCLUDE" \
+    "--env=LIB=C:\\lib" \
+    "--env=TMP=F:\\" \
     "--prog=$tool_prog" \
     "$tool_prog" "${tool_args[@]}" &> "$emu_logfile"
 # check if successful by examining if output file exists
