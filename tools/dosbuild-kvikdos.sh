@@ -14,7 +14,7 @@ DEBUG=0
 # always print toolchain stdout
 VERBOSE=0
 cmdline=$@
-KVIKDOS_BIN=${KVIKDOS_BIN:-}
+KVIKDOS_BIN=${KVIKDOS_BIN:-$KVIKDOS_SUBMODULE_DIR/kvikdos}
 
 function syntax() {
     [ "$1" ] && echo "dosbuild.sh error: $1"
@@ -56,23 +56,6 @@ function output_unresolved() {
     echo
 }
 
-function resolve_kvikdos_bin() {
-    if [ -n "$KVIKDOS_BIN" ] && [ -x "$KVIKDOS_BIN" ]; then
-        return 0
-    fi
-    if [ -x "$KVIKDOS_SUBMODULE_DIR/kvikdos" ]; then
-        KVIKDOS_BIN="$KVIKDOS_SUBMODULE_DIR/kvikdos"
-        return 0
-    fi
-    if command -v kvikdos >/dev/null 2>&1; then
-        KVIKDOS_BIN="$(command -v kvikdos)"
-        return 0
-    fi
-    return 1
-}
-
-resolve_kvikdos_bin
-[ -n "$KVIKDOS_BIN" ] || fatal "kvikdos not found; run mzretools/build.sh or set KVIKDOS_BIN"
 [ -x "$KVIKDOS_BIN" ] || fatal "kvikdos is not executable: $KVIKDOS_BIN"
 
 # extract tool name (compiler/linker/assembler) and toolchain from cmdline
