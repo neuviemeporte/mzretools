@@ -2,10 +2,6 @@
 #
 # This script invokes development binaries (compiler, linker, assembler) in kvikdos.
 #
-# TODO: 
-# - linking can be simplified by using CL instead of LINK
-# - get rid of infile/outfile, just build in-tree? then make install copies to the output dir
-
 TOOLCHAIN_DIR=dos
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "$SCRIPT_DIR")"
@@ -117,7 +113,9 @@ if [ "$tool" != "test" ]; then
     fi
     ((toolok)) || fatal "Tool '$tool' not supported by toolchain '$chain'"
     tool_exe=$(find -L "$TOOLCHAIN_DIR" -iname "$tool.exe" 2>/dev/null | head -1)
-    debug "tool = $tool, chain = $chain, tool_exe = $tool_exe"
+    debug "tool='$tool'"
+    debug "chain='$chain'"
+    debug "tool_exe='$tool_exe'"
     [ -f "$tool_exe" ] || fatal "Unable to find '$tool.exe' in $TOOLCHAIN_DIR"
 else
     debug "Running test application"
@@ -168,7 +166,10 @@ until [ -z "$1" ]; do
     esac
     shift
 done
-debug "in: '$infiles', out: '$outfile', flags: '$flags', libs: '$libs'"
+debug "infiles='$infiles'"
+debug "outfile='$outfile'"
+debug "flags='$flags'"
+debug "libs='$libs'"
 [ "$infiles" ] || syntax "empty infiles"
 if [ "$tool" != "test" ]; then
     [ "$outfile" ] || syntax "empty outfiles"
@@ -189,7 +190,8 @@ for f in $infiles; do
     [ "$infiles_dos_qualified" ] && infiles_dos_qualified+=" "
     infiles_dos_qualified+="D:\\$(dossep ${f#${infile_dir}/})"
 done
-[ -f "$outfile" ] && rm $outfile # remove output file if it exists from the previous run, we use its existence to check for success/failure
+# remove output file if it exists from the previous run, we use its existence to check for success/failure
+[ -f "$outfile" ] && rm $outfile
 outfile_dir=$(basedir $outfile)
 outfile_name=$(basename $outfile)
 outfile_noext="${outfile_name%.*}"
@@ -211,13 +213,23 @@ for l in $libs; do
         libs_dos+="C:\\lib\\$l"
     fi
 done
-debug "infile_dir='$infile_dir', infiles_dos='$infiles_dos', outfile_dir='$outfile_dir', outfile_dos='$outfile_dos', libs_dos='$libs_dos', infile_rsp='$infile_rsp'"
+debug "infile_dir='$infile_dir'"
+debug "infiles_dos='$infiles_dos'"
+debug "outfile_dir='$outfile_dir'"
+debug "outfile_dos='$outfile_dos'"
+debug "libs_dos='$libs_dos'"
+debug "infile_rsp='$infile_rsp'"
 if [ "$tool" != "test" ]; then
     [ -d "$infile_dir" ] || fatal "Input directory does not exist: $infile_dir"
     [ -d "$outfile_dir" ] || fatal "Output directory does not exist: $outfile_dir"
 fi
 outfile_base="${outfile_dos%.*}"
 outfile_map="$outfile_base.map"
+map_file="${outfile_name%.*}.map"
+map_path="${outfile%.*}.map"
+debug "outfile_map='$outfile_map'"
+debug "map_file='$map_file'"
+debug "map_path='$map_path'"
 
 # compose tool cmdline in dos based on tool type
 cmdline=$tool
@@ -300,7 +312,7 @@ case $tool in
         [ "$flags" ] && cmdline+=" $flags"
         fatal "tlink not implemented"
         # cmdline+=" $infiles_dos,$outfile_dos,,,"
-        ;;        
+        ;;
     masm)
         compiler_dir=$MASM_DIR
         [ "$flags" ] && cmdline+=" $flags"
@@ -313,7 +325,7 @@ case $tool in
         ;;        
     wcc386)
         [ "$flags" ] && cmdline+=" $flags"
-        cmdline+=" /fo=$outfile_dos $infiles_dos"    
+        cmdline+=" /fo=$outfile_dos $infiles_dos"
         ;;
     test)
         cmdline=$infiles_dos
@@ -368,6 +380,20 @@ case $tool in
         ;;
 esac
 
+# Find and rename files to the expected lowercase paths to work around issues on case-sensitive filesystems.
+function fix_case() {
+    local path=$1
+    [ -f "$path" ] && return
+    local base=$(basename $path)
+    local dir=$(dirname $path)
+    casefile=$(find "$dir" -maxdepth 1 -iname "$base" -print -quit 2>/dev/null)
+    [[ -n "$casefile" && -f "$casefile" ]] && mv "$casefile" "$path"
+}
+
+# remove logfile from previous run if exists to avoid reporting bogus errors in case of build failure
+rm -f $logfile
+rm -f $emu_logfile
+# start bat file in emulator in headless mode
 [ "$tool" != "test" ] && echo "$cmdline"
 toolchain_abs="$(cd "$TOOLCHAIN_DIR" && pwd)"
 infile_abs="$(cd "$infile_dir" && pwd)"
@@ -392,28 +418,35 @@ case "$tmp_abs" in */) ;; *) tmp_abs="${tmp_abs}/" ;; esac
     "--env=TMP=F:\\" \
     "--prog=$tool_prog" \
     "$tool_prog" "${tool_args[@]}" &> "$emu_logfile"
+
 # check if successful by examining if output file exists
 if [ "$tool" != "test" ]; then
-    # Find and rename files to the expected lowercase paths
-    # to work around issues on case-sensitive filesystems.
+    fix_case $outfile
+    fix_case $logfile
+    [[ $chain =~ ^msc && $tool = "link" ]] && fix_case $map_path
     if [ ! -f "$outfile" ]; then
-        outfile_upper=$(find "$outfile_dir" -maxdepth 1 -iname "$(basename $outfile)" -print -quit 2>/dev/null)
-        if [ -n "$outfile_upper" ] && [ -f "$outfile_upper" ]; then
-            mv "$outfile_upper" "$outfile"
+        if [ -f "$logfile" ]; then
+            cat $logfile; 
+        else
+            cat $emu_logfile
+            echo "Build failed and no logfile found, check emulator configuration"
         fi
-    fi
-    if [ ! -f "$outfile" ]; then
-        cat "$emu_logfile"
         exit 1;
     fi
     # trick to get rid of uppercase filename on WSL
     outfile_tmp="${outfile}.tmp"
     mv "$outfile" "$outfile_tmp"
     mv "$outfile_tmp" "$outfile"
+    map_path=$(find "$outfile_dir" -maxdepth 1 -iname "$map_file" -print -quit 2>/dev/null)
+    if [[ $chain =~ ^msc && $tool = "link" && -f "$map_path" ]]; then
+        debug "fixing mapfile $map_path"
+        mv "$map_path" "$outfile_tmp"
+        mv "$outfile_tmp" "$map_path"
+    fi
     # the linker can create an output file even in presence of errors so check log
     if grep -i "error" $logfile &> /dev/null; then
         rm $outfile
-        cat "$logfile"
+        cat $logfile; 
         # special handling for MS C linker output
         [[ $chain =~ ^msc && $tool = "link" ]] && output_unresolved "$logfile"
         exit 1;
@@ -422,11 +455,11 @@ if [ "$tool" != "test" ]; then
         cat $logfile;
     fi
 else
-    cat "$logfile"
-    grep -ie "failed" "$logfile" &> /dev/null && exit 1
+    cat $logfile
+    grep -ie "failed" $logfile &> /dev/null && exit 1
 fi
 
 debug "success"
-rm -f "$emu_logfile"
+rm -f $emu_logfile $logfile
 rm -rf $tmpdir
 exit 0
