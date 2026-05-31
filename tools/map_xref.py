@@ -22,32 +22,41 @@ class Routine:
         self.end = int(end, 16)
         self.reach = []
         self.unreach = []
+        self.traits = []
     def addReachable(self, start, end):
         self.reach.append((int(start, 16), int(end, 16)))
     def addUnreachable(self, start, end):
         self.unreach.append((int(start, 16), int(end, 16)))
+    def addTrait(self, trait):
+        self.traits.append(trait)
     def __str__(self):
-        ret = f"{self.name}: segment {self.segname}, nf: {self.nf}, start: {self.start:x}, end: {self.end:x}"
+        size = self.end - self.start
+        ret = f"{self.name}: {self.segname}/{self.segaddr:x} {self.nf}, extents: {self.start:x}-{self.end:x}/{size:x}"
         reach = ""
         unreach = ""
+        traits = ""
         for r in self.reach:
             reach += f" {r[0]:x}-{r[1]:x}"
         for u in self.unreach:
             unreach += f" {u[0]:x}-{u[1]:x}"
+        for t in self.traits:
+            traits += f" {t}"
         if reach:
             ret += f", reachable:{reach}"
         if unreach:
             ret += f", unreachable:{unreach}"
+        if traits:
+            ret += f", traits:{traits}"
         return ret
     def match(self, other):
         msg = ''
         if self.segaddr != other.segaddr or self.start != other.start:
             return False
-        msg = f"Routine {other.name} has identical start address ({other.start:x}) as routine {self.name}"
+        msg = f"Imperfect match: routine {other.name} has identical start address ({other.start:x}) as routine {self.name}"
         if self.end != other.end:
             info(msg)
             return False
-        msg = f"Routine {other.name} has identical extents ({other.start:x}-{other.end:x}) as routine {self.name}"
+        msg = f"Imperfect match: routine {other.name} has identical extents ({other.start:x}-{other.end:x}) as routine {self.name}"
         if set(self.reach) != set(other.reach) or set(self.unreach) != set(other.unreach):
             info(msg)
             return False
@@ -88,6 +97,8 @@ def parseMap(map_path):
                         r.addReachable(bstart, bend)
                     elif ru == 'U':
                         r.addUnreachable(bstart, bend)
+                else:
+                    r.addTrait(token)
             routines.append(r)
             debug(f"Found routine {r}")
         elif (match := segment_re.match(line)) is not None:
@@ -109,29 +120,35 @@ def main(map1_path, map2_path):
     r2, s2 = parseMap(map2_path)
     info(f"Found {len(r1)} routines in {map1_path} and {len(r2)} in {map2_path}")
     perfect_count = 0
+    rem = []
     for r in r1:
         debug(f"Searching for match of routine {r.name}")
         m = findMatch(r, r2)
         if m is not None:
             debug(f"Found perfect match for routine {r.name} with {m.name}")
-            r1.remove(r)
             r2.remove(m)
             perfect_count += 1
+        else:
+            rem.append(r)
+    r1 = rem
+    rem = []
     for r in r2:
         debug(f"Searching for match of routine {r.name}")
         m = findMatch(r, r1)
         if m is not None:
             debug(f"Found perfect match for routine {r.name} with {m.name}")
-            r2.remove(r)
             r1.remove(m)
-            perfect_count += 1    
+            perfect_count += 1
+        else:
+            rem.append(r)
+    r2 = rem
     info(f"Found perfect matches for {perfect_count} from xref")
     if r1:
         info(f"--- After search, {len(r1)} routines still have no match from {map1_path}")
         print(*r1, sep='\n')
     if r2:
         info(f"--- After search, {len(r2)} routines still have no match from {map2_path}")
-        print(*r2, sep='\n')            
+        print(*r2, sep='\n')
 
 if __name__ == '__main__':
     argc = len(sys.argv)
