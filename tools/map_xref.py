@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 import sys
-from output import error, debug, info, setDebug
+from output import error, warn, debug, info, setDebug
 import traceback
 import re
 
-setDebug(True)
+#setDebug(True)
 
 class Segment:
     def __init__(self, name, type, addr):
@@ -13,9 +13,10 @@ class Segment:
         self.addr = int(addr, 16)
 
 class Routine:
-    def __init__(self, name, segname, nf, start, end):
+    def __init__(self, name, segname, segaddr, nf, start, end):
         self.name = name
         self.segname = segname
+        self.segaddr = segaddr
         self.nf = nf
         self.start = int(start, 16)
         self.end = int(end, 16)
@@ -25,7 +26,7 @@ class Routine:
         self.reach.append((int(start, 16), int(end, 16)))
     def addUnreachable(self, start, end):
         self.unreach.append((int(start, 16), int(end, 16)))
-    def toString(self):
+    def __str__(self):
         ret = f"{self.name}: segment {self.segname}, nf: {self.nf}, start: {self.start:x}, end: {self.end:x}"
         reach = ""
         unreach = ""
@@ -38,6 +39,25 @@ class Routine:
         if unreach:
             ret += f", unreachable:{unreach}"
         return ret
+    def match(self, other):
+        msg = ''
+        if self.segaddr != other.segaddr or self.start != other.start:
+            return False
+        msg = f"Routine {other.name} has identical start address ({other.start:x}) as routine {self.name}"
+        if self.end != other.end:
+            info(msg)
+            return False
+        msg = f"Routine {other.name} has identical extents ({other.start:x}-{other.end:x}) as routine {self.name}"
+        if set(self.reach) != set(other.reach) or set(self.unreach) != set(other.unreach):
+            info(msg)
+            return False
+        return True
+
+def segAddr(segname, segs):
+    for s in segs:
+        if s.name == segname:
+            return s.addr
+    return None
 
 def parseMap(map_path):
     name_re = "[_a-zA-Z0-9]+"
@@ -57,7 +77,8 @@ def parseMap(map_path):
             start = match.group(4)
             end = match.group(5)
             stuff = match.group(6)
-            r = Routine(name, segname, nf, start, end)
+            segaddr = segAddr(segname, segments)
+            r = Routine(name, segname, segaddr, nf, start, end)
             for token in stuff.split():
                 if (match := block_re.match(token)) is not None:
                     ru = match.group(1)
@@ -68,7 +89,7 @@ def parseMap(map_path):
                     elif ru == 'U':
                         r.addUnreachable(bstart, bend)
             routines.append(r)
-            debug(f"Found routine: {r.toString()}")
+            debug(f"Found routine {r}")
         elif (match := segment_re.match(line)) is not None:
             name = match.group(1)
             type = match.group(2)
@@ -78,30 +99,39 @@ def parseMap(map_path):
 
 def findMatch(needle, haystack):
     for candidate in haystack:
-        pass
-
-def segAddr(segname, segs):
-    for s in segs:
-        if s.name == segname:
-            return s.addr
+        if needle.match(candidate):
+            return candidate
     return None
 
 def main(map1_path, map2_path):
     debug(f"Opening map1: {map1_path}, map2: {map2_path}")
     r1, s1 = parseMap(map1_path)
     r2, s2 = parseMap(map2_path)
-    debug(f"Found {len(r1)} routines in {map1_path} and {len(r2)} in {map2_path}")
+    info(f"Found {len(r1)} routines in {map1_path} and {len(r2)} in {map2_path}")
+    perfect_count = 0
     for r in r1:
-        debug("Searching for match of routine")
-        rs = segAddr(r.segname, s1)
-        debug("")
+        debug(f"Searching for match of routine {r.name}")
         m = findMatch(r, r2)
         if m is not None:
+            debug(f"Found perfect match for routine {r.name} with {m.name}")
             r1.remove(r)
             r2.remove(m)
-
-
-
+            perfect_count += 1
+    for r in r2:
+        debug(f"Searching for match of routine {r.name}")
+        m = findMatch(r, r1)
+        if m is not None:
+            debug(f"Found perfect match for routine {r.name} with {m.name}")
+            r2.remove(r)
+            r1.remove(m)
+            perfect_count += 1    
+    info(f"Found perfect matches for {perfect_count} from xref")
+    if r1:
+        info(f"--- After search, {len(r1)} routines still have no match from {map1_path}")
+        print(*r1, sep='\n')
+    if r2:
+        info(f"--- After search, {len(r2)} routines still have no match from {map2_path}")
+        print(*r2, sep='\n')            
 
 if __name__ == '__main__':
     argc = len(sys.argv)
