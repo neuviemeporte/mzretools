@@ -369,7 +369,11 @@ rm -f $logfile
 rm -f $emu_logfile
 # start bat file in emulator in headless mode
 [ "$tool" != "test" ] && echo "$cmdline"
-SDL_VIDEODRIVER=dummy dosbox -conf $CONF_FILE $BAT_FILE -exit &> $emu_logfile
+DOSBOX_ENV=""
+if [ "$DOSBOX" != "staging" ]; then
+    DOSBOX_ENV="SDL_VIDEODRIVER=dummy"
+fi
+env $DOSBOX_ENV dosbox -conf $CONF_FILE $BAT_FILE -exit &> $emu_logfile
 # check if successful by examining if output file exists
 if [ "$tool" != "test" ]; then
     fix_case $outfile
