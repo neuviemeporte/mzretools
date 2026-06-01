@@ -935,7 +935,7 @@ static string formatSymbolStr(const string &refSymbol, const string &tgtSymbol) 
     ostringstream str;
     if (!refSymbol.empty()) { 
         const bool diffRefTgt = !tgtSymbol.empty() && tgtSymbol != refSymbol;
-        if (diffRefTgt) str << output_color(OUT_BRIGHTRED);
+        if (diffRefTgt) str << output_color(OUT_YELLOW);
         str << " ; " << refSymbol;
         if (diffRefTgt) str << " / " << tgtSymbol;
         else if (tgtSymbol.empty()) str << " / ?";
@@ -977,10 +977,10 @@ bool Analyzer::compareInstructions(const Executable &ref, const Executable &tgt,
         }
         break;
     case CMP_DIFFVAL:
-        verbose(output_color(OUT_YELLOW) + compareStatus(refInstr, tgtInstr, true) + output_color(OUT_DEFAULT) + symbolStr);
+        verbose(output_color(OUT_BRIGHTBLACK) + compareStatus(refInstr, tgtInstr, true) + output_color(OUT_DEFAULT) + symbolStr);
         break;
     case CMP_DIFFTGT:
-        verbose(output_color(OUT_BRIGHTRED) + compareStatus(refInstr, tgtInstr, true) + output_color(OUT_DEFAULT) + symbolStr);
+        verbose(output_color(OUT_YELLOW) + compareStatus(refInstr, tgtInstr, true) + output_color(OUT_DEFAULT) + symbolStr);
         break;
     }
     return true;
@@ -1047,6 +1047,11 @@ bool Analyzer::checkComparisonStop() {
             }
         }
         else {
+            vector<Block> reachable(routine.reachable);
+            sort(reachable.begin(), reachable.end());
+            if (reachable.size() && reachable.back() != compareBlock) {
+                warn("Comparison block " + compareBlock.toString() + " is not the last reachable block of routine " + routine.name + ", but the next block could not be found. Routine definition in map likely corrupt!", OUT_BRIGHTRED);
+            }
             verbose("Completed comparison of routine " + routine.name + ", no more reachable blocks");
         }
         return true;
