@@ -3,10 +3,21 @@
 #include <iostream>
 #include <map>
 #include <cassert>
+#include <cstdlib>
+#include <unistd.h>
+
 
 using namespace std;
 
 static LogPriority globalPriority = LOG_INFO;
+
+struct ColorConfig {
+    bool shouldColor;
+    ColorConfig() : shouldColor(true) {
+        if (isatty(STDOUT_FILENO) != 1 || getenv("NO_COLOR") != nullptr) shouldColor = false;
+        if (getenv("FORCE_COLOR") != nullptr) shouldColor = true;
+    }
+} cc;
 
 static map<LogModule, bool> moduleVisibility = {
     { LOG_SYSTEM,    true },
@@ -44,6 +55,7 @@ bool moduleVisible(const LogModule mod) {
 }
 
 string output_color(const Color c) {
+    if (!cc.shouldColor) return {};
     string ret;
     switch (c) {
     case OUT_RED:
@@ -51,7 +63,13 @@ string output_color(const Color c) {
         break;
     case OUT_BRIGHTRED:
         ret = "\033[30;91m";
-        break;        
+        break;
+    case OUT_BRIGHTWHITE:
+        ret = "\033[30;97m";
+        break;
+    case OUT_BRIGHTBLACK:
+        ret = "\033[30;90m";
+        break;
     case OUT_YELLOW:
         ret = "\033[30;33m";
         break;
@@ -60,6 +78,9 @@ string output_color(const Color c) {
         break;
     case OUT_GREEN:
         ret = "\033[30;32m";
+        break;
+    case OUT_CYAN:
+        ret = "\033[30;36m";
         break;
     default:
         ret = "\033[0m";
