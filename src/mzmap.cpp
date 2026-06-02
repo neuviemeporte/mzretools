@@ -56,7 +56,7 @@ Executable loadExe(const string &spec, const Word loadSegment) {
     }
     string path = match[1].str(), entrypoint;
     const auto stat = checkFile(path);
-    if (!stat.exists) fatal("File does not exist: "s + path);
+    if (!stat.exists) fatal("Executable file does not exist: "s + path);
     else if (stat.size <= MZ_HEADER_SIZE) fatal("File too small ("s + to_string(stat.size) + "B): " + path); 
     info("Loading executable "s + path + " at segment "s + hexVal(loadSegment));
     MzImage mz{path};

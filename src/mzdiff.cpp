@@ -38,6 +38,7 @@ void usage() {
            "--loose           non-strict matching, allows e.g for literal argument differences\n"
            "--variant         treat instruction variants that do the same thing as matching\n"
            "--data segname    compare data segment contents instead of code\n"
+           "--tdata segname   target data segment name to compare if different than reference\n"
            "--extdata         include variables marked as external in data comparison\n"
            "1) The optional entrypoint spec tells the tool at which offset to start comparing, and can be different\n"
            "   for both executables if their layout does not match. It can be any of the following:\n"
@@ -72,6 +73,7 @@ string mzInfo(const MzImage &mz) {
 }
 
 Executable loadExe(const string &spec, const Word segment, Analyzer::Options &opt, const bool base) {
+    debug("Loading executable: " + spec);
     // TODO: support providing segment for entrypoint
     string path, entry;
     // split spec string into the path and the entrypoint specification, if present
@@ -89,8 +91,8 @@ Executable loadExe(const string &spec, const Word segment, Analyzer::Options &op
         else fatal("Empty target executable path");
     }
     const auto stat = checkFile(path);
-    if (!stat.exists) fatal("File does not exist: "s + path);
-    else if (stat.size <= MZ_HEADER_SIZE) fatal("File too small ("s + to_string(stat.size) + "B): " + path); 
+    if (!stat.exists) fatal("Executable file does not exist: "s + path);
+    else if (stat.size <= MZ_HEADER_SIZE) fatal("Executable file too small ("s + to_string(stat.size) + "B): " + path);
     MzImage mz{path};
     mz.load(segment);
     debug(mzInfo(mz));
@@ -145,7 +147,7 @@ int main(int argc, char *argv[]) {
     }
     // parse cmdline args
     Analyzer::Options opt;
-    string baseSpec, pathMap, compareSpec, dataSegment, pathTmap;
+    string baseSpec, pathMap, compareSpec, dataSegment, tdataSegment, pathTmap;
     int posarg = 0;
     for (int aidx = 1; aidx < argc; ++aidx) {
         string arg(argv[aidx]);
@@ -188,6 +190,10 @@ int main(int argc, char *argv[]) {
             if (aidx + 1 >= argc) fatal("Option requires an argument: --data");
             dataSegment = argv[++aidx];
         }
+        else if (arg == "--tdata") {
+            if (aidx + 1 >= argc) fatal("Option requires an argument: --tdata");
+            tdataSegment = argv[++aidx];
+        }
         else if (arg == "--extdata") opt.extData = true;
         else if (arg.starts_with("--")) fatal("Unrecognized option: " + arg);
         else { // positional arguments
@@ -210,18 +216,18 @@ int main(int argc, char *argv[]) {
         Analyzer a{opt};
         // code comparison
         CodeMap &tgtMap = exeCompare.map();
+        if (!pathTmap.empty()) {
+            static const regex TMAP_RE{R"(([^:]+)(?::([a-zA-Z]+))?)"};
+            std::smatch match;
+            if (!regex_match(pathTmap, match, TMAP_RE)) fatal("Invalid target map path: " + pathTmap);
+            const string path = match[1].str(), tag = match[2].str();
+            verbose("Loading target map from " + path + ", tag: " + tag);
+            CodeMap::Type type = CodeMap::MAP_MZRE;
+            if (tag == "ida") type = CodeMap::MAP_IDALST;
+            else if (tag == "link") type = CodeMap::MAP_MSLINK;
+            tgtMap = { path, loadSeg, type };
+        }
         if (dataSegment.empty()) {
-            if (!pathTmap.empty()) {
-                static const regex TMAP_RE{R"(([^:]+)(?::([a-zA-Z]+))?)"};
-                std::smatch match;
-                if (!regex_match(pathTmap, match, TMAP_RE)) fatal("Invalid target map path: " + pathTmap);
-                const string path = match[1].str(), tag = match[2].str();
-                verbose("Loading target map from " + path + ", tag: " + tag);
-                CodeMap::Type type = CodeMap::MAP_MZRE;
-                if (tag == "ida") type = CodeMap::MAP_IDALST;
-                else if (tag == "link") type = CodeMap::MAP_MSLINK;
-                tgtMap = { path, loadSeg, type };
-            }
             compareResult = a.compareCode(exeBase, exeCompare);
         }
         // data comparison
@@ -232,8 +238,7 @@ int main(int argc, char *argv[]) {
                 if (!checkFile(pathTmap).exists) fatal("No target map provided with --tmap for data comparison and guessed location " + pathTmap + " does not exist");
                 verbose("Using guessed target map location: " + pathTmap);
             }
-            tgtMap = { pathTmap, loadSeg };
-            compareResult = a.compareData(exeBase, exeCompare, dataSegment);
+            compareResult = a.compareData(exeBase, exeCompare, dataSegment, tdataSegment);
         }
     }
     catch (Error &e) {

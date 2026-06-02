@@ -109,7 +109,7 @@ CodeMap::CodeMap(const ScanQueue &sq, const std::vector<Segment> &segs, const st
 
 CodeMap::CodeMap(const std::string &path, const Word loadSegment, const Type type) : CodeMap(loadSegment, 0) {
     const auto fstat = checkFile(path);
-    if (!fstat.exists) throw ArgError("File does not exist: "s + path);
+    if (!fstat.exists) throw ArgError("Code map file does not exist: "s + path);
     switch(type) {
     case MAP_IDALST: 
         loadFromIdaFile(path, loadSegment);

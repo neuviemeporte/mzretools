@@ -392,11 +392,11 @@ if [ "$tool" != "test" ]; then
     outfile_tmp="${outfile}.tmp"
     mv "$outfile" "$outfile_tmp"
     mv "$outfile_tmp" "$outfile"
-    map_path=$(find "$outfile_dir" -maxdepth 1 -iname "$map_file" -print -quit 2>/dev/null)
     if [[ $chain =~ ^msc && $tool = "link" && -f "$map_path" ]]; then
         debug "fixing mapfile $map_path"
-        mv "$map_path" "$outfile_tmp"
-        mv "$outfile_tmp" "$map_path"
+        mapfile_tmp="${map_path}.tmp"
+        mv "$map_path" "$mapfile_tmp"
+        mv "$mapfile_tmp" "$map_path"
     fi
     # the linker can create an output file even in presence of errors so check log
     if grep -i "error" $logfile &> /dev/null; then
