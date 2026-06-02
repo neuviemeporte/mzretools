@@ -779,7 +779,7 @@ bool Analyzer::compareCode(const Executable &ref, Executable &tgt) {
     return success;
 }
 
-bool Analyzer::compareData(const Executable &ref, const Executable &tgt, const std::string &segment) {
+bool Analyzer::compareData(const Executable &ref, const Executable &tgt, const string &segment, string tsegment) {
     const CodeMap &refMap = ref.map(), 
                   &tgtMap = tgt.map();
     const Word 
@@ -789,8 +789,9 @@ bool Analyzer::compareData(const Executable &ref, const Executable &tgt, const s
     if (refSeg.type != Segment::SEG_DATA) throw AnalysisError("Unable to find data segment with name: " + segment + " in reference map");
     const Address refOrig{refSeg.address, 0};
     refSeg.address -= refLoadSeg;
-    Segment tgtSeg = tgtMap.findSegment(segment);
-    if (tgtSeg.type != Segment::SEG_DATA) throw AnalysisError("Unable to find data segment with name: " + segment + " in target map");
+    if (tsegment.empty()) tsegment = segment;
+    Segment tgtSeg = tgtMap.findSegment(tsegment);
+    if (tgtSeg.type != Segment::SEG_DATA) throw AnalysisError("Unable to find data segment with name: " + tsegment + " in target map");
     const Address tgtOrig{tgtSeg.address, 0};
     tgtSeg.address -= tgtLoadSeg;
     const Address refAddr{refSeg.address, 0}, tgtAddr{tgtSeg.address, 0};
@@ -798,8 +799,8 @@ bool Analyzer::compareData(const Executable &ref, const Executable &tgt, const s
     if (refAddr.toLinear() >= ref.size()) 
         throw AnalysisError("Reference segment " + segment + " at " + refAddr.toString() + " exceeds executable size " + sizeStr(ref.size()));
     if (tgtAddr.toLinear() >= tgt.size()) 
-        throw AnalysisError("Target segment " + segment + " at " + tgtAddr.toString() + " exceeds executable size " + sizeStr(tgt.size()));        
-    verbose("Found data segment " + segment + ": reference " + refAddr.toString() + ", relocated " + refOrig.toString() + ", target: " + tgtAddr.toString() + ", relocated " + tgtOrig.toString());
+        throw AnalysisError("Target segment " + tsegment + " at " + tgtAddr.toString() + " exceeds executable size " + sizeStr(tgt.size()));
+    verbose("Found data segment " + segment + "/" + tsegment + ": reference " + refAddr.toString() + ", relocated " + refOrig.toString() + ", target: " + tgtAddr.toString() + ", relocated " + tgtOrig.toString());
     Address refEnd = refAddr;
     // find segment past the segment we are looking at, if any
     for (Segment s : refMap.getSegments()) {

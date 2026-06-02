@@ -124,7 +124,7 @@ public:
     Analyzer(const Options &options, const Size maxData = 0) : options(options), offMap(maxData), comparedSize(0) {}
     void exploreCode(Executable &exe);
     bool compareCode(const Executable &ref, Executable &tgt);
-    bool compareData(const Executable &ref, const Executable &tgt, const std::string &segment);
+    bool compareData(const Executable &ref, const Executable &tgt, const std::string &segment, std::string tsegment);
     bool findDuplicates(const SignatureLibrary signatures, Executable &tgt);
     void findDataRefs(const Executable &exe);
     void seedQueue(Executable &exe);
