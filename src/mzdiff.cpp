@@ -21,7 +21,7 @@ void usage() {
            "usage: mzdiff [options] reference.exe[:entrypoint] target.exe[:entrypoint]\n"
            "Compares two DOS MZ executables instruction by instruction, accounting for differences in code layout\n"
            "Options:\n"
-           "--map path        map file of reference executable (recommended, otherwise functionality limited)\n"
+           "--map path[:tag]  map file of reference executable (recommended, otherwise functionality limited)\n"
            "--tmap path[:tag] map file of target executable (optional)\n"
            "--verbose         show more detailed information, including compared instructions\n"
            "--debug           show additional debug information\n"
@@ -42,10 +42,11 @@ void usage() {
            "--extdata         include variables marked as external in data comparison\n"
            "1) The optional entrypoint spec tells the tool at which offset to start comparing, and can be different\n"
            "   for both executables if their layout does not match. It can be any of the following:\n"
-           "    ':0x123' for a hex offset\n"
+           "    ':0x12345' for a hex offset\n"
            "    ':0x123-0x567' for a hex range\n"
            "    ':[ab12??ea]' for a hexa string to search for and use its offset. The string must consist of an even amount\n"
            "     of hexa characters, and '\?\?' will match any byte value.\n"
+           "    'routine_name' for a routine name present in the corresponding map (reference or target)"
            "  In case of a range being specified as the spec, the search will stop with a success on reaching the latter offset.\n"
            "  If the spec is not present, the tool will use the CS:IP address from the MZ header as the entrypoint.\n"
            "2) The target map file is used as a reference for variable location in data segment comparison mode,\n"
@@ -72,7 +73,7 @@ string mzInfo(const MzImage &mz) {
     return str.str();
 }
 
-Executable loadExe(const string &spec, const Word segment, Analyzer::Options &opt, const bool base) {
+Executable loadExe(const string &spec, const string &mapSpec, const Word segment, Analyzer::Options &opt, const bool base) {
     debug("Loading executable: " + spec);
     // TODO: support providing segment for entrypoint
     string path, entry;
@@ -98,15 +99,32 @@ Executable loadExe(const string &spec, const Word segment, Analyzer::Options &op
     debug(mzInfo(mz));
     Executable exe{mz};
 
+    // parse code map if provided
+    CodeMap &codeMap = exe.map();
+    if (!mapSpec.empty()) {
+        static const regex TMAP_RE{R"(([^:]+)(?::([a-zA-Z]+))?)"};
+        std::smatch match;
+        if (!regex_match(mapSpec, match, TMAP_RE)) fatal("Invalid executable map path: " + mapSpec);
+        const string path = match[1].str(), tag = match[2].str();
+        verbose("Loading executable map from " + path + ", tag: " + tag);
+        CodeMap::Type type = CodeMap::MAP_MZRE;
+        if (tag == "ida") type = CodeMap::MAP_IDALST;
+        else if (tag == "link") type = CodeMap::MAP_MSLINK;
+        codeMap = { path, segment, type };
+    }
+
+    // entrypoint override from envvar
+    const char *routineEnv = getenv("MZDIFF_ROUTINE");
+    if (routineEnv) entry = string(routineEnv);
     // use default entrypoint, done
     if (entry.empty()) return exe;
 
+    // otherwise handle entrypoint override from command line
     static const regex 
         OFFSET_RE{"([xa-fA-F0-9]+)(-([xa-fA-F0-9]+))?"},
-        HEXASTR_RE{"\\[([?a-fA-F0-9]+)\\]"};
-
+        HEXASTR_RE{"\\[([?a-fA-F0-9]+)\\]"},
+        ROUTINENAME_RE{"([_a-zA-Z0-9]+)"};
     smatch match;
-    // otherwise handle entrypoint override from command line
     if (regex_match(entry, match, OFFSET_RE)) {
         if (!match[1].str().empty()) {
             Address epAddr{match[1].str(), false}; // do not normalize address
@@ -122,9 +140,8 @@ Executable loadExe(const string &spec, const Word segment, Analyzer::Options &op
             debug("Stop address: "s + stopAddr.toString());
             opt.stopAddr = stopAddr;
         }
-    }
-    // use location of provided hexa string as entrypoint, if found in the executable
-    else if (regex_match(entry, match, HEXASTR_RE)) {
+    } else if (regex_match(entry, match, HEXASTR_RE)) {
+        // use location of provided hexa string as entrypoint, if found in the executable
         const string hexa = match[1].str();
         debug("Entrypoint search for location of '" + hexa + "'");
         auto pattern = hexaToNumeric(hexa);
@@ -133,8 +150,16 @@ Executable loadExe(const string &spec, const Word segment, Analyzer::Options &op
         debug("Pattern found at " + ep.toString());
         // do not relocate, search already performed on relocated addresses
         exe.setEntrypoint(ep, false);
+    } else if (regex_match(entry, match, ROUTINENAME_RE)) {
+        if (codeMap.empty()) fatal("Need valid code map for specifying entrypoint by name");
+        const string name = match[1].str();
+        const Routine r = codeMap.getRoutine(name);
+        if (!r.isValid()) fatal("Unable to find routine '" + name + "' in code map for " + path);
+        debug("Entrypoint from routine name " + name + ": " + r.entrypoint().toString());
+        exe.setEntrypoint(r.entrypoint(), false);
     }
     else fatal("Invalid exe spec string: "s + entry);
+
     return exe;
 }
 
@@ -147,7 +172,7 @@ int main(int argc, char *argv[]) {
     }
     // parse cmdline args
     Analyzer::Options opt;
-    string baseSpec, pathMap, compareSpec, dataSegment, tdataSegment, pathTmap;
+    string refSpec, refMapSpec, tgtSpec, dataSegment, tdataSegment, tgtMapSpec;
     int posarg = 0;
     for (int aidx = 1; aidx < argc; ++aidx) {
         string arg(argv[aidx]);
@@ -177,12 +202,12 @@ int main(int argc, char *argv[]) {
         }        
         else if (arg == "--map") {
             if (aidx + 1 >= argc) fatal("Option requires an argument: --map");
-            pathMap = argv[++aidx];
-            opt.mapPath = pathMap;
+            refMapSpec = argv[++aidx];
+            opt.mapPath = refMapSpec;
         }
         else if (arg == "--tmap") {
             if (aidx + 1 >= argc) fatal("Option requires an argument: --tmap");
-            pathTmap = argv[++aidx];
+            tgtMapSpec = argv[++aidx];
         }
         else if (arg == "--loose") opt.strict = false;
         else if (arg == "--variant") opt.variant = true;
@@ -198,47 +223,33 @@ int main(int argc, char *argv[]) {
         else if (arg.starts_with("--")) fatal("Unrecognized option: " + arg);
         else { // positional arguments
             switch (++posarg) {
-            case 1: baseSpec = arg; break;
-            case 2: compareSpec = arg; break;
+            case 1: refSpec = arg; break;
+            case 2: tgtSpec = arg; break;
             default: fatal("Unrecognized argument: " + arg);
             }
         }
     }
+
     // actually do stuff
     bool compareResult = false;
     try {
-        Executable exeBase = loadExe(baseSpec, loadSeg, opt, true);
-        Executable exeCompare = loadExe(compareSpec, loadSeg, opt, false);
-        CodeMap &map = exeBase.map();
-        if (!pathMap.empty()) {
-            map = { pathMap, loadSeg };
-        } 
+        Executable 
+            exeRef = loadExe(refSpec, refMapSpec, loadSeg, opt, true),
+            exeTgt = loadExe(tgtSpec, tgtMapSpec, loadSeg, opt, false);
         Analyzer a{opt};
         // code comparison
-        CodeMap &tgtMap = exeCompare.map();
-        if (!pathTmap.empty()) {
-            static const regex TMAP_RE{R"(([^:]+)(?::([a-zA-Z]+))?)"};
-            std::smatch match;
-            if (!regex_match(pathTmap, match, TMAP_RE)) fatal("Invalid target map path: " + pathTmap);
-            const string path = match[1].str(), tag = match[2].str();
-            verbose("Loading target map from " + path + ", tag: " + tag);
-            CodeMap::Type type = CodeMap::MAP_MZRE;
-            if (tag == "ida") type = CodeMap::MAP_IDALST;
-            else if (tag == "link") type = CodeMap::MAP_MSLINK;
-            tgtMap = { path, loadSeg, type };
-        }
         if (dataSegment.empty()) {
-            compareResult = a.compareCode(exeBase, exeCompare);
+            compareResult = a.compareCode(exeRef, exeTgt);
         }
         // data comparison
         else {
-            if (pathMap.empty()) fatal("Data comparison needs a map of the reference executable, use --map");
-            if (pathTmap.empty()) {
-                pathTmap = replaceExtension(pathMap, "tgt");
-                if (!checkFile(pathTmap).exists) fatal("No target map provided with --tmap for data comparison and guessed location " + pathTmap + " does not exist");
-                verbose("Using guessed target map location: " + pathTmap);
+            if (refMapSpec.empty()) fatal("Data comparison needs a map of the reference executable, use --map");
+            if (tgtMapSpec.empty()) {
+                tgtMapSpec = replaceExtension(refMapSpec, "tgt");
+                if (!checkFile(tgtMapSpec).exists) fatal("No target map provided with --tmap for data comparison and guessed location " + tgtMapSpec + " does not exist");
+                verbose("Using guessed target map location: " + tgtMapSpec);
             }
-            compareResult = a.compareData(exeBase, exeCompare, dataSegment, tdataSegment);
+            compareResult = a.compareData(exeRef, exeTgt, dataSegment, tdataSegment);
         }
     }
     catch (Error &e) {

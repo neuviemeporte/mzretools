@@ -409,6 +409,7 @@ TEST_F(CpuTest, Instruction) {
         0x26, 0x8e, 0x06, 0x2c, 0x00, // mov es, es:[0x2c]
         0xa2, 0xce, 0x00, // mov [0xce],al
         0x8f, 0x06, 0xfe, 0x00, // pop word [0xfe]
+        0x83, 0xec, 0x02,       // sub sp, byte 0x2
     };
     const std::string instructions[] = {
         "push es",
@@ -428,6 +429,7 @@ TEST_F(CpuTest, Instruction) {
         "mov es, es:[0x2c]",
         "mov [0xce], al",
         "pop word [0xfe]",
+        "sub sp, byte 0x2"
     };
     const std::string patterns[] = {
         "06", // push es
@@ -447,6 +449,7 @@ TEST_F(CpuTest, Instruction) {
         "268e06????", // mov es, es:[0x2c]
         "a2????", // mov [0xce],al
         "8f06????", // pop word [0xfe]
+        "83ec??", // sub sp, byte 0x2
     };
     const DWord signatures[] = {
         //PRF|CLASS  |OP1TYP|OP2TYP|
@@ -467,9 +470,10 @@ TEST_F(CpuTest, Instruction) {
         0b001'0010110'010100'100110, // es|mov|reg_es|mem_off16
         0b000'0010110'100110'000011, // none|mov|mem_off16|reg_al
         0b000'0000011'100110'000001, // none|pop|mem_off16|none
+        0b000'0001001'010001'110010, // none|sub|reg_sp|imm_8
     };
     const Size lengths[] = {
-        1, 1, 3, 2, 5, 5, 2, 2, 4, 3, 2, 2, 4, 2, 5, 3, 4
+        1, 1, 3, 2, 5, 5, 2, 2, 4, 3, 2, 2, 4, 2, 5, 3, 4, 3
     };
     const int icount = sizeof(lengths) / sizeof(Size);
 

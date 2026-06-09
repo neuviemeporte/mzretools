@@ -1051,7 +1051,7 @@ bool Analyzer::checkComparisonStop() {
             vector<Block> reachable(routine.reachable);
             sort(reachable.begin(), reachable.end());
             if (reachable.size() && reachable.back() != compareBlock) {
-                warn("Comparison block " + compareBlock.toString() + " is not the last reachable block of routine " + routine.name + ", but the next block could not be found. Routine definition in map likely corrupt!", OUT_BRIGHTRED);
+                warn("Comparison block " + compareBlock.toString() + " is not the last reachable block of routine " + routine.name + ", but the next block could not be found at or after " + refCsip.toString() + ". Routine definition in map likely corrupt!", OUT_BRIGHTRED);
             }
             verbose("Completed comparison of routine " + routine.name + ", no more reachable blocks");
         }
@@ -1396,7 +1396,7 @@ Analyzer::ComparisonResult Analyzer::instructionsMatch(const Executable &ref, co
         // memory operand differences were already handled
         if (operandIsImmediate(op->type) && !options.strict) {
             debug("Ignoring immediate value difference in loose mode");
-            // arbitrary heuristic to highlight small immediate value differences in red, these are usually suspicious
+            // arbitrary heuristic to highlight small immediate value differences, these are usually suspicious
             if (op->dwordValue() <= 0xff && !refInstr.isBranch()) return CMP_DIFFTGT;
             return CMP_DIFFVAL;
         }

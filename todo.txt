@@ -1,4 +1,5 @@
-- disable color output based on isatty()/NO_COLOR/cmdline arg
+- throw error on comparison block not the last reachable in mzdiff instead of warning
+- introduce size to variables, find offsets within that size for symbol display
 - mzdiff: cache log lines, output only mismatched routine
 - detect routines split in two by segment opening, e.g. egame copyJoystickData seg002:0cbe-0cd5, keep routine in old segment?
 - implement segment deduction from es, les, lds

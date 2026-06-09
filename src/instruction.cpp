@@ -643,6 +643,9 @@ std::string Instruction::toString(const bool extended) const {
         // segment override prefix if present
         if (prefix > PRF_NONE && prefix < PRF_CHAIN_REPNZ && operandIsMem(op2.type))
             str << PRF_NAME[prefix];
+        // immediate size prefix if not implicit
+        if (operandIsReg(op1.type) && op1.size == OPRSZ_WORD && operandIsImmediate(op2.type) && op2.size == OPRSZ_BYTE)
+            str << "byte ";
         str << op2.toString();
     }
 
