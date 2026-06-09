@@ -42,11 +42,12 @@ void usage() {
            "--extdata         include variables marked as external in data comparison\n"
            "1) The optional entrypoint spec tells the tool at which offset to start comparing, and can be different\n"
            "   for both executables if their layout does not match. It can be any of the following:\n"
-           "    ':0x12345' for a hex offset\n"
-           "    ':0x123-0x567' for a hex range\n"
-           "    ':[ab12??ea]' for a hexa string to search for and use its offset. The string must consist of an even amount\n"
-           "     of hexa characters, and '\?\?' will match any byte value.\n"
-           "    'routine_name' for a routine name present in the corresponding map (reference or target)"
+           "    ':0x12345'     : hex offset\n"
+           "    ':0x123-0x567' : hex range\n"
+           "    ':[ab12??ea]'  : hexa string to search for and use its offset. The string must consist of an even amount\n"
+           "         of hexa characters, and '\?\?' will match any byte value.\n"
+           "    'routine_name' : a routine name present in the corresponding map (reference or target). The name can also\n"
+           "         be selected (for both executables at the same time) through the MZDIFF_ROUTINE environmental variable."
            "  In case of a range being specified as the spec, the search will stop with a success on reaching the latter offset.\n"
            "  If the spec is not present, the tool will use the CS:IP address from the MZ header as the entrypoint.\n"
            "2) The target map file is used as a reference for variable location in data segment comparison mode,\n"
@@ -115,7 +116,7 @@ Executable loadExe(const string &spec, const string &mapSpec, const Word segment
 
     // entrypoint override from envvar
     const char *routineEnv = getenv("MZDIFF_ROUTINE");
-    if (routineEnv) entry = string(routineEnv);
+    if (routineEnv && !codeMap.empty()) entry = string(routineEnv);
     // use default entrypoint, done
     if (entry.empty()) return exe;
 
