@@ -5,6 +5,7 @@
 #include "dos/scanq.h"
 
 #include <fstream>
+#include <algorithm>
 
 using namespace std;
 
@@ -120,6 +121,7 @@ CodeMap::CodeMap(const std::string &path, const Word loadSegment, const Type typ
     default:
         loadFromMapFile(path, loadSegment);
     }
+    checkOverlap();
     debug("Done, found "s + to_string(routines.size()) + " routines, " + to_string(vars.size()) + " variables");
     // create a bogus scan queue and populate the visited map with markers where the routines are 
     // for building the list of unclaimed blocks between them - these are lost when the map is saved to disk
@@ -423,21 +425,20 @@ void CodeMap::save(const std::string &path, const Word reloc, const bool overwri
 
 // TODO: implement a print mode of all blocks (reachable, unreachable, unclaimed) printed linearly, not grouped under routines
 CodeMap::Summary CodeMap::getSummary(const bool verbose, const bool brief, const bool format) const {
-    ostringstream str;
     Summary sum;
     if (empty()) {
-        str << "--- Empty code map" << endl;
-        sum.text = str.str();
+        sum.text = "--- Empty code map\n";
         return sum;
     }
 
+    ostringstream str;
     vector<Routine> printRoutines = routines;
     // create fake "routines" representing unclaimed blocks for the purpose of printing
     Size unclaimedIdx = 0;
     for (const Block &b : unclaimed) {
         auto r = Routine{"unclaimed_"s + to_string(++unclaimedIdx), b};
         r.unclaimed = true;
-        printRoutines.emplace_back(r);
+        printRoutines.push_back(std::move(r));
     }
     std::sort(printRoutines.begin(), printRoutines.end());
     Size mapCount = routineCount();
@@ -454,12 +455,12 @@ CodeMap::Summary CodeMap::getSummary(const bool verbose, const bool brief, const
             sum.codeSize += r.size();
             // TODO: f15 does not have meaningful routines in the data segment other than the jump trampolines, 
             // but what about other projects?
-            if (r.ignore) { sum.ignoredSize += r.size(); sum.ignoreCount++; }
-            if (r.complete) { sum.completedSize += r.size(); sum.completeCount++; }
+            if (r.ignore)    { sum.ignoredSize   += r.size(); sum.ignoreCount++; }
+            if (r.complete)  { sum.completedSize += r.size(); sum.completeCount++; }
             if (r.unclaimed) { sum.unclaimedSize += r.size(); sum.unclaimedCount++; }
-            if (r.external) { sum.externalSize += r.size(); sum.externalCount++; }
-            if (r.detached) { sum.detachedSize += r.size(); sum.detachedCount++; }
-            if (r.assembly) { sum.assemblySize += r.size(); sum.assemblyCount++; }
+            if (r.external)  { sum.externalSize  += r.size(); sum.externalCount++; }
+            if (r.detached)  { sum.detachedSize  += r.size(); sum.detachedCount++; }
+            if (r.assembly)  { sum.assemblySize  += r.size(); sum.assemblyCount++; }
         }
         else if (!r.unclaimed) {
             sum.dataCodeSize += r.size();
@@ -485,18 +486,34 @@ CodeMap::Summary CodeMap::getSummary(const bool verbose, const bool brief, const
         str << varString(v, 0) << endl;
     }
 
+    auto overflowCheck = [](const Size arg1, const string &name1, const Size arg2, const string &name2) {
+        if (arg1 > arg2) throw LogicError(name1 + " " + sizeStr(arg1) + " exceeds " + name2 + " " + sizeStr(arg2));
+    };
+
     // print statistics
     sum.dataSize = mapSize - sum.codeSize;
-    sum.otherSize = sum.ignoredSize - sum.externalSize;
-    sum.otherCount = sum.ignoreCount - sum.externalCount;
-    sum.ignoredReachableSize = sum.otherSize - sum.detachedSize;
-    sum.ignoredReachableCount = sum.otherCount - sum.detachedCount;
-    sum.uncompleteSize = sum.codeSize - (sum.completedSize + sum.ignoredSize + sum.assemblySize + sum.unclaimedSize);
-    sum.uncompleteCount = mapCount - (sum.completeCount + sum.ignoreCount + sum.dataCodeCount + sum.assemblyCount);
-    sum.unaccountedSize = sum.codeSize - (sum.completedSize + sum.uncompleteSize + sum.assemblySize + sum.externalSize 
-        + sum.ignoredReachableSize + sum.detachedSize + sum.unclaimedSize);
-    sum.unaccountedCount = mapCount - (sum.completeCount + sum.uncompleteCount + sum.assemblyCount + sum.externalCount 
-        + sum.ignoredReachableCount + sum.detachedCount + sum.dataCodeCount);
+    overflowCheck(sum.externalSize, "External code size", sum.ignoredSize, "total ignored code size");
+    sum.otherIgnoredSize = sum.ignoredSize - sum.externalSize;
+    overflowCheck(sum.externalCount, "External routine count", sum.ignoreCount, "total ignored count");
+    sum.otherIgnoredCount = sum.ignoreCount - sum.externalCount;
+    overflowCheck(sum.detachedSize, "Detached code size", sum.otherIgnoredSize, "other ignored code size ");
+    sum.ignoredReachableSize = sum.otherIgnoredSize - sum.detachedSize;
+    overflowCheck(sum.detachedCount, "Detached block  count", sum.otherIgnoredCount, "other ignored count");
+    sum.ignoredReachableCount = sum.otherIgnoredCount - sum.detachedCount;
+    const Size processedSize = sum.completedSize + sum.ignoredSize + sum.assemblySize + sum.unclaimedSize;
+    overflowCheck(processedSize, "Processed size", sum.codeSize, "total code size");
+    sum.uncompleteSize = sum.codeSize - processedSize;
+    const Size processedCount = sum.completeCount + sum.ignoreCount + sum.dataCodeCount + sum.assemblyCount;
+    overflowCheck(processedCount, "Processed count ", mapCount, "total map count");
+    sum.uncompleteCount = mapCount - processedCount;
+    const Size seenSize = sum.completedSize + sum.uncompleteSize + sum.assemblySize + sum.externalSize
+        + sum.ignoredReachableSize + sum.detachedSize + sum.unclaimedSize;
+    overflowCheck(seenSize, "Total seen size", sum.codeSize, "total code size");
+    sum.unaccountedSize = sum.codeSize - seenSize;
+    const Size seenCount = sum.completeCount + sum.uncompleteCount + sum.assemblyCount + sum.externalCount
+        + sum.ignoredReachableCount + sum.detachedCount + sum.dataCodeCount;
+    overflowCheck(seenCount, "Total seen count", mapCount, "total map count");
+    sum.unaccountedCount = mapCount - seenCount;
     str << "--- Summary:" << endl
         << "Code size: " << sizeStr(sum.codeSize) << " (" << ratioStr(sum.codeSize, mapSize) << " of load module)" << endl
         << "  Completed: " << sizeStr(sum.completedSize) << " (" << sum.completeCount << " routines, " << ratioStr(sum.completedSize, sum.codeSize) << " of code) - 1:1 rewritten to high level language" << endl
@@ -504,9 +521,9 @@ CodeMap::Summary CodeMap::getSummary(const bool verbose, const bool brief, const
         << "  Assembly: " << sizeStr(sum.assemblySize) << " (" << sum.assemblyCount << " routines, " << ratioStr(sum.assemblySize, sum.codeSize) << " of code) - impossible to rewrite 1:1" << endl
         << "  Ignored: " << sizeStr(sum.ignoredSize) << " (" << sum.ignoreCount << " routines, " << ratioStr(sum.ignoredSize, sum.codeSize) << " of code) - excluded from comparison" << endl
         << "    External: " << sizeStr(sum.externalSize) << " (" << sum.externalCount << " routines, " << ratioStr(sum.externalSize, sum.ignoredSize) << " of ignored) - e.g. libc library code" << endl
-        << "    Other: " << sizeStr(sum.otherSize) << " (" << sum.otherCount << " routines, " << ratioStr(sum.otherSize, sum.ignoredSize) << " of ignored) - code ignored for other reasons" << endl
-        << "      Reachable: " << sizeStr(sum.ignoredReachableSize) << " (" << sum.ignoredReachableCount << " routines, " << ratioStr(sum.ignoredReachableSize, sum.otherSize) << " of other) - code which has callers" << endl        
-        << "      Unreachable: " << sizeStr(sum.detachedSize) << " (" << sum.detachedCount << " routines, " << ratioStr(sum.detachedSize, sum.otherSize) << " of other) - code which appears unreachable" << endl
+        << "    Other: " << sizeStr(sum.otherIgnoredSize) << " (" << sum.otherIgnoredCount << " routines, " << ratioStr(sum.otherIgnoredSize, sum.ignoredSize) << " of ignored) - code ignored for other reasons" << endl
+        << "      Reachable: " << sizeStr(sum.ignoredReachableSize) << " (" << sum.ignoredReachableCount << " routines, " << ratioStr(sum.ignoredReachableSize, sum.otherIgnoredSize) << " of other) - code which has callers" << endl
+        << "      Unreachable: " << sizeStr(sum.detachedSize) << " (" << sum.detachedCount << " routines, " << ratioStr(sum.detachedSize, sum.otherIgnoredSize) << " of other) - code which appears unreachable" << endl
         << "  Unclaimed: " << sizeStr(sum.unclaimedSize) << " (" << sum.unclaimedCount << " blocks, " << ratioStr(sum.unclaimedSize, sum.codeSize) << " of code) - holes between routines not covered by map" << endl
         << "  Unaccounted: " << sizeStr(sum.unaccountedSize) << " (" << sum.unaccountedCount << " routines) - consistency check, should be zero" << endl
         << "Data size: " << sizeStr(sum.dataSize) << " (" <<ratioStr(sum.dataSize, mapSize) << " of load module)" << endl
@@ -646,7 +663,7 @@ void CodeMap::loadFromMapFile(const std::string &path, const Word reloc) {
             default: // reachable and unreachable blocks follow
                 if (token.front() == 'R') bt = BLOCK_REACHABLE;
                 else if (token.front() == 'U') bt = BLOCK_UNREACHABLE;
-                // TODO: prevent illegal annotation combinations (e.g. external detached) in mapfile                
+                // TODO: prevent illegal annotation combinations (e.g. external detached) in mapfile
                 else if (token == "ignore") r.ignore = true;
                 else if (token == "complete") r.complete = true;
                 else if (token == "external") { r.ignore = true; r.external = true; }
@@ -663,7 +680,7 @@ void CodeMap::loadFromMapFile(const std::string &path, const Word reloc) {
             if (!regex_match(token, match, RANGE_RE)) throw ParseError("Line " + to_string(lineno) + ": invalid routine block '" + token + "'");
             Block block{Address{rseg.address, static_cast<Word>(stoi(match.str(1), nullptr, 16))}, 
                         Address{rseg.address, static_cast<Word>(stoi(match.str(2), nullptr, 16))}};
-            // check block for collisions agains rest of routines already in the map as well as the currently built routine
+            // check block for collisions against rest of routines already in the map as well as the currently built routine
             Routine colideRoutine = colidesBlock(block);
             if (!colideRoutine.isValid() && r.colides(block, false)) 
                 colideRoutine = r;
@@ -686,6 +703,8 @@ void CodeMap::loadFromMapFile(const std::string &path, const Word reloc) {
         } // iterate over tokens in a routine definition
         if (r.extents.isValid()) {
             debug("routine: "s + r.dump());
+            if (r.external && r.detached) throw LogicError("Routine " + r.name + " has invalid tags: external and detached");
+            if (r.complete + r.ignore + r.assembly > 1) throw LogicError("Routine " + r.name + " has invalid tags: only one of complete, ignore/detached and assembly allowed at a time");
             r.idx = routines.size() + 1;
             routines.push_back(r);
         }
@@ -925,4 +944,33 @@ void CodeMap::loadFromIdaFile(const std::string &path, const Word reloc) {
         globalPos += offsetVal - prevOffset;
         prevOffset = offsetVal;
     } // iterate over listing lines
+}
+
+// check for routine block overlap
+void CodeMap::checkOverlap() const {
+    verbose("Checking code map of size " + sizeStr(mapSize) + " for block overlap");
+    // vector representing address space, paint it with the indices of each routine
+    vector<RoutineIdx> routineMap(mapSize, NULL_ROUTINE);
+    for (const Routine &r : routines) {
+        // make one vector of reachable and unreachable blocks of the current routine
+        vector<Block> blocks = r.reachable;
+        blocks.insert(blocks.end(), r.unreachable.begin(), r.unreachable.end());
+        for (Block &b: blocks) {
+            b.rebase(loadSegment);
+            const Size startIdx = b.begin.toLinear(), endIdx = startIdx + b.size();
+            if (endIdx > routineMap.size())
+                throw LogicError("Block " + b.toString(false, true, true) + " of routine " + r.name + " overflows map size " + sizeStr(routineMap.size()));
+            auto startIt = routineMap.begin() + startIdx, endIt = routineMap.begin() + endIdx;
+            // make sure the range of the current block isn't already painted
+            auto foundIt = std::find_if(startIt, endIt, [](const RoutineIdx &ri){ 
+                return ri != NULL_ROUTINE;
+            });
+            if (foundIt != endIt) {
+                const Routine collide = getRoutine(*foundIt);
+                throw LogicError("Block " + b.toString() + " of routine " + r.name + " collides with routine " + collide.name);
+            }
+            // paint the range and proceed to the next block
+            std::fill(startIt, endIt, r.idx);
+        }
+    }
 }

@@ -40,7 +40,7 @@ void output(const std::string &msg, const LogModule mod, const LogPriority pri, 
     if (color != OUT_DEFAULT) str << output_color(color);
     str << msg;
     if (color != OUT_DEFAULT) str << output_color(OUT_DEFAULT);
-    if (!suppressNewline) str << endl;
+    if (!suppressNewline) str << "\n";
     if (hide) msgBuffer.push_back(ostr.str());
 }
 
