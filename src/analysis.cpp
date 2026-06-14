@@ -366,7 +366,7 @@ static string compareStatus(const Instruction &i1, const Instruction &i2, const 
 
 // for executables whose layout is known in advance (but we still want to determine the routine boundaries), like when we built it ourselves
 // and have the linker map, seed the scan queue for code exploration with all known routine entrypoint locations
-void Analyzer::seedQueue(Executable &exe) {
+void Analyzer::seedQueue(Executable &exe, const bool seedStart) {
     const CodeMap &map = exe.map();
     debug("Seeding scan queue from code map");
     CpuState initRegs{exe.entrypoint(), exe.stackAddr()};
@@ -384,11 +384,12 @@ void Analyzer::seedQueue(Executable &exe) {
     debug("Seeding with " + to_string(map.routineCount()) + " entrypoints");
     for (Size ri = 0; ri < map.routineCount(); ++ri) {
         const Routine r = map.getRoutine(ri);
+        if (r.ignore || r.external || (r.assembly && !options.checkAsm)) continue;
         debug("Attempting to seed routine: " + r.toString());
         scanQueue.saveCall(r.entrypoint(), initRegs, false, r.name);
     }
     // try to add the executable entrypoint explicitly in case it was missed
-    scanQueue.saveCall(exe.entrypoint(), initRegs, true, "start");
+    if (seedStart) scanQueue.saveCall(exe.entrypoint(), initRegs, true, "start");
     // seed vars
     debug("Seeding with " + to_string(map.variableCount()) + " variables");
     for (Size vi = 0; vi < map.variableCount(); ++vi) {
@@ -427,7 +428,8 @@ void Analyzer::exploreCode(Executable &exe) {
     
     debug("initial register values:\n"s + initRegs.toString());
     // initialize queue for BFS search only if it's not been seeded already
-    if (scanQueue.empty()) scanQueue = ScanQueue{exe.loadAddr(), exe.size(), Destination(exe.entrypoint(), 1, true, initRegs)};
+    if (scanQueue.empty())
+        scanQueue = ScanQueue{exe.loadAddr(), exe.size(), Destination(exe.entrypoint(), 1, true, initRegs)};
     info("Analyzing code within extents: "s + exe.extents());
     Size locations = 0;
  
@@ -660,7 +662,9 @@ bool Analyzer::compareCode(const Executable &ref, Executable &tgt) {
         debug("Found entrypoint routine: " + eprName);
     }
     offMap = OffsetMap{refMap.segmentCount(Segment::SEG_DATA)};
-    scanQueue = ScanQueue{ref.loadAddr(), ref.size(), Destination(ref.entrypoint(), VISITED_ID, true, {}), eprName};
+    // don't initialize if it was seeded already
+    if (scanQueue.empty())
+        scanQueue = ScanQueue{ref.loadAddr(), ref.size(), Destination(ref.entrypoint(), VISITED_ID, true, {}), eprName};
     tgtQueue = ScanQueue{tgt.loadAddr(), tgt.size(), Destination(tgt.entrypoint(), VISITED_ID, true, {}), eprName};
     // map of equivalent addresses in the compared binaries, seed with the two entrypoints
     offMap.setCode(ref.entrypoint(), tgt.entrypoint());
@@ -741,7 +745,9 @@ bool Analyzer::compareCode(const Executable &ref, Executable &tgt) {
                 }
             }
             tgt.storeSegment({"", Segment::SEG_CODE, tgtCsip.segment});
-            verbose("--- Now @"s + refCsip.toString() + ", routine " + routine.dump(false) + ", block " + compareBlock.toString(true) +  ", target @" + tgtCsip.toString());
+            // forget hidden output on entering new comparison location
+            clearOutputBuffer();
+            verbose("--- Comparing @" + refCsip.toString() + ", routine " + routine.dump(false) + ", block " + compareBlock.toString(true) +  ", target @" + tgtCsip.toString());
         }
         // TODO: consider dropping this "feature"
         else { // comparing without a map
@@ -758,24 +764,28 @@ bool Analyzer::compareCode(const Executable &ref, Executable &tgt) {
         if (scanQueue.empty()) checkMissedRoutines(refMap);
     } // iterate over comparison location queue
 
+#if DEBUG
     tgtQueue.dumpVisited("tgt.visited");
-    // save target map file regardless of comparison result (can be incomplete)
-    if (options.tgtMapPath.empty()) options.tgtMapPath = replaceExtension(options.mapPath, "tgt");
-    if (!options.tgtMapPath.empty()) {
-        debug("Constructing target map from target queue contents");
-        // TODO: generate variables for target
-        CodeMap outMap{tgtQueue, tgt.getSegments(), {}, tgt.getLoadSegment(), tgt.size()};
-        //tgtMap.setSegments(tgt.getSegments());
-        //tgtMap.order();
-        info("Saving output map to " + options.tgtMapPath);
-        outMap.save(options.tgtMapPath, tgt.loadAddr().segment, true);
+#endif
+    // build inferred target map (if not already present) regardless of comparison result (can be incomplete)
+    if (tgt.map().empty()) {
+        if (options.tgtMapPath.empty()) options.tgtMapPath = replaceExtension(options.mapPath, "tgt");
+        if (!options.tgtMapPath.empty()) {
+            debug("Constructing target map from target queue contents");
+            // TODO: generate variables for target
+            CodeMap outMap{tgtQueue, tgt.getSegments(), {}, tgt.getLoadSegment(), tgt.size()};
+            //tgtMap.setSegments(tgt.getSegments());
+            //tgtMap.order();
+            info("Saving output map to " + options.tgtMapPath);
+            outMap.save(options.tgtMapPath, tgt.loadAddr().segment, true);
+        }
     }
 
     if (success) {
-        verbose(output_color(OUT_GREEN) + "Comparison result: match" + output_color(OUT_DEFAULT));
+        priority("Comparison result: match", OUT_GREEN);
         comparisonSummary(ref, true);
     }
-    else verbose(output_color(OUT_RED) + "Comparison result: mismatch" + output_color(OUT_DEFAULT));
+    else priority("Comparison result: mismatch", OUT_RED);
     return success;
 }
 
@@ -971,9 +981,16 @@ bool Analyzer::compareInstructions(const Executable &ref, const Executable &tgt,
             if (refSkipCount || tgtSkipCount) {
                 skipContext(ref, tgt);
             }
+            // show hidden output for current routine if present and switch to verbose output unless in silent mode (unittest)
+            const auto olvl = getOutputLevel();
+            if (olvl != LOG_SILENT) {
+                flushOutputBuffer();
+                setOutputLevel(LOG_VERBOSE);
+            }
             verbose(output_color(OUT_RED) + compareStatus(refInstr, tgtInstr, true) + output_color(OUT_DEFAULT) + symbolStr);
             error("Instruction mismatch in routine " + routine.name + " at " + compareStatus(refInstr, tgtInstr, false));
             diffContext(ref, tgt);
+            setOutputLevel(olvl);
             return false;
         }
         break;
@@ -1054,6 +1071,8 @@ bool Analyzer::checkComparisonStop() {
                 warn("Comparison block " + compareBlock.toString() + " is not the last reachable block of routine " + routine.name + ", but the next block could not be found at or after " + refCsip.toString() + ". Routine definition in map likely corrupt!", OUT_BRIGHTRED);
             }
             verbose("Completed comparison of routine " + routine.name + ", no more reachable blocks");
+            // forget hidden output up to this point
+            clearOutputBuffer();
         }
         return true;
     }
@@ -1528,8 +1547,8 @@ void Analyzer::comparisonSummary(const Executable &ref, const bool showMissed) {
         }
     }
     msg << endl 
-        << "(*) Any routines called only by ignored routines have not been seen and will lower the practical score," << endl 
-        << "    but theoretically if we stepped into ignored routines, we would have seen and ignored any that were excluded.";
+        << "(*) Routines called only by ignored routines have not been visited and will lower the practical score," << endl 
+        << "    but theoretically if we stepped into ignored routines, we would have seen and ignored everything they call.";
     verbose(msg.str());
 }
 

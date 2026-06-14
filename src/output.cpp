@@ -2,14 +2,17 @@
 
 #include <iostream>
 #include <map>
+#include <vector>
 #include <cassert>
 #include <cstdlib>
 #include <unistd.h>
+#include <sstream>
 
 
 using namespace std;
 
 static LogPriority globalPriority = LOG_INFO;
+static vector<string> msgBuffer;
 
 struct ColorConfig {
     bool shouldColor;
@@ -30,11 +33,15 @@ static map<LogModule, bool> moduleVisibility = {
 };
 
 void output(const std::string &msg, const LogModule mod, const LogPriority pri, const Color color, const bool suppressNewline) {
-    if (pri < globalPriority || !moduleVisibility[mod]) return;
-    if (color != OUT_DEFAULT) cout << output_color(color);
-    cout << msg;
-    if (color != OUT_DEFAULT) cout << output_color(OUT_DEFAULT);
-    if (!suppressNewline) cout << endl;
+    if (pri == LOG_DEBUG && globalPriority > LOG_DEBUG) return;
+    ostringstream ostr;
+    const bool hide = (pri < globalPriority || !moduleVisibility[mod]);
+    ostream& str = hide ? ostr : cout;
+    if (color != OUT_DEFAULT) str << output_color(color);
+    str << msg;
+    if (color != OUT_DEFAULT) str << output_color(OUT_DEFAULT);
+    if (!suppressNewline) str << endl;
+    if (hide) msgBuffer.push_back(ostr.str());
 }
 
 LogPriority getOutputLevel() {
@@ -87,4 +94,13 @@ string output_color(const Color c) {
         break;
     }
     return ret;
+}
+
+void clearOutputBuffer() {
+    msgBuffer.clear();
+}
+
+void flushOutputBuffer() {
+    for (const auto &m : msgBuffer) cout << m;
+    clearOutputBuffer();
 }

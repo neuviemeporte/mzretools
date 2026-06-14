@@ -127,7 +127,7 @@ public:
     bool compareData(const Executable &ref, const Executable &tgt, const std::string &segment, std::string tsegment);
     bool findDuplicates(const SignatureLibrary signatures, Executable &tgt);
     void findDataRefs(const Executable &exe);
-    void seedQueue(Executable &exe);
+    void seedQueue(Executable &exe, const bool seedStart = true);
 
 private:
     bool skipAllowed(const Instruction &refInstr, Instruction tgtInstr);
