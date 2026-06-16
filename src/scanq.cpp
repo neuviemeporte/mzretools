@@ -134,14 +134,16 @@ vector<Block> ScanQueue::getUnvisited() const {
     vector<Block> ret;
     Offset off = 0;
     Block curBlock;
+    debug("Creating unvisited, size: " + sizeStr(visited.size()));
     // iterate over contents of visited map
     for (const RoutineIdx idx : visited) {
-        if (idx == NULL_ROUTINE && !curBlock.begin.isValid()) { 
+        if (idx == NULL_ROUTINE && !curBlock.begin.isValid()) {
             // switching to unvisited, open new block
             curBlock.begin = Address{off};
         }
-        else if (idx != NULL_ROUTINE && curBlock.begin.isValid()) { 
-            // switching to visited, close current block if open
+        else if ((idx != NULL_ROUTINE || off + 1 == visited.size()) && curBlock.begin.isValid()) {
+            // switching to visited or end reached, close current block if open
+            if (off + 1 == visited.size()) off++;
             curBlock.end = Address{off - 1};
             curBlock.relocate(origin.segment);
             ret.push_back(curBlock);

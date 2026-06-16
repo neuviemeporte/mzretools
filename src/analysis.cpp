@@ -368,7 +368,7 @@ static string compareStatus(const Instruction &i1, const Instruction &i2, const 
 // and have the linker map, seed the scan queue for code exploration with all known routine entrypoint locations
 void Analyzer::seedQueue(Executable &exe, const bool seedStart) {
     const CodeMap &map = exe.map();
-    debug("Seeding scan queue from code map");
+    debug("Seeding scan queue from code map, load addr " + exe.loadAddr().toString() + ", size: " + sizeStr(exe.size()));
     CpuState initRegs{exe.entrypoint(), exe.stackAddr()};
     scanQueue = ScanQueue{exe.loadAddr(), exe.size(), {}};
     // seed segments
