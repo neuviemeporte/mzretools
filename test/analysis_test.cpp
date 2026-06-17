@@ -218,6 +218,19 @@ TEST_F(AnalysisTest, CodeMapFromLinkMap) {
 TEST_F(AnalysisTest, BigCodeMap) {
     CodeMap rm{"../bin/egame.map", 0x1000};
     ASSERT_EQ(rm.routineCount(), 400);
+    CodeMap::Summary s = rm.getSummary();
+    ASSERT_EQ(s.codeSize, 0x218fc);
+    ASSERT_EQ(s.uncompleteSize, 0x1180d);
+    ASSERT_EQ(s.uncompleteCount, 341);
+    ASSERT_EQ(s.assemblySize, 0);
+    ASSERT_EQ(s.assemblyCount, 0);
+    ASSERT_EQ(s.ignoredSize, 0);
+    ASSERT_EQ(s.ignoreCount, 0);
+    ASSERT_EQ(s.unclaimedSize, 0x100ef);
+    ASSERT_EQ(s.unclaimedCount, 20);
+    ASSERT_EQ(s.dataSize, 0x7674);
+    ASSERT_EQ(s.dataCodeSize, 0x127);
+    ASSERT_EQ(s.dataCodeCount, 59);
 }
 
 TEST_F(AnalysisTest, FindRoutines) {

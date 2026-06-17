@@ -240,6 +240,9 @@ int main(int argc, char *argv[]) {
         Analyzer a{opt};
         // code comparison
         if (dataSegment.empty()) {
+            // if there is a target map, then seed the search queue with reference map locations,
+            // hopefully the names will match at runtime and these will be possible to line up
+            if (!exeTgt.map().empty()) a.seedQueue(exeRef, false);
             compareResult = a.compareCode(exeRef, exeTgt);
         }
         // data comparison

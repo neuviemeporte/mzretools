@@ -37,6 +37,7 @@ public:
     std::string path() const { return origPath; }
     bool contains(const Address &addr) const { return codeExtents.contains(addr); }
     Segment getSegment(const Word addr) const;
+    Segment getSegment(const Address addr) const;
     bool storeSegment(const Segment &seg);
     void clearSegments() { segments.clear(); }
     const Memory& getCode() const { return code; }

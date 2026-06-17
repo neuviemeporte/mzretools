@@ -44,15 +44,16 @@ Address::Address(const Address &other, const SWord displacement) : segment(other
     offset += displacement;
 }
 
+void Address::advanceGuard(Word arg) {
+    if (offset + arg > OFFSET_MAX)
+        throw AddressError("Address advance overflow at " + toString() + " + " + hexVal(arg));
+    offset += arg;
+}
+
 void Address::set(const Offset linear) {
     if (linear >= MEM_TOTAL) throw MemoryError("Linear address too big while converting to segmented representation: "s + hexVal(linear));
     segment = static_cast<Word>((linear & SEGMENT_MASK) >> SEGMENT_SHIFT);
     offset = static_cast<Word>(linear & OFFSET_MASK);
-}
-
-Address Address::operator+(const DWord arg) const {
-    Offset linear = toLinear();
-    return Address{ linear + arg };
 }
 
 std::string Address::toString(const bool brief) const {

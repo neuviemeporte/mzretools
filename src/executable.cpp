@@ -61,6 +61,19 @@ Segment Executable::getSegment(const Word addr) const {
     return ret;
 }
 
+// Find segment which contains the address, if it exists
+Segment Executable::getSegment(const Address addr) const {
+    vector<Segment> segs(segments);
+    std::sort(segs.begin(), segs.end());
+    const Offset linear = addr.toLinear();
+    Segment ret;
+    for (const Segment &s : segs) {
+        const Offset segstart = SEG_TO_OFFSET(s.address);
+        if (linear >= segstart && linear - segstart < OFFSET_MAX) ret = s;
+    }
+    return ret;
+}
+
 bool Executable::storeSegment(const Segment &seg) {
     const Word addr = seg.address;
     const Segment::Type type = seg.type;

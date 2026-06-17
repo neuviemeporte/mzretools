@@ -40,6 +40,8 @@ void setOutputLevel(const LogPriority minPriority);
 void setModuleVisibility(const LogModule mod, const bool visible);
 bool moduleVisible(const LogModule mod);
 std::string output_color(const Color c);
+void clearOutputBuffer();
+void flushOutputBuffer();
 
 // create output functions for a system module
 #define OUTPUT_CONF(module) \
@@ -54,6 +56,9 @@ static void info(const std::string &msg, const Color color = OUT_DEFAULT) {\
 }\
 static void error(const std::string &msg, const Color color = OUT_DEFAULT) {\
     output("ERROR: "s + msg, module, LOG_ERROR, color);\
+}\
+static void priority(const std::string &msg, const Color color = OUT_DEFAULT) {\
+    output(msg, module, LOG_ERROR, color);\
 }\
 static void warn(const std::string &msg, const Color color = OUT_DEFAULT) {\
     output("WARNING: "s + msg, module, LOG_WARN, color);\

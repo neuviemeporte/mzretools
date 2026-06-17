@@ -28,11 +28,11 @@ public:
         std::string text;
         Size codeSize, ignoredSize, completedSize, unclaimedSize, externalSize, dataCodeSize, detachedSize, assemblySize;
         Size ignoreCount, completeCount, unclaimedCount, externalCount, dataCodeCount, detachedCount, assemblyCount;
-        Size dataSize, otherSize, otherCount, ignoredReachableSize, ignoredReachableCount, uncompleteSize, uncompleteCount, unaccountedSize, unaccountedCount;
+        Size dataSize, otherIgnoredSize, otherIgnoredCount, ignoredReachableSize, ignoredReachableCount, uncompleteSize, uncompleteCount, unaccountedSize, unaccountedCount;
         Summary() {
             codeSize = ignoredSize = completedSize = unclaimedSize = externalSize = dataCodeSize = detachedSize = assemblySize = 0;
             ignoreCount = completeCount = unclaimedCount = externalCount = dataCodeCount = detachedCount = assemblyCount = 0;
-            dataSize = otherSize = otherCount = ignoredReachableSize = ignoredReachableCount = uncompleteSize = uncompleteCount = unaccountedSize = unaccountedCount = 0;
+            dataSize = otherIgnoredSize = otherIgnoredCount = ignoredReachableSize = ignoredReachableCount = uncompleteSize = uncompleteCount = unaccountedSize = unaccountedCount = 0;
         }
     };
     enum Type {
@@ -102,6 +102,7 @@ private:
     std::string routineString(const Routine &r, const Word reloc) const;
     std::string varString(const Variable &v, const Word reloc) const;
     void blocksFromQueue(const ScanQueue &sq, const bool unclaimedOnly);
+    void checkOverlap() const;
 };
 
 #endif // CODEMAP_H
