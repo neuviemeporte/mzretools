@@ -545,7 +545,7 @@ void Analyzer::exploreCode(Executable &exe) {
                     }
                 }
                 // advance to next instruction
-                csip += i.length;
+                csip.advanceGuard(i.length);
             } // next instruction at current search location
         } // try block
         catch (CpuError &e) {
@@ -645,6 +645,11 @@ Address Analyzer::findTargetLocation(const Executable &ref, const Executable &tg
 
     // TODO: return multi
     if (!matchLocations.empty()) ret = matchLocations.front();
+    // find proper segment for the found location and move address to it before returning
+    const Segment seg = tgt.getSegment(ret);
+    if (seg.type == Segment::SEG_NONE)
+        throw LogicError("Unable to find segment for adddress " + ret.toString());
+    ret.move(seg.address);
     return ret;
 }
 
@@ -1012,7 +1017,7 @@ void Analyzer::advanceComparison(const Instruction &refInstr, Instruction tgtIns
         switch (skipType) {
         case SKIP_REF: 
             comparedSize += refInstr.length;
-            refCsip += refInstr.length;
+            refCsip.advanceGuard(refInstr.length);
             debug("Skipping over reference instruction mismatch, allowed " + to_string(refSkipCount) + " out of " + to_string(options.refSkip) + ", destination " + refCsip.toString());
             break;
         case SKIP_TGT:
@@ -1021,7 +1026,7 @@ void Analyzer::advanceComparison(const Instruction &refInstr, Instruction tgtIns
                 comparedSize -= refCsip.offset - refSkipOrigin.offset;
                 refCsip = refSkipOrigin;
             }
-            tgtCsip += tgtInstr.length;
+            tgtCsip.advanceGuard(tgtInstr.length);
             debug("Skipping over target instruction mismatch, allowed " + to_string(tgtSkipCount)  + " out of " + to_string(options.tgtSkip) + ", destination " + tgtCsip.toString());
             break;
         default:
@@ -1030,15 +1035,15 @@ void Analyzer::advanceComparison(const Instruction &refInstr, Instruction tgtIns
         break;
     case CMP_VARIANT:
         comparedSize += refInstr.length;
-        refCsip += refInstr.length;
+        refCsip.advanceGuard(refInstr.length);
         // in case of a variant match, the instruction pointer in the target binary will have already been advanced by instructionsMatch()
         debug("Variant match detected, comparison will continue at " + tgtCsip.toString());
         break;
     default:
         // normal case, advance both reference and target positions
         comparedSize += refInstr.length;
-        refCsip += refInstr.length;
-        tgtCsip += tgtInstr.length;
+        refCsip.advanceGuard(refInstr.length);
+        tgtCsip.advanceGuard(tgtInstr.length);
         break;
     }
 }
@@ -1311,7 +1316,7 @@ Analyzer::ComparisonResult Analyzer::variantMatch(const Executable &tgt, const I
                 // stringwise compare the next instruction in the variant to the current instruction
                 if (tgtInstr.toString() != istr) { match = false; break; }
                 // if this is not the last instruction in the variant, read the next instruction from the target binary
-                tmpCsip += tgtInstr.length;
+                tmpCsip.advanceGuard(tgtInstr.length);
                 if (++idx < v.size()) {
                     tgtInstr = Instruction{tmpCsip, tgt.codePointer(tmpCsip)};
                     variantStr += "\n" + compareStatus(Instruction(), tgtInstr, true);
@@ -1344,7 +1349,7 @@ Analyzer::ComparisonResult Analyzer::instructionsMatch(const Executable &ref, co
         if (refInstr.opcode != tgtInstr.opcode && refInstr.isUnconditionalJump() && tgtInstr.isUnconditionalJump()) {
             if (options.variant || routine.assembly) {
                 verbose(output_color(OUT_BRIGHTRED) + compareStatus(refInstr, tgtInstr, true, INS_MATCH_DIFF) + output_color(OUT_DEFAULT));
-                tgtCsip += tgtInstr.length;
+                tgtCsip.advanceGuard(tgtInstr.length);
                 return CMP_VARIANT;
             }
             else return CMP_MISMATCH;

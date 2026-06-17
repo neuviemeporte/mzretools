@@ -129,7 +129,6 @@ vector<Routine> ScanQueue::getRoutines() const {
     return routines;
 }
 
-// TODO: proper segments
 vector<Block> ScanQueue::getUnvisited() const {
     vector<Block> ret;
     Offset off = 0;
