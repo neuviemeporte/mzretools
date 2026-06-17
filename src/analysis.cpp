@@ -786,11 +786,12 @@ bool Analyzer::compareCode(const Executable &ref, Executable &tgt) {
         }
     }
 
+    const string resultStr = "Comparison result of " + ref.path() + " and " + tgt.path() + ": ";
     if (success) {
-        priority("Comparison result: match", OUT_GREEN);
+        priority(resultStr + "match", OUT_GREEN);
         comparisonSummary(ref, true);
     }
-    else priority("Comparison result: mismatch", OUT_RED);
+    else priority(resultStr + "mismatch", OUT_RED);
     return success;
 }
 
