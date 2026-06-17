@@ -742,7 +742,7 @@ bool Analyzer::compareCode(const Executable &ref, Executable &tgt) {
                         success = false;
                         break;
                     }
-                    warn("Unable to determine location of routine " + routine.name + " in target executable. Last resort pattern searching found likely location " + tgtCsip.toString() + ", but it may be completely wrong so false negative or positive is possible!", OUT_BRIGHTRED);
+                    verbose("Unable to determine location of routine " + routine.name + " in target executable. Last resort pattern searching found likely location " + tgtCsip.toString() + ", but it may be completely wrong so false negative or positive is possible!", OUT_BRIGHTRED);
                 }
                 // add routine entrypoint to target queue, otherwise it will not get marked as visited when comparing
                 if (refCsip == routine.entrypoint()) {
