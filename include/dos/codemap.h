@@ -13,11 +13,13 @@
 struct Variable {
     std::string name;
     Address addr;
+    Offset off;
     bool external, bss;
     static std::smatch stringMatch(const std::string &str);
-    Variable() {}
-    Variable(const std::string &name, const Address &addr) : name(name), addr(addr), external(false), bss(false) {}
+    Variable() : off(0) {}
+    Variable(const std::string &name, const Address &addr) : name(name), addr(addr), off(0), external(false), bss(false) {}
     std::string toString(const bool brief = true) const;
+    std::string symbol() const;
     bool operator<(const Variable &other) const { return addr < other.addr; }
 };
 
@@ -73,8 +75,7 @@ public:
     std::vector<Block> getUnclaimed() const { return unclaimed; }
     Variable getVariable(const Size idx) const { return vars.at(idx); }
     Variable getVariable(const std::string &name) const;
-    Variable getVariable(const Address &addr) const;
-    std::vector<Variable> getVariables(const Word &offset) const;
+    Variable getVariable(const Address &addr, const bool before = false) const;
     Routine findByEntrypoint(const Address &ep) const;
     Block findCollision(const Block &b) const;
     bool empty() const { return routines.empty(); }
@@ -89,6 +90,7 @@ public:
     Segment findSegment(const Word addr) const;
     Segment findSegment(const std::string &name) const;
     Segment findSegment(const Offset off, const bool past = false) const;
+    Segment defaultSegment() const;
     void setSegments(const std::vector<Segment> &seg);
     
 private:

@@ -941,9 +941,15 @@ string Analyzer::symbolName(const Executable &exe, const Instruction &i) const {
     // byte offsets implausible?
     else if (operandIsMemWithWordOffset(i.op1.type) || operandIsMemWithWordOffset(i.op2.type)) {
         const Word offset = operandIsMemWithWordOffset(i.op1.type) ? i.op1.wordValue() : i.op2.wordValue();
-        string ret;
-        for (const Variable &v : exe.map().getVariables(offset)) ret += (ret.empty() ? "" : "|") + v.name;
-        return ret;
+        // find data segment of current block; either a custom override, or the executable's default segment
+        Segment dataSeg;
+        if (!compareBlock.segName.empty()) dataSeg = exe.map().findSegment(compareBlock.segName);
+        else dataSeg = exe.map().defaultSegment();
+        if (dataSeg.type != Segment::SEG_DATA) throw AnalysisError("Unable to find data segment of block " + compareBlock.toString());
+        Address varAddr{dataSeg.address, offset};
+        Variable v = exe.map().getVariable(varAddr, true);
+        if (!v.addr.isValid()) throw AnalysisError("Unable to find variable for address " + varAddr.toString());
+        return v.symbol();
     }
     return {};
 }
