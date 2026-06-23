@@ -27,6 +27,11 @@ std::string Variable::toString(const bool brief) const {
     return oss.str();
 }
 
+std::string Variable::symbol() const {
+    if (off == 0) return name;
+    else return name + "+" + hexVal(off);
+}
+
 void CodeMap::blocksFromQueue(const ScanQueue &sq, const bool unclaimedOnly) {
     const Offset startOffset = SEG_TO_OFFSET(loadSegment);
     Offset endOffset = startOffset + mapSize;
@@ -172,18 +177,22 @@ Variable CodeMap::getVariable(const std::string &name) const {
     return Variable{"", {}};
 }
 
-Variable CodeMap::getVariable(const Address &addr) const {
+Variable CodeMap::getVariable(const Address &addr, const bool before) const {
+    // try perfect match on the variable address first
     auto it = std::find_if(vars.begin(), vars.end(), [&](const Variable &v){
         return v.addr == addr;
     });
     if (it != vars.end()) return *it;
+    // find the closest variable whose address is before the argument
+    if (before) {
+        Variable ret;
+        auto it = std::find_if(vars.rbegin(), vars.rend(), [&](const Variable &v){
+            return v.addr <= addr;
+        });
+        if (it != vars.rend()) return *it;
+    }
+    // nothing found
     return Variable{"", {}};
-}
-
-vector<Variable> CodeMap::getVariables(const Word &offset) const {
-    vector<Variable> ret;
-    for (const auto &v : vars) if (v.addr.offset == offset) ret.push_back(v);
-    return ret;
 }
 
 Routine CodeMap::findByEntrypoint(const Address &ep) const {
@@ -585,11 +594,22 @@ Segment CodeMap::findSegment(const Offset off, const bool past) const {
     return ret;
 }
 
+Segment CodeMap::defaultSegment() const {
+    Segment ret;
+    for (const auto &s : segments) {
+        // find segment explicitly marked as default
+        if (s.isDefault) return s;
+        // find the first data segment otherwise
+        if (ret.type == Segment::SEG_NONE && s.type == Segment::SEG_DATA) ret = s;
+    }
+    return ret;
+}
+
 enum BlockType { BLOCK_NONE, BLOCK_EXTENTS, BLOCK_REACHABLE, BLOCK_UNREACHABLE };
 
 void CodeMap::loadFromMapFile(const std::string &path, const Word reloc) {
     static const regex 
-        RANGE_RE{"([0-9a-fA-F]{1,4})-([0-9a-fA-F]{1,4})"},
+        RANGE_RE{"([0-9a-fA-F]{1,4})-([0-9a-fA-F]{1,4})(?:\\[([a-zA-Z0-9]+)\\])?"},
         SIZE_RE{"Size\\s+([0-9a-fA-F]+)"};
     debug("Loading code map from "s + path + ", relocating to " + hexVal(reloc));
     ifstream mapFile{path};
@@ -680,6 +700,9 @@ void CodeMap::loadFromMapFile(const std::string &path, const Word reloc) {
             if (!regex_match(token, match, RANGE_RE)) throw ParseError("Line " + to_string(lineno) + ": invalid routine block '" + token + "'");
             Block block{Address{rseg.address, static_cast<Word>(stoi(match.str(1), nullptr, 16))}, 
                         Address{rseg.address, static_cast<Word>(stoi(match.str(2), nullptr, 16))}};
+            const string segStr = match.str(3);
+            if (!segStr.empty())
+                block.segName = segStr;
             // check block for collisions against rest of routines already in the map as well as the currently built routine
             Routine colideRoutine = colidesBlock(block);
             if (!colideRoutine.isValid() && r.colides(block, false)) 

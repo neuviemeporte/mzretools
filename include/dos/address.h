@@ -75,6 +75,7 @@ inline std::string operator+(const std::string &str, const Address &arg) { retur
 // An address range, both ends inclusive
 struct Block {
     Address begin, end;
+    std::string segName;
 
     Block(const Address &begin, const Address &end) : begin(begin), end(end) {}
     Block(const Address &begin) : Block(begin, begin) {}
@@ -117,11 +118,12 @@ struct Segment {
         SEG_STACK
     } type;
     Word address;
+    bool isDefault;
 
     static std::smatch stringMatch(const std::string &str);
     static std::string typeString(const Type t);
 
-    Segment(const std::string &name, Type type, Word address) : name(name), type(type), address(address) {}
+    Segment(const std::string &name, Type type, Word address) : name(name), type(type), address(address), isDefault(false) {}
     Segment(const std::smatch &match);
     Segment(const std::string &str) : Segment(stringMatch(str)) {}
     Segment() : Segment("", SEG_NONE, 0) {}

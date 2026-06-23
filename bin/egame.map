@@ -6,7 +6,7 @@ Size 28f70
 # Discovered segments, one per line, syntax is "SegmentName Type(CODE/DATA/STACK) Address"
 #
 Code1 CODE 0000
-Data3 DATA 0040
+Data3 DATA 0040 default
 Data2 DATA 009d
 Code4 CODE 0f88
 Code2 CODE 11a7
@@ -29,13 +29,13 @@ Data1 DATA 228b
 #
 start: Code1 NEAR 0000-000f R0000-000f
 routine_7: Code1 NEAR 0010-0146 R0010-0146
-routine_22: Code1 NEAR 0147-0210 R0147-0210
+routine_22: Code1 NEAR 0147-0210[Data2] R0147-0210
 routine_23: Code1 NEAR 0211-0293 R0211-0293
 routine_6: Code1 NEAR 0294-0296 R0294-0296
 routine_5: Code1 NEAR 0297-0299 R0297-0299
 routine_17: Code1 NEAR 029a-02e1 R029a-02e1
 routine_37: Code1 NEAR 02e2-0333 R02e2-0333
-routine_292: Code1 NEAR 0334-0685 R0334-03ff R0400-0685
+routine_292: Code1 NEAR 0334-0685 R0334-03ff R0400-0685[Data2]
 routine_14: Code1 NEAR 0688-06e0 R0688-069a U069b-069f R06a0-06e0
 routine_109: Code1 NEAR 0720-14e7 R0720-09cf R09d0-14e7
 routine_181: Code1 NEAR 14e8-14fb R14e8-14fb
