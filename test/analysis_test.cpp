@@ -213,6 +213,13 @@ TEST_F(AnalysisTest, CodeMapFromLinkMap) {
     ASSERT_EQ(linkMap.segmentCount(), 2);
     ASSERT_EQ(linkMap.routineCount(), 141);
     ASSERT_EQ(linkMap.variableCount(), 250);
+    const string varName = "secondaryHit";
+    const Address varAddr(0x5b7, 0x62a0);
+    Variable v = linkMap.getVariable(varName);
+    ASSERT_EQ(v.addr, varAddr);
+    v = linkMap.getVariable(varAddr);
+    ASSERT_EQ(v.addr, varAddr);
+    ASSERT_EQ(v.name, varName);
 }
 
 TEST_F(AnalysisTest, BigCodeMap) {
@@ -231,6 +238,13 @@ TEST_F(AnalysisTest, BigCodeMap) {
     ASSERT_EQ(s.dataSize, 0x7674);
     ASSERT_EQ(s.dataCodeSize, 0x127);
     ASSERT_EQ(s.dataCodeCount, 59);
+    const Segment ds = rm.defaultSegment();
+    ASSERT_EQ(ds.type, Segment::SEG_DATA);
+    ASSERT_EQ(ds.name, "Data1");
+    const Address vaddr(ds.address, 0x19b8);
+    Variable v = rm.getVariable(vaddr);
+    ASSERT_EQ(v.name, "var_219");
+    ASSERT_EQ(v.addr, vaddr);
 }
 
 TEST_F(AnalysisTest, FindRoutines) {

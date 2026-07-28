@@ -938,18 +938,36 @@ string Analyzer::symbolName(const Executable &exe, const Instruction &i) const {
         const Routine r = exe.map().findByEntrypoint(i.op1.farAddr());
         return r.name;
     }
-    // byte offsets implausible?
+    // TODO: byte offsets implausible?
     else if (operandIsMemWithWordOffset(i.op1.type) || operandIsMemWithWordOffset(i.op2.type)) {
         const Word offset = operandIsMemWithWordOffset(i.op1.type) ? i.op1.wordValue() : i.op2.wordValue();
         // find data segment of current block; either a custom override, or the executable's default segment
-        Segment dataSeg;
-        if (!compareBlock.segName.empty()) dataSeg = exe.map().findSegment(compareBlock.segName);
-        else dataSeg = exe.map().defaultSegment();
-        if (dataSeg.type != Segment::SEG_DATA) throw AnalysisError("Unable to find data segment of block " + compareBlock.toString());
-        Address varAddr{dataSeg.address, offset};
+        Segment varSeg;
+        // handle segment override prefixes
+        switch (i.prefix) {
+        case PRF_SEG_CS:
+            // cs override, can determine from instruction address
+            varSeg = exe.map().findSegment(i.addr.segment);
+            break;
+        case PRF_SEG_ES:
+        case PRF_SEG_SS:
+            // values of es and ss are unknown, unable to determine symbol name
+            return {};
+        case PRF_NONE:
+        case PRF_SEG_DS:
+        default:
+            // no seg override or ds, search for data segment
+            varSeg = !compareBlock.segName.empty() ? exe.map().findSegment(compareBlock.segName) : exe.map().defaultSegment();
+            break;
+        }
+        if (varSeg.type == Segment::SEG_NONE) {
+            verbose("Unable to find segment for memory offset " + hexVal(offset) + ", instruction address " + i.addr.toString() + ", compare block: " + compareBlock.toString());
+            return {};
+        }
+        Address varAddr{varSeg.address, offset};
         Variable v = exe.map().getVariable(varAddr, true);
-        if (!v.addr.isValid()) throw AnalysisError("Unable to find variable for address " + varAddr.toString());
-        return v.symbol();
+        if (v.addr.isValid()) return v.symbol();
+        else debug("Unable to find variable for address " + varAddr.toString());
     }
     return {};
 }

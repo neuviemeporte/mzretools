@@ -13,7 +13,7 @@
 struct Variable {
     std::string name;
     Address addr;
-    Offset off;
+    Offset off; // optional offset from the exact variable location, zero by default, used to enable matching memory location ranges to variables
     bool external, bss;
     static std::smatch stringMatch(const std::string &str);
     Variable() : off(0) {}
