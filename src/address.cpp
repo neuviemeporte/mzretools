@@ -143,6 +143,7 @@ std::string Block::toString(const bool linear, const bool showSize, const bool i
     if (!linear) str << begin.toString(!includeLinear) << "-" << end.toString(!includeLinear);
     else str << hexVal(begin.toLinear(), false, OFFSET_STRLEN) << "-" << hexVal(end.toLinear(), false, OFFSET_STRLEN);
     if (showSize) str << "[" << hex << setw(OFFSET_STRLEN) << setfill('0') << size() << "]";
+    if (!segName.empty()) str << "[" << segName << "]";
     return str.str();
 }
 
@@ -245,7 +246,7 @@ std::ostream& operator<<(std::ostream &os, const Block &arg) {
     return os << arg.toString();
 }
 
-Segment::Segment(const std::smatch &match) {
+Segment::Segment(const std::smatch &match) : isDefault(false) {
     if (match.empty()) throw ArgError("Segment string mismatch");
     name = match.str(1);
     address = stoi(match.str(3), nullptr, 16);
@@ -254,10 +255,12 @@ Segment::Segment(const std::smatch &match) {
     else if (segtype == "DATA") type = SEG_DATA;
     else if (segtype == "STACK") type = SEG_STACK;
     else throw ArgError("Invalid segment type string: " + segtype);
+    const string trailing = match.str(4);
+    if (trailing == "default") isDefault = true;
 }
 
 std::smatch Segment::stringMatch(const std::string &str) {
-    static const regex SEG_RE{"^([$_a-zA-Z0-9]+) (CODE|DATA|STACK) ([0-9a-fA-F]{1,4})"};
+    static const regex SEG_RE{"^([$_a-zA-Z0-9]+)\\s(CODE|DATA|STACK)\\s([0-9a-fA-F]{1,4})\\s?(.*)?"};
     smatch match;
     regex_match(str, match, SEG_RE);
     return match;
@@ -283,5 +286,6 @@ std::string Segment::toString() const {
     default:        str << "??? "; break; 
     }
     str << hexVal(address, false);
+    if (isDefault) str << " default";
     return str.str();
 }

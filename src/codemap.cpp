@@ -27,6 +27,11 @@ std::string Variable::toString(const bool brief) const {
     return oss.str();
 }
 
+std::string Variable::symbol() const {
+    if (off == 0) return name;
+    else return name + "+" + hexVal(off);
+}
+
 void CodeMap::blocksFromQueue(const ScanQueue &sq, const bool unclaimedOnly) {
     const Offset startOffset = SEG_TO_OFFSET(loadSegment);
     Offset endOffset = startOffset + mapSize;
@@ -172,18 +177,26 @@ Variable CodeMap::getVariable(const std::string &name) const {
     return Variable{"", {}};
 }
 
-Variable CodeMap::getVariable(const Address &addr) const {
+Variable CodeMap::getVariable(const Address &addr, const bool before) const {
+    // try perfect match on the variable address first
     auto it = std::find_if(vars.begin(), vars.end(), [&](const Variable &v){
         return v.addr == addr;
     });
     if (it != vars.end()) return *it;
-    return Variable{"", {}};
-}
-
-vector<Variable> CodeMap::getVariables(const Word &offset) const {
-    vector<Variable> ret;
-    for (const auto &v : vars) if (v.addr.offset == offset) ret.push_back(v);
-    return ret;
+    // find the closest variable whose address is before the argument
+    if (before) {
+        auto it = std::find_if(vars.rbegin(), vars.rend(), [&](const Variable &v){
+            return v.addr <= addr;
+        });
+        if (it != vars.rend()) {
+            Variable ret(*it);
+            assert(ret.addr.offset <= addr.offset);
+            ret.off = addr.offset - ret.addr.offset;
+            return ret;
+        }
+    }
+    // nothing found
+    return {};
 }
 
 Routine CodeMap::findByEntrypoint(const Address &ep) const {
@@ -374,6 +387,16 @@ void CodeMap::order() {
     // TODO: coalesce adjacent blocks, see routine_35 of hello.exe: 1415-14f7 R1412-1414 R1415-14f7
     for (auto &r : routines) 
         r.recalculateExtents();
+    // before sorting, set default data segment to the first one if not explicitly specified
+    const Segment defSeg = defaultSegment();
+    if (defSeg.type != Segment::SEG_DATA) {
+        for (Segment &s : segments) if (s.type == Segment::SEG_DATA) {
+            s.isDefault = true;
+            warn("Default data segment was not specified, so first segment used: " + s.name);
+            break;
+        }
+        // no data segment found is not an error, if the map is not going to need symbol extraction
+    } 
     sort();
 }
 
@@ -391,19 +414,23 @@ void CodeMap::save(const std::string &path, const Word reloc, const bool overwri
          << "#" << endl
          << "Size " << hexVal(mapSize, false) << endl;
     file << "#" << endl
-         << "# Discovered segments, one per line, syntax is \"SegmentName Type(CODE/DATA/STACK) Address\"" << endl
+         << "# Discovered segments, one per line, syntax is \"SegmentName Type(CODE/DATA/STACK) Address [default]\"" << endl
+         << "# The default data segment is assumed to be used by all routines which don't have data segment overrides." << endl
+         << "# If no default segment is specified, the first one will be used as default." << endl
          << "#" << endl;
     for (auto s: segments) {
         s.address -= reloc;
         file << s.toString() << endl;
     }
     file << "#" << endl
-         << "# Discovered routines, one per line, syntax is \"RoutineName: Segment Type(NEAR/FAR) Extents [R/U]Block1 [R/U]Block2... [annotation1] [annotation2]...\"" << endl
+         << "# Discovered routines, one per line, syntax is \"RoutineName: Segment Type(NEAR/FAR) Extents[DS] [R/U]Block1[DS] [R/U]Block2[DS]... [annotation1] [annotation2]...\"" << endl
          << "# The routine extents is the largest continuous block of instructions attributed to this routine and originating" << endl 
          << "# at the location determined to be the routine's entrypoint." << endl
          << "# Blocks are offset ranges relative to the segment that the routine belongs to, specifying address as belonging to the routine." << endl 
          << "# Blocks starting with R contain code that was determined reachable, U were unreachable but still likely belong to the routine." << endl
          << "# The routine blocks may cover a greater area than the extents if the routine has disconected chunks it jumps into." << endl
+         << "# The extents block and/or the individual routine blocks can have an optional data segment override which is the name" << endl
+         << "# of the data segment assumed to be selected within that block."
          << "# Possible annotation types:" << endl
          << "# ignore - ignore this routine in processing (comparison, signature extraction etc.)" << endl
          << "# complete - this routine was completely reconstructed into C, only influences stat display when printing map" << endl
@@ -585,11 +612,18 @@ Segment CodeMap::findSegment(const Offset off, const bool past) const {
     return ret;
 }
 
+Segment CodeMap::defaultSegment() const {
+    Segment ret;
+    for (const auto &s : segments)
+        if (s.isDefault) return s;
+    return ret;
+}
+
 enum BlockType { BLOCK_NONE, BLOCK_EXTENTS, BLOCK_REACHABLE, BLOCK_UNREACHABLE };
 
 void CodeMap::loadFromMapFile(const std::string &path, const Word reloc) {
     static const regex 
-        RANGE_RE{"([0-9a-fA-F]{1,4})-([0-9a-fA-F]{1,4})"},
+        RANGE_RE{"([0-9a-fA-F]{1,4})-([0-9a-fA-F]{1,4})(?:\\[([a-zA-Z0-9]+)\\])?"},
         SIZE_RE{"Size\\s+([0-9a-fA-F]+)"};
     debug("Loading code map from "s + path + ", relocating to " + hexVal(reloc));
     ifstream mapFile{path};
@@ -680,6 +714,9 @@ void CodeMap::loadFromMapFile(const std::string &path, const Word reloc) {
             if (!regex_match(token, match, RANGE_RE)) throw ParseError("Line " + to_string(lineno) + ": invalid routine block '" + token + "'");
             Block block{Address{rseg.address, static_cast<Word>(stoi(match.str(1), nullptr, 16))}, 
                         Address{rseg.address, static_cast<Word>(stoi(match.str(2), nullptr, 16))}};
+            const string segStr = match.str(3);
+            if (!segStr.empty())
+                block.segName = segStr;
             // check block for collisions against rest of routines already in the map as well as the currently built routine
             Routine colideRoutine = colidesBlock(block);
             if (!colideRoutine.isValid() && r.colides(block, false)) 
@@ -723,17 +760,19 @@ void CodeMap::loadFromLinkFile(const std::string &path, const Word reloc) {
     enum {
         LINKMAP_NONE,
         LINKMAP_SEGMENTS,
+        LINKMAP_GROUPS,
         LINKMAP_PUBLICS
     } mode = LINKMAP_NONE;
     static const string 
         HEXVAL_RE_STR{"([0-9A-F]+)"},
         NAME_RE_STR{"([_$0-9A-Za-z]+)"},
         SEGMENTS_RE_STR{"\\s*Start\\s+Stop\\s+Length\\s+Name\\s+Class"},
+        GROUPS_RE_STR{"\\s*Origin\\s+Group"},
         PUBNAME_RE_STR{"\\s*Address\\s+Publics by Name"},
         PUBLVAL_RE_STR{"\\s*Address\\s+Publics by Value"},
         SEGDEF_RE_STR{"\\s*" + HEXVAL_RE_STR + "H\\s+" + HEXVAL_RE_STR + "H\\s+" + HEXVAL_RE_STR + "H\\s+" + NAME_RE_STR + "\\s+" + NAME_RE_STR},
         PUBDEF_RE_STR{"\\s*" + HEXVAL_RE_STR + ":" + HEXVAL_RE_STR + "\\s+" + NAME_RE_STR};
-    static const regex SEGMENTS_RE{SEGMENTS_RE_STR}, PUBNAME_RE{PUBNAME_RE_STR}, PUBVAL_RE{PUBLVAL_RE_STR}, SEGDEF_RE{SEGDEF_RE_STR}, PUBDEF_RE{PUBDEF_RE_STR};
+    static const regex SEGMENTS_RE{SEGMENTS_RE_STR}, GROUPS_RE{GROUPS_RE_STR}, PUBNAME_RE{PUBNAME_RE_STR}, PUBVAL_RE{PUBLVAL_RE_STR}, SEGDEF_RE{SEGDEF_RE_STR}, PUBDEF_RE{PUBDEF_RE_STR};
     vector<string> tokens;
     Size totalSize = 0;
     set<Segment> usedSegs;
@@ -743,6 +782,11 @@ void CodeMap::loadFromLinkFile(const std::string &path, const Word reloc) {
         if (mode != LINKMAP_SEGMENTS && std::regex_match(line, SEGMENTS_RE)) {
             PARSE_DEBUG("Segment definitions starting on line " + to_string(lineno));
             mode = LINKMAP_SEGMENTS; 
+            continue;
+        }
+        else if (mode != LINKMAP_GROUPS && std::regex_match(line, GROUPS_RE)) {
+            PARSE_DEBUG("Group definitions starting on line " + to_string(lineno));
+            mode = LINKMAP_GROUPS; 
             continue;
         }
         // switch into public parsing mode
@@ -769,6 +813,11 @@ void CodeMap::loadFromLinkFile(const std::string &path, const Word reloc) {
             const string
                 name = tokens[3],
                 type = tokens[4];
+            // ignore segments of size zero
+            if (size == 0 || length == 0) {
+                PARSE_DEBUG("Ignoring segment of size zero: " + name);
+                continue;
+            }
             const Word segAddr = OFFSET_TO_SEG(start);
             PARSE_DEBUG("Segment definition on line " + to_string(lineno) + ": start " + hexVal(start) + " (addr " + hexVal(segAddr) + ")" ", stop " + hexVal(stop) + " (size " + hexVal(size) 
                 + "), length " + hexVal(length) + " name '" + name + "', class '" + type + "'");
@@ -786,6 +835,24 @@ void CodeMap::loadFromLinkFile(const std::string &path, const Word reloc) {
                 continue;
             }
             segments.emplace_back(Segment{name, segType, segAddr});
+        }
+        // parse group definition (same syntax as public)
+        else if (mode == LINKMAP_GROUPS && (tokens = extractRegex(PUBDEF_RE, line)).size() == 3) {
+            const Address addr{
+                static_cast<Word>(std::stoi(tokens[0], nullptr, 16)), 
+                static_cast<Word>(std::stoi(tokens[1], nullptr, 16))};
+            string name = tokens[2];
+            if (addr.offset != 0) throw ParseError("Unexpected offset in group address: " + name + "/" + addr.toString());
+            if (name == "DGROUP") {
+                // set default data segment from dgroup address
+                for (Segment &s : segments) if (s.address == addr.segment) {
+                    debug("Set segment " + s.name + " as default based on dgroup address: " + addr.toString());
+                    s.isDefault = true;
+                }
+                // TODO: add segment if it doesn't exist?
+                // TODO: no way to set DS for routine in linkmap, symbols from other segments than default will not be found in routines using a different DS/A
+            }
+
         }
         // parse public definition
         else if (mode == LINKMAP_PUBLICS && (tokens = extractRegex(PUBDEF_RE, line)).size() == 3) {
