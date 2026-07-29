@@ -214,12 +214,21 @@ TEST_F(AnalysisTest, CodeMapFromLinkMap) {
     ASSERT_EQ(linkMap.routineCount(), 141);
     ASSERT_EQ(linkMap.variableCount(), 250);
     const string varName = "secondaryHit";
-    const Address varAddr(0x5b7, 0x62a0);
+    Address varAddr(0x5b7, 0x62a0);
     Variable v = linkMap.getVariable(varName);
     ASSERT_EQ(v.addr, varAddr);
+    ASSERT_EQ(v.off, 0);
+    ASSERT_EQ(v.symbol(), varName);
     v = linkMap.getVariable(varAddr);
     ASSERT_EQ(v.addr, varAddr);
     ASSERT_EQ(v.name, varName);
+    // variable with offset
+    varAddr = Address(0x5b7, 0x507a + 0x12);
+    v = linkMap.getVariable(varAddr, true);
+    ASSERT_EQ(v.name, "unitTypeTable");
+    ASSERT_EQ(v.addr, Address(0x5b7, 0x507a));
+    ASSERT_EQ(v.off, 0x12);
+    ASSERT_EQ(v.symbol(), "unitTypeTable+0x12");
 }
 
 TEST_F(AnalysisTest, BigCodeMap) {

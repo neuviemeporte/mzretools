@@ -185,11 +185,15 @@ Variable CodeMap::getVariable(const Address &addr, const bool before) const {
     if (it != vars.end()) return *it;
     // find the closest variable whose address is before the argument
     if (before) {
-        Variable ret;
         auto it = std::find_if(vars.rbegin(), vars.rend(), [&](const Variable &v){
             return v.addr <= addr;
         });
-        if (it != vars.rend()) return *it;
+        if (it != vars.rend()) {
+            Variable ret(*it);
+            assert(ret.addr.offset <= addr.offset);
+            ret.off = addr.offset - ret.addr.offset;
+            return ret;
+        }
     }
     // nothing found
     return {};
