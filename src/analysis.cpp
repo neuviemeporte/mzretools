@@ -1234,7 +1234,7 @@ Branch Analyzer::getBranch(const Executable &exe, const Instruction &i, const Cp
         branch.isCall = false;
         branch.isConditional = false;
         if (i.op1.type == OPR_IMM32) {
-            branch.destination = Address{i.op1.immval.u32}; 
+            branch.destination = Address(DWORD_SEGMENT(i.op1.immval.u32), DWORD_OFFSET(i.op1.immval.u32));
             branch.isNear = false;
             searchMessage(addr, "encountered unconditional far jump to "s + branch.destination.toString());
         }
